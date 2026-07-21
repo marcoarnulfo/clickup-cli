@@ -106,6 +106,7 @@ commands:
 
 - `↑` / `↓` (also `k` / `j`): navigate the lists
 - `Enter`: edit the selected list's rate (digits and decimal separator only)
+- `b`: open the **workspace list browser** to add a list not yet tracked
 - `d`: reset the list to the default rate
 - `s`: save changes and return to the report
 - `Esc`: cancel (discard unsaved changes) and return to the report
@@ -144,7 +145,9 @@ Pressing `n` (from Home or Report) opens **Log hours**, to record time on your o
 ClickUp tasks. Three modes:
 
 1. **Guided** — pick a list among the known ones (current report ∪ config), then a task
-   of that list, then fill in the form.
+   of that list, then fill in the form. The list picker includes a "**Browse all workspace
+   lists…**" entry that opens the workspace list browser, allowing you to navigate all
+   spaces, folders, and lists in your workspace (not only recent or configured ones).
 2. **Task ID/URL** — paste the task ID or a ClickUp URL (e.g. `.../t/86abc`) and go
    straight to the form.
 3. **Timer** — start a stopwatch on the chosen task (guided or ID); pressing `s` stops it
@@ -156,6 +159,18 @@ In the form, **duration** accepts flexible formats: `2h30`, `2h30m`, `1.5h`, `1,
 and the **note** is optional. Finally you set whether the entry is **billable** (`Y`/`n`,
 default yes). After saving, press `r` to reload the report and see the new hours immediately.
 You always log **your own** hours.
+
+#### Workspace list browser
+
+The workspace list browser (opened from **Log hours** guided mode or **Per-list rates** screen)
+shows all spaces, folders, and lists in your workspace as a hierarchical drill-down:
+start at the workspace root → select a space → drill down into folders within that space → pick a list.
+The browser lazy-loads folder contents on demand and caches them for the session; all list data is already
+cached, so navigation is instant. Available commands:
+
+- `↑` / `↓` (also `k` / `j`): move up/down in the current level
+- `Enter`: enter/expand the highlighted space or folder; select the highlighted list
+- `Esc`: go back one level (or return to the origin screen at the root level)
 
 ### Team scope
 
