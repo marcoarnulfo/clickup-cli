@@ -329,6 +329,49 @@ func TestSpacesMsgPopulatesAndDemoCmds(t *testing.T) {
 		t.Error("demoSpaceContentsCmd should produce spaceContentsMsg")
 	}
 }
+
+func TestOpenListBrowserCacheHitAndMiss(t *testing.T) {
+	// cache hit: browserSpaces already populated -> opens directly, no command.
+	hit := Model{browserSpaces: []clickup.Space{{ID: "s1", Name: "Eng"}}}
+	u, cmd := hit.openListBrowser(screenRates)
+	hit = u
+	if hit.screen != screenListBrowser || len(hit.browserScreen.spaces) != 1 || cmd != nil {
+		t.Fatalf("cache hit: screen=%v spaces=%d cmd=%v", hit.screen, len(hit.browserScreen.spaces), cmd)
+	}
+	if hit.browserScreen.origin != screenRates {
+		t.Errorf("origin = %v, want rates", hit.browserScreen.origin)
+	}
+	// cache miss in demo mode: loading + a command that yields spacesMsg.
+	miss := Model{demo: true}
+	u2, cmd2 := miss.openListBrowser(screenLog)
+	miss = u2
+	if miss.screen != screenListBrowser || !miss.browserScreen.loading || cmd2 == nil {
+		t.Fatalf("cache miss: screen=%v loading=%v cmd=%v", miss.screen, miss.browserScreen.loading, cmd2)
+	}
+	if _, ok := cmd2().(spacesMsg); !ok {
+		t.Error("cache miss should load spaces (demo)")
+	}
+}
+
+func TestSpaceContentsMsgPopulatesCache(t *testing.T) {
+	m := Model{screen: screenListBrowser}
+	m.browserScreen = listBrowserModel{origin: screenLog, spaceID: "s1", loading: true, level: browseSpaces}
+	u, _ := m.Update(spaceContentsMsg{
+		spaceID:    "s1",
+		folders:    []clickup.Folder{{ID: "f1", Name: "F", Lists: []clickup.List{{ID: "l1", Name: "L"}}}},
+		folderless: []clickup.List{{ID: "l9", Name: "R"}},
+	})
+	m = u.(Model)
+	if _, ok := m.browserContents["s1"]; !ok {
+		t.Error("spaceContentsMsg should cache the contents")
+	}
+	if m.browserScreen.level != browseSpaceContents || m.browserScreen.loading {
+		t.Errorf("browser not advanced: level=%v loading=%v", m.browserScreen.level, m.browserScreen.loading)
+	}
+	if len(m.browserScreen.folders) != 1 || len(m.browserScreen.folderless) != 1 {
+		t.Errorf("contents not applied: %+v", m.browserScreen)
+	}
+}
 ```
 
 - [ ] **Step 2: Run to verify it fails**
@@ -459,14 +502,16 @@ func (m Model) browserEnter(bs listBrowserModel) (tea.Model, tea.Cmd) {
 		}
 		l := bs.folderless[li]
 		m.browserScreen = bs
-		return m, m.selectBrowsedList(l.ID, l.Name)
+		cmd := m.selectBrowsedList(l.ID, l.Name)
+		return m, cmd
 	default: // browseFolderLists
 		if bs.idx >= len(bs.folderLists) {
 			return m, nil
 		}
 		l := bs.folderLists[bs.idx]
 		m.browserScreen = bs
-		return m, m.selectBrowsedList(l.ID, l.Name)
+		cmd := m.selectBrowsedList(l.ID, l.Name)
+		return m, cmd
 	}
 }
 
@@ -542,7 +587,7 @@ func browserRow(label string, sel bool) string {
 
 In `internal/tui/app.go`:
 
-(a) Append `screenListBrowser` to the `screen` iota.
+(a) Append `screenListBrowser` to the `screen` iota. Also add it to the global `q`-quit exemption in `Update` (the `if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange` condition) → append `&& m.screen != screenListBrowser`, so opening the browser from the rates screen (via `b`) doesn't let a stray `q` quit and discard unsaved rate overrides.
 
 (b) Add to the `type (...)` msg block:
 ```go
@@ -889,6 +934,6 @@ git commit -m "docs: document the workspace list browser"
 ## Self-Review notes (author)
 
 - **Spec coverage:** client Spaces/SpaceContents with inline folder lists (T1) ✓; shared drill-down browser with lazy fetch + session cache (T2) ✓; selection routing by `origin` to log (task-pick flow) and rates (add/select row) (T2) ✓; log "Browse all…" entry (T3) ✓; rates `b` key (T4) ✓; demo data (T2) ✓; docs (T5) ✓.
-- **Build-green / staticcheck ordering:** `screenListBrowser` + `browserScreen`/cache fields + `spacesMsg`/`spaceContentsMsg` + all browser funcs land together in T2, all referenced within T2 (updateListBrowser via routeKey; view via View; handlers; demo cmds via tests; `openListBrowser`/`selectBrowsedList` via `browserEnter`/tests). The two entry points (T3 log, T4 rates) call `openListBrowser`, which already exists from T2. No forward references.
+- **Build-green / staticcheck ordering:** `screenListBrowser` + `browserScreen`/cache fields + `spacesMsg`/`spaceContentsMsg` + all browser funcs land together in T2, all referenced within T2: `updateListBrowser` via routeKey; `view` via View; the two msg handlers via `Update`; `browserEnter`/`itemCount`/`browserRow`/`selectBrowsedList` internally; `spaceContentsCmd`/`loadSpaceContentsCmd` via `browserEnter`; `spacesCmd`/`loadSpacesCmd`/`openListBrowser` via `TestOpenListBrowserCacheHitAndMiss`; demo cmds via `spacesCmd`/`spaceContentsCmd` + tests. (Without that test `openListBrowser`/`spacesCmd`/`loadSpacesCmd` would be U1000 until T3 — the test keeps T2's staticcheck gate clean.) The two entry points (T3 log, T4 rates) then call `openListBrowser`. No forward references.
 - **Type consistency:** `openListBrowser(origin screen) (Model, tea.Cmd)`, `selectBrowsedList(id, name string) tea.Cmd` (pointer receiver, called on addressable local), `spaceContentsMsg{spaceID, folders, folderless}`, `browserSpaceContents{folders, folderless}` used identically across producer/consumer.
 - **Watch (flag for reviewer):** `selectBrowsedList` is a pointer receiver like `applyReport`/`assignStatuses` — confirm it's called on an addressable `m` (it is: from `browserEnter`, a value receiver whose local `m` is addressable). The log return path sets `screen=screenLog` + `loading=true` + `step=logListPick` then fires `listTasksCmd`; confirm the existing `taskListMsg` handler advances to `logTaskPick` without needing a screen change. Esc at the top browser level returns to `origin` — confirm both origins (log/rates) render correctly on return.
