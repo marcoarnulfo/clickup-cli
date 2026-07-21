@@ -152,7 +152,8 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Type == tea.KeyEnter {
-			lg.taskID = lg.input.Value()
+			lg.taskID = clickup.ExtractTaskID(lg.input.Value())
+			lg.taskName = lg.taskID
 			lg = enterForm(lg)
 			m.logScreen = lg
 			return m, nil
@@ -244,11 +245,14 @@ func (lg logModel) view() string {
 		b += labels[lg.formField] + ":\n\n" + lg.input.View()
 	case logDone:
 		b += styleOK.Render("✓ Ore registrate.") + "\n\n"
+		if lg.msg != "" {
+			b += styleOK.Render(lg.msg) + "\n\n"
+		}
 		b += styleHelp.Render("r: ricarica il report · Esc: torna al report")
 	default:
 		b += styleHelp.Render("…")
 	}
-	if lg.msg != "" {
+	if lg.msg != "" && lg.step != logDone {
 		b += "\n" + styleErr.Render(lg.msg)
 	}
 	b += "\n\n" + styleHelp.Render("Esc: annulla · Ctrl+C: esci")
