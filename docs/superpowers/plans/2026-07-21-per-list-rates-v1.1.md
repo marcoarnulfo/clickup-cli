@@ -567,12 +567,25 @@ con:
 		if err != nil {
 			return errMsg{err: err}
 		}
-		// Risolvi i nomi leggibili delle liste (cache sul client deduplica le chiamate).
+		// Risolvi i nomi leggibili delle liste UNA sola volta per list_id unico
+		// (evita chiamate ripetute, incluse quelle fallite, per la stessa lista).
+		resolved := map[string]string{}
+		for _, e := range entries {
+			if e.ListID == "" {
+				continue
+			}
+			if _, done := resolved[e.ListID]; done {
+				continue
+			}
+			if name, err := c.ListName(ctx, e.ListID); err == nil {
+				resolved[e.ListID] = name
+			} else {
+				resolved[e.ListID] = "" // tentato: non ritentare in questo caricamento
+			}
+		}
 		for i := range entries {
-			if entries[i].ListID != "" {
-				if name, err := c.ListName(ctx, entries[i].ListID); err == nil {
-					entries[i].ListName = name
-				}
+			if name := resolved[entries[i].ListID]; name != "" {
+				entries[i].ListName = name
 			}
 		}
 		return entriesMsg{entries: entries}
@@ -673,6 +686,61 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 		t.Fatalf("report non ricalcolato: TotalAmount %v, want 100", m.report.TotalAmount)
 	}
 }
+
+func TestRatesScreenEscCancelsEdit(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // apre editing
+	m = u.(Model)
+	for _, r := range "99" {
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // annulla
+	m = u.(Model)
+	if m.ratesScreen.editing {
+		t.Fatal("Esc deve uscire dall'editing")
+	}
+	if _, ok := m.ratesScreen.rates["55"]; ok {
+		t.Fatalf("Esc non deve aver impostato un override: %+v", m.ratesScreen.rates)
+	}
+}
+
+func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	for _, r := range "-5" { // negativo: non valido
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if !m.ratesScreen.editing {
+		t.Fatal("tariffa non valida deve mantenere l'editing aperto")
+	}
+	if m.ratesScreen.msg == "" {
+		t.Fatal("atteso un messaggio d'errore per tariffa non valida")
+	}
+	if _, ok := m.ratesScreen.rates["55"]; ok {
+		t.Fatal("tariffa non valida non deve creare un override")
+	}
+}
 ```
 
 - [ ] **Step 2: Esegui (RED)**
@@ -718,6 +786,24 @@ const (
 		return m.ratesScreen.view()
 ```
 
+(e) **escludi `screenRates` dallo short-circuit globale di `q`.** Oggi in `Update` c'è:
+
+```go
+		if msg.String() == "q" && m.screen != screenSetup {
+			return m, tea.Quit
+		}
+```
+
+Sostituiscila con:
+
+```go
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates {
+			return m, tea.Quit
+		}
+```
+
+Motivo: senza questa esclusione, premere `q` nella schermata tariffe (memoria muscolare da "q: esci" della vista report) uscirebbe dall'app **scartando override confermati ma non ancora salvati**. Con l'esclusione, `q` finisce in `updateRates`, dove non è un case gestito → no-op; si esce con `s`/`Esc` (che salva).
+
 - [ ] **Step 4: Implementa `rates.go`**
 
 Create `internal/tui/rates.go`:
@@ -727,6 +813,8 @@ package tui
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -749,10 +837,12 @@ type ratesModel struct {
 	rates   map[string]float64 // override correnti (list_id -> tariffa)
 	def     float64            // tariffa di default
 	cur     string             // valuta
+	msg     string             // messaggio d'errore (tariffa non valida)
 }
 
 // newRates costruisce la schermata dalle liste del report corrente unite a quelle
-// già presenti in config (cfg.Rates).
+// già presenti in config (cfg.Rates). Le liste "solo config" sono aggiunte in
+// ordine deterministico (id crescente) per una vista stabile.
 func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	names := map[string]string{}
 	var order []string
@@ -771,7 +861,15 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	for _, e := range entries {
 		remember(e.ListID, e.ListName)
 	}
+	// liste presenti solo in config: ordine deterministico
+	var cfgIDs []string
 	for id := range cfg.Rates {
+		if _, ok := names[id]; !ok {
+			cfgIDs = append(cfgIDs, id)
+		}
+	}
+	sort.Strings(cfgIDs)
+	for _, id := range cfgIDs {
 		remember(id, "")
 	}
 
@@ -786,6 +884,15 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	return ratesModel{rows: rows, rates: rates, def: cfg.Rate, cur: cfg.Currency}
 }
 
+// validRate accetta solo un numero finito ≥ 0.
+func validRate(s string) (float64, bool) {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
+}
+
 func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rt := m.ratesScreen
 
@@ -794,17 +901,20 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			v := rt.input.Value()
 			if v == "" {
-				delete(rt.rates, rt.rows[rt.idx].listID) // vuoto = torna al default
-				rt.editing = false
-			} else if f, err := strconv.ParseFloat(v, 64); err == nil {
+				rt.editing = false // vuoto = nessuna modifica (per azzerare un override usa 'd')
+				rt.msg = ""
+			} else if f, ok := validRate(v); ok {
 				rt.rates[rt.rows[rt.idx].listID] = f
 				rt.editing = false
+				rt.msg = ""
+			} else {
+				rt.msg = "Tariffa non valida: inserisci un numero ≥ 0"
 			}
-			// se non valido, resta in editing (l'utente corregge)
 			m.ratesScreen = rt
 			return m, nil
 		case tea.KeyEsc:
 			rt.editing = false
+			rt.msg = ""
 			m.ratesScreen = rt
 			return m, nil
 		}
@@ -825,9 +935,13 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if len(rt.rows) > 0 {
-			ti := newNumberInput("tariffa (vuoto = usa default)")
 			rt.editing = true
-			rt.input = ti
+			rt.msg = ""
+			rt.input = newNumberInput("nuova tariffa (Esc annulla)")
+		}
+	case "d":
+		if len(rt.rows) > 0 {
+			delete(rt.rates, rt.rows[rt.idx].listID) // torna alla tariffa di default
 		}
 	case "s", "esc":
 		m.cfg.Rates = rt.rates
@@ -870,7 +984,10 @@ func (rt ratesModel) view() string {
 	if rt.editing {
 		b += "\n" + rt.input.View()
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica tariffa · s/Esc: salva e torna · (vuoto = usa default)")
+	if rt.msg != "" {
+		b += "\n" + styleErr.Render(rt.msg)
+	}
+	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica · d: usa default · s/Esc: salva e torna")
 	return b
 }
 ```
@@ -920,9 +1037,14 @@ In `README.md`:
 | `p` | (nella vista report) apre la schermata **Tariffe per lista** |
 ```
 
-(b) nella schermata tariffe, documenta i tasti `↑/↓`, `Enter`, `s`/`Esc`.
+(b) documenta nel README i tasti della schermata tariffe: `↑/↓` naviga, `Enter` modifica la tariffa della lista selezionata, `d` riporta la lista alla tariffa di default, `s`/`Esc` salva e torna al report.
 
-(c) nella sezione "Configurazione", documenta la mappa `rates`:
+(c) aggiungi una breve nota sull'importo: da v1.1 l'importo di ogni voce è calcolato
+dalle ore reali × tariffa della lista (non dalle ore arrotondate), quindi può differire
+di qualche centesimo dal prodotto `ore_mostrate × tariffa`; il totale resta la somma
+esatta degli importi mostrati.
+
+(d) nella sezione "Configurazione", documenta la mappa `rates`:
 
 ```markdown
 `rates` è opzionale: una mappa `list_id: tariffa` con le tariffe orarie specifiche
@@ -983,6 +1105,14 @@ git commit -m "docs: document per-list rates and the 'p' key in the TUI"
 
 **4. Ambiguità risolte:** `Report.Rate` **non** rimosso ma ridefinito come default (l'export lo legge); cambio di arrotondamento (importo per-entry) esplicitato e il test relativo aggiornato (9.9 → 10.0); `Config` con map non è più comparabile con `==` → i test che lo facevano vengono corretti in Task 1.
 
-**Rischi noti:**
-- Durante l'editing di una tariffa, il tasto `q` (gestito globalmente) esce dall'app invece di essere digitato. Le tariffe sono numeriche, quindi `q` non è un carattere valido: impatto trascurabile. Se dovesse dar fastidio, escludere `screenRates` dallo short-circuit di `q` in `Update`. (Non bloccante; da valutare in review.)
+**Hardening applicato dopo review indipendente (modello Fable):**
+- **`q` in `screenRates`**: escluso dallo short-circuit globale di `q` (Task 5 Step 3e), così `q` non scarta override confermati-ma-non-salvati; si esce con `s`/`Esc`.
+- **Validazione tariffa**: `validRate` rifiuta valori non numerici, negativi, `NaN`, `Inf`, con messaggio d'errore a schermo e permanenza in editing (Task 5).
+- **Reset non distruttivo**: `Enter` su input vuoto non cancella più l'override; per tornare al default si usa il tasto `d` (Task 5).
+- **Nomi lista una sola volta per id unico**, con marcatura dei fallimenti per non ritentare nello stesso caricamento (Task 4).
+- **Ordine deterministico** delle liste "solo config" nella schermata (`sort.Strings`).
+
+**Rischi residui (accettati):**
+- Le liste presenti solo in config (non nel report corrente) sono mostrate col `list_id` se il nome non è mai stato risolto: fallback accettabile; una risoluzione asincrona è rimandabile.
 - La risoluzione dei nomi aggiunge N chiamate `GET /list/{id}` (una per lista unica, cache-ata) al primo caricamento del mese: latenza extra accettabile e documentata.
+- Salvataggio config: l'errore di `config.Save` è ignorato (pattern pre-esistente nel setup); un feedback esplicito è un miglioramento minore rimandabile.
