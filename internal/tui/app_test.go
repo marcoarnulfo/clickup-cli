@@ -1,0 +1,143 @@
+package tui
+
+import (
+	"os"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
+)
+
+func TestNewStartsInSetupWhenInvalid(t *testing.T) {
+	m := New(config.Config{})
+	if m.screen != screenSetup {
+		t.Fatalf("invalid config should start in setup, got %v", m.screen)
+	}
+}
+
+func TestNewStartsInHomeWhenValid(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	if m.screen != screenHome {
+		t.Fatalf("valid config should start in home, got %v", m.screen)
+	}
+}
+
+func TestErrMsgSwitchesToErrorScreen(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	updated, _ := m.Update(errMsg{err: errTest})
+	mm := updated.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("errMsg should switch to error screen, got %v", mm.screen)
+	}
+}
+
+func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
+	mm := updated.(Model)
+	if mm.screen != screenReport {
+		t.Fatalf("entriesMsg should switch to report screen, got %v", mm.screen)
+	}
+}
+
+func TestQuitKey(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd == nil {
+		t.Fatal("q should return a quit command")
+	}
+}
+
+func TestSetupTokenStepAcceptsInput(t *testing.T) {
+	m := New(config.Config{})
+	// digita un carattere nel campo token
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	mm := updated.(Model)
+	if mm.setup.token() == "" {
+		t.Fatal("token input should capture typed characters")
+	}
+}
+
+var errTest = &testErr{}
+
+type testErr struct{}
+
+func (*testErr) Error() string { return "boom" }
+
+func TestReportCycleGroupBy(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}})
+	mm := updated.(Model)
+	if mm.report.GroupBy != report.GroupByTotal {
+		t.Fatalf("initial groupBy should be total, got %q", mm.report.GroupBy)
+	}
+	// 'g' -> task
+	updated2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	mm2 := updated2.(Model)
+	if mm2.report.GroupBy != report.GroupByTask {
+		t.Fatalf("after g groupBy should be task, got %q", mm2.report.GroupBy)
+	}
+}
+
+func TestHomeChangesMonthAndScope(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.year, m.month = 2026, 7
+	m.home = newHome(2026, 7)
+
+	// freccia sinistra -> mese precedente
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	mm := updated.(Model)
+	if mm.month != 6 {
+		t.Fatalf("left should go to June, got %v", mm.month)
+	}
+
+	// 't' alterna scope
+	updated2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	mm2 := updated2.(Model)
+	if mm2.scope != "team" {
+		t.Fatalf("t should switch scope to team, got %q", mm2.scope)
+	}
+}
+
+func TestExportWritesFile(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	os.Chdir(dir)
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	m.report = report.Report{Year: 2026, Month: 7, Currency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
+	m.export = newExport(m.report)
+	m.screen = screenExport
+
+	// Enter sul primo formato (csv)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(Model)
+	if mm.export.err != nil {
+		t.Fatalf("export error: %v", mm.export.err)
+	}
+	if _, err := os.Stat("clickup-report-2026-07.csv"); err != nil {
+		t.Fatalf("expected csv file: %v", err)
+	}
+}
+
+func TestHomeEnterStartsLoading(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.home = newHome(m.year, m.month)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(Model)
+	if mm.screen != screenLoading {
+		t.Fatalf("enter should switch to loading, got %v", mm.screen)
+	}
+	if cmd == nil {
+		t.Fatal("enter should return a load command")
+	}
+}
