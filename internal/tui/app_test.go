@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -335,5 +336,33 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	}
 	if _, ok := m.ratesScreen.rates["55"]; ok {
 		t.Fatal("tariffa non valida non deve creare un override")
+	}
+}
+
+func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", f)            // os.UserConfigDir() deriva da qui (macOS)
+	t.Setenv("XDG_CONFIG_HOME", f) // ...o da qui (Linux); un file => MkdirAll fallisce
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // salva (fallisce)
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("salvataggio fallito deve restare su screenRates, got %v", m.screen)
+	}
+	if m.ratesScreen.msg == "" {
+		t.Fatal("atteso un messaggio d'errore di salvataggio")
 	}
 }

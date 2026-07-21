@@ -134,7 +134,11 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "s", "esc":
 		m.cfg.Rates = rt.rates
-		_ = config.Save(m.cfg)
+		if err := config.Save(m.cfg); err != nil {
+			rt.msg = "Errore nel salvataggio della config: " + err.Error()
+			m.ratesScreen = rt
+			return m, nil
+		}
 		g := m.report.GroupBy
 		if g == "" {
 			g = report.GroupByTotal
