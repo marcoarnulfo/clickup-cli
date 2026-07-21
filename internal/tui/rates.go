@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -58,7 +58,7 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 			cfgIDs = append(cfgIDs, id)
 		}
 	}
-	sort.Strings(cfgIDs)
+	slices.Sort(cfgIDs)
 	for _, id := range cfgIDs {
 		remember(id, "")
 	}
