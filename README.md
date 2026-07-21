@@ -76,8 +76,9 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 |---|---|---|
 | `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month |
 | `t` | Home | Toggle scope `me` / `team` |
+| `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
 | `Enter` | Home | Generate the report for the selected month/scope |
-| `g` | Report | Cycle grouping: total → task → list → day → total |
+| `g` | Report | Cycle grouping: total → task → list → day → member (team) → total |
 | `e` | Report | Open the export menu (CSV/JSON/Markdown) |
 | `m` / `s` | Report | Go back home to change month/scope |
 | `r` | Report | Reload the time entries from the API for the same month/scope |
@@ -131,9 +132,10 @@ You always log **your own** hours.
 ### Team scope
 
 For the `team` scope the token must have Owner/Admin permissions on the workspace: without
-them the API call fails and the error is shown on the error screen. In v1.0 the `team`
-scope aggregates the hours of **all** members of the configured workspace (no per-member
-selection — that is planned for a future version, v1.3).
+them the API call fails and the error is shown on the error screen. The `team` scope
+aggregates the hours of the workspace members; by default **all** members are included, but
+you can press `f` from Home to open the member selection screen and pick individual members
+(a partial selection shows a `(k/n members)` note in the report title).
 
 ## Configuration
 
@@ -177,8 +179,7 @@ label. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Roadmap and backlog live in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
 (labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: report filters &
-custom date ranges (v1.3), per-member selection (v1.3), weekly summaries, invoice export,
-multi-currency (v2.0).
+custom date ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
 
 ## License
 

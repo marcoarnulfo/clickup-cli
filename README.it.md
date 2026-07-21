@@ -77,8 +77,9 @@ di setup.
 |---|---|---|
 | `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese |
 | `t` | Home | Alterna scope `me` / `team` |
+| `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
 | `Enter` | Home | Genera il report per mese/scope selezionati |
-| `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → totale |
+| `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → membro (team) → totale |
 | `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
 | `m` / `s` | Report | Torna alla home per cambiare mese/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
@@ -133,9 +134,11 @@ ore. Si registrano sempre **le proprie** ore.
 
 Per lo scope `team` il token deve avere permessi Owner/Admin sul workspace:
 senza questi permessi la chiamata API fallisce e l'errore viene mostrato
-nella schermata d'errore. In v1.0 lo scope `team` aggrega le ore di **tutti**
-i membri del workspace configurato (nessuna selezione puntuale dei singoli
-membri, prevista per una versione futura, v1.3).
+nella schermata d'errore. Lo scope `team` aggrega le ore dei membri del
+workspace; di default sono inclusi **tutti** i membri, ma puoi premere `f`
+dalla Home per aprire la schermata di selezione membri e sceglierne alcuni
+in particolare (una selezione parziale mostra una nota `(k/n members)` nel
+titolo del report).
 
 ## Configurazione
 
@@ -180,8 +183,7 @@ Leggi anche il [Codice di Condotta](CODE_OF_CONDUCT.md).
 
 Roadmap e backlog vivono nelle **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
 (label `roadmap`/`enhancement`, milestone `v1.3` / `v2.0`). In evidenza: filtri report e
-range date custom (v1.3), selezione puntuale membri (v1.3), riepiloghi settimanali, export
-fattura, multi-valuta (v2.0).
+range date custom (v1.3), riepiloghi settimanali, export fattura, multi-valuta (v2.0).
 
 ## Licenza
 

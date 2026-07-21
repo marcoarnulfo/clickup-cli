@@ -230,7 +230,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report)
+		m.rep = newReport(m.report, m.memberFilterNote())
 		m.screen = screenReport
 		return m, nil
 

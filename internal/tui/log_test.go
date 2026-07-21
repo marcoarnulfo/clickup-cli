@@ -28,7 +28,7 @@ func newTestModelOnReport() Model {
 	m.screen = screenReport
 	m.entries = []report.TimeEntry{{ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1"}}
 	m.report = report.Build(m.entries, report.GroupByTotal, ratesFromConfig(cfg), "EUR", m.year, m.month)
-	m.rep = newReport(m.report)
+	m.rep = newReport(m.report, "")
 	return m
 }
 
