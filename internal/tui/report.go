@@ -53,9 +53,10 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
-		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		start, end := m.currentRange()
+		m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 	case "m", "s":
 		m.screen = screenHome
 	case "r":
@@ -70,14 +71,41 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.logScreen = newLog(m.entries, m.cfg)
 		m.screen = screenLog
+	case "f":
+		missing := m.tasksMissingStatus()
+		if len(missing) == 0 {
+			m.assignStatuses()
+			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+			m.screen = screenFilters
+			return m, nil
+		}
+		m.filtersScreen = filtersModel{loadingStatuses: true}
+		m.screen = screenFilters
+		if m.demo {
+			return m, demoStatusEnrichCmd(m.entries)
+		}
+		return m, statusEnrichCmd(m.client, missing)
 	}
 	return m, nil
 }
 
+// applyReport rebuilds m.report from the visible entries over the current range,
+// keeping the active grouping.
+func (m *Model) applyReport() {
+	g := m.report.GroupBy
+	if g == "" {
+		g = report.GroupByTotal
+	}
+	start, end := m.currentRange()
+	m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+	m.report.Scope = m.scope
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+}
+
 func (rm reportModel) view() string {
 	r := rm.r
-	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s%s — grouped by %s",
-		r.Year, int(r.Month), r.Scope, rm.note, r.GroupBy))
+	title := styleTitle.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s",
+		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("%-32s %8s %10s %s", "Item", "Hours", "Amount", "Cur"))
@@ -91,10 +119,10 @@ func (rm reportModel) view() string {
 		"TOTAL", r.TotalHours, r.TotalAmount, r.Currency))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · m/s: change month/scope · r: reload · q: quit")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
-		body = styleBox.Render("No hours tracked this month.")
+		body = styleBox.Render("No hours to show.")
 	}
 	return title + "\n\n" + body + "\n\n" + help
 }

@@ -24,14 +24,17 @@ const (
 	screenLog
 	screenError
 	screenMembers
+	screenRange
+	screenFilters
 )
 
 // Async messages.
 type (
-	entriesMsg struct{ entries []report.TimeEntry }
-	teamsMsg   struct{ teams []clickup.Team }
-	membersMsg struct{ members []clickup.Member }
-	errMsg     struct{ err error }
+	entriesMsg  struct{ entries []report.TimeEntry }
+	teamsMsg    struct{ teams []clickup.Team }
+	membersMsg  struct{ members []clickup.Member }
+	statusesMsg struct{ byTask map[string]string }
+	errMsg      struct{ err error }
 )
 
 // Model is the root model of the TUI.
@@ -45,15 +48,24 @@ type Model struct {
 	width, height int
 
 	// current selection
-	year  int
-	month time.Month
-	scope string // "me" | "team"
+	year        int
+	month       time.Month
+	scope       string    // "me" | "team"
+	preset      string    // report.Preset* ; default report.PresetThisMonth
+	customStart time.Time // used when preset == report.PresetCustom
+	customEnd   time.Time
 
 	// data
 	report          report.Report
 	entries         []report.TimeEntry
 	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
 	teamMembers     []clickup.Member // workspace members (session cache)
+
+	// client-side report filter (list/tag/status); empty = no filter
+	filterLists    map[string]bool
+	filterTags     map[string]bool
+	filterStatuses map[string]bool
+	taskStatus     map[string]string // task id -> current status (session cache)
 
 	// sub-models
 	setup         setupModel
@@ -63,6 +75,8 @@ type Model struct {
 	ratesScreen   ratesModel
 	logScreen     logModel
 	membersScreen membersModel
+	rangeScreen   rangeModel
+	filtersScreen filtersModel
 }
 
 // New builds the root model from the config.
@@ -78,6 +92,7 @@ func New(cfg config.Config) Model {
 		year:   now.Year(),
 		month:  now.Month(),
 		scope:  "me",
+		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
 	}
 	if demo || cfg.Valid() {
@@ -92,6 +107,15 @@ func New(cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
+// currentRange returns the [start, end) period the report should cover, from the
+// active preset (custom uses the inclusive customStart..customEnd).
+func (m Model) currentRange() (start, end time.Time) {
+	if m.preset == report.PresetCustom {
+		return m.customStart, m.customEnd.AddDate(0, 0, 1)
+	}
+	return report.RangeForPreset(m.preset, m.year, m.month, time.Now())
+}
+
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
 // in demo mode, otherwise the real API call.
 func (m Model) reloadEntriesCmd() tea.Cmd {
@@ -101,15 +125,16 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 	if m.scope == "team" {
 		assignees = m.selectedAssignees()
 	}
+	start, end := m.currentRange()
 	if m.demo {
 		if m.scope != "team" {
 			// The real API filters "me" scope server-side to the authenticated
 			// caller; mirror that here instead of summing all demo users.
 			assignees = []int{demoSelfID}
 		}
-		return demoEntriesCmd(m.year, m.month, assignees)
+		return demoEntriesCmd(start, end, assignees)
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees)
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -130,11 +155,29 @@ func ratesFromConfig(cfg config.Config) report.Rates {
 	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
 }
 
+// filterCriteria assembles the active client-side filter from session state.
+func (m Model) filterCriteria() report.FilterCriteria {
+	return report.FilterCriteria{Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses}
+}
+
+// visibleEntries applies the active filter to the loaded entries.
+func (m Model) visibleEntries() []report.TimeEntry {
+	return report.Filter(m.entries, m.filterCriteria())
+}
+
+// filteredNote returns " · filtered" when any client-side filter is active.
+func (m Model) filteredNote() string {
+	if m.filterCriteria().Empty() {
+		return ""
+	}
+	return " · filtered"
+}
+
 // loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
 // For scope "team" with an empty assignees slice it derives ALL workspace members
 // (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
 // (skipping the members lookup). For scope "me" no assignee filter is applied.
-func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string, assignees []int) tea.Cmd {
+func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -149,7 +192,6 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 			}
 		}
 
-		start, end := report.MonthRange(year, month)
 		entries, err := c.TimeEntries(ctx, teamID, start, end, assignees)
 		if err != nil {
 			return errMsg{err: err}
@@ -179,6 +221,98 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 	}
 }
 
+// statusEnrichCmd fetches the current status of each task id and returns them
+// as a statusesMsg. A single non-retrievable task (deleted, no permission,
+// rate-limited, …) must not brick the Filters screen for the whole session:
+// per the spec, its status resolves to "" and enrichment continues with the
+// rest. An unauthorized token is the one failure worth surfacing as errMsg,
+// since it means the token itself needs re-entering via the setup wizard.
+func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		byTask := make(map[string]string, len(taskIDs))
+		for _, id := range taskIDs {
+			st, err := c.TaskStatus(ctx, id)
+			if err != nil {
+				if errors.Is(err, clickup.ErrUnauthorized) {
+					return errMsg{err: err}
+				}
+				byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
+				continue
+			}
+			byTask[id] = st
+		}
+		return statusesMsg{byTask: byTask}
+	}
+}
+
+// tasksMissingStatus returns the distinct task ids of loaded entries whose status
+// is not yet cached.
+func (m Model) tasksMissingStatus() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range m.entries {
+		if e.TaskID == "" || seen[e.TaskID] {
+			continue
+		}
+		seen[e.TaskID] = true
+		if _, ok := m.taskStatus[e.TaskID]; !ok {
+			out = append(out, e.TaskID)
+		}
+	}
+	return out
+}
+
+// assignStatuses copies cached statuses onto the loaded entries.
+func (m *Model) assignStatuses() {
+	for i := range m.entries {
+		if st, ok := m.taskStatus[m.entries[i].TaskID]; ok {
+			m.entries[i].Status = st
+		}
+	}
+}
+
+// pruneFilters intersects each of filterLists/filterTags/filterStatuses with
+// the values actually present in m.entries, dropping any selection whose
+// value no longer occurs (e.g. after a range change swaps in a different set
+// of entries). Without this, a stale selection silently filters the report
+// down to nothing with no way to clear it from the Filters screen.
+func (m *Model) pruneFilters() {
+	lists := map[string]bool{}
+	tags := map[string]bool{}
+	statuses := map[string]bool{}
+	for _, e := range m.entries {
+		if e.ListName != "" {
+			lists[e.ListName] = true
+		}
+		for _, t := range e.Tags {
+			tags[t] = true
+		}
+		if e.Status != "" {
+			statuses[e.Status] = true
+		}
+	}
+	m.filterLists = pruneFilterSet(m.filterLists, lists)
+	m.filterTags = pruneFilterSet(m.filterTags, tags)
+	m.filterStatuses = pruneFilterSet(m.filterStatuses, statuses)
+}
+
+// pruneFilterSet keeps only the selected (true) entries of sel whose key is
+// present in the current set, dropping stale keys and any lingering false ones.
+func pruneFilterSet(sel, present map[string]bool) map[string]bool {
+	if len(sel) == 0 {
+		return sel
+	}
+	out := make(map[string]bool, len(sel))
+	for k, v := range sel {
+		if v && present[k] {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // loadMembersCmd fetches the workspace members in the background and returns
 // membersMsg or errMsg.
 func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
@@ -200,7 +334,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -229,6 +363,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entriesMsg:
 		m.entries = msg.entries
+		m.assignStatuses() // re-stamp session-cached statuses onto the freshly loaded entries
+		m.pruneFilters()   // drop filter selections whose value no longer occurs in the new entries
 		groupBy := m.report.GroupBy
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // first load: summary of the month
@@ -237,9 +373,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
-		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		start, end := m.currentRange()
+		m.report = report.Build(m.visibleEntries(), groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
 		return m, nil
 
@@ -284,6 +421,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.membersScreen = newMembers(msg.members, m.selectedMembers)
 		m.screen = screenMembers
 		return m, nil
+
+	case statusesMsg:
+		if m.taskStatus == nil {
+			m.taskStatus = map[string]string{}
+		}
+		for id, st := range msg.byTask {
+			m.taskStatus[id] = st
+		}
+		m.assignStatuses()
+		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		m.screen = screenFilters
+		return m, nil
 	}
 	return m, nil
 }
@@ -305,6 +454,10 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateLog(msg)
 	case screenMembers:
 		return m.updateMembers(msg)
+	case screenRange:
+		return m.updateRange(msg)
+	case screenFilters:
+		return m.updateFilters(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -322,7 +475,7 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.year, m.month, m.scope, m.homeMembersNote())
+		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote())
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
@@ -335,6 +488,10 @@ func (m Model) View() string {
 		return m.logScreen.view()
 	case screenMembers:
 		return m.membersScreen.view()
+	case screenRange:
+		return m.rangeScreen.view()
+	case screenFilters:
+		return m.filtersScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}

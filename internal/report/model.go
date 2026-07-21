@@ -15,6 +15,8 @@ type TimeEntry struct {
 	UserName string
 	Start    time.Time
 	Duration time.Duration
+	Tags     []string
+	Status   string
 }
 
 // Bucket is an aggregated row of the report. The JSON tags serve the export
@@ -27,8 +29,8 @@ type Bucket struct {
 
 // Report is the aggregated result ready for presentation/export.
 type Report struct {
-	Year        int
-	Month       time.Month
+	Start       time.Time // period [Start, End)
+	End         time.Time
 	Scope       string // "me" | "team"
 	GroupBy     string
 	Currency    string

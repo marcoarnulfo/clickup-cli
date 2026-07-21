@@ -47,10 +47,10 @@ func keyFor(e TimeEntry, groupBy string) string {
 // Build aggregates the entries into a Report according to groupBy. Each bucket's amount
 // is the sum, over the bucket's entries, of actual_hours × list_rate (Rates.For),
 // rounded to 2 decimal places. Report.Rate carries the default rate (for export).
-func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, year int, month time.Month) Report {
+func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, start, end time.Time) Report {
 	r := Report{
-		Year:     year,
-		Month:    month,
+		Start:    start,
+		End:      end,
 		GroupBy:  groupBy,
 		Currency: currency,
 		Rate:     rates.Default,

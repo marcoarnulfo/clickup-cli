@@ -34,21 +34,22 @@ const demoSelfID = 1
 // users so the member selection and per-member grouping are meaningful in demo.
 func demoEntries(year int, month time.Month) []report.TimeEntry {
 	at := func(d, h, m int) time.Time { return time.Date(year, month, d, h, m, 0, 0, time.UTC) }
-	mk := func(id, taskID, task, listID, list string, uid int, user string, start time.Time, dur time.Duration) report.TimeEntry {
+	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration) report.TimeEntry {
 		return report.TimeEntry{
 			ID: id, TaskID: taskID, TaskName: task,
 			ListID: listID, ListName: list,
 			UserID: uid, UserName: user,
+			Tags: tags, Status: status,
 			Start: start, Duration: dur,
 		}
 	}
 	return []report.TimeEntry{
-		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", at(3, 9, 0), 3*time.Hour+30*time.Minute),
-		mk("2", "t2", "API integration", "web", "Website", 2, "bob", at(3, 14, 0), 2*time.Hour),
-		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", at(5, 10, 0), 1*time.Hour+15*time.Minute),
-		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", at(6, 9, 30), 4*time.Hour),
-		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", at(7, 11, 0), 2*time.Hour+45*time.Minute),
-		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", at(10, 15, 0), 1*time.Hour+30*time.Minute),
+		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute),
+		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour),
+		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute),
+		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour),
+		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute),
+		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute),
 	}
 }
 
@@ -85,10 +86,28 @@ func demoMembersCmd() tea.Cmd {
 	return func() tea.Msg { return membersMsg{members: demoMembers()} }
 }
 
-// demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
-// selected member ids (empty = all).
-func demoEntriesCmd(year int, month time.Month, assignees []int) tea.Cmd {
+// demoStatusEnrichCmd returns the demo entries' statuses as a statusesMsg (no I/O).
+func demoStatusEnrichCmd(entries []report.TimeEntry) tea.Cmd {
 	return func() tea.Msg {
-		return entriesMsg{entries: filterByUsers(demoEntries(year, month), assignees)}
+		byTask := make(map[string]string, len(entries))
+		for _, e := range entries {
+			byTask[e.TaskID] = e.Status
+		}
+		return statusesMsg{byTask: byTask}
+	}
+}
+
+// demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
+// selected member ids and clipped to [start, end).
+func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
+	return func() tea.Msg {
+		entries := filterByUsers(demoEntries(start.Year(), start.Month()), assignees)
+		out := entries[:0]
+		for _, e := range entries {
+			if !e.Start.Before(start) && e.Start.Before(end) {
+				out = append(out, e)
+			}
+		}
+		return entriesMsg{entries: out}
 	}
 }

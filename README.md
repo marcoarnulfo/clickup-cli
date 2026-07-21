@@ -56,7 +56,7 @@ go build -o clickup ./cmd/clickup
 
 1. **Install** (see above) and run `clickup`.
 2. On first launch, the **setup wizard** asks for your API token, workspace, an optional hourly rate, and currency — saved to `~/.config/clickup-cli/config.yml`.
-3. Pick a **month** and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
+3. Pick a **range** (`d`) and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
 
 ## Usage
 
@@ -66,7 +66,10 @@ token (find it in ClickUp → Settings → Apps → API Token), the workspace to
 (default `EUR`). The result is saved to `~/.config/clickup-cli/config.yml` and reused
 on subsequent launches.
 
-From the home screen pick a month and scope, then `Enter` generates the report. In the
+From the home screen pick a range and scope, then `Enter` generates the report. The
+report is no longer limited to a calendar month: press `d` on the home screen to open
+the **range picker**, which offers presets (this month, last month, last 7 days, last
+30 days, this week) plus a **custom** `From`/`To` range (dates as `YYYY-MM-DD`). In the
 report you can change the grouping, re-export, or go back home. If the token becomes
 invalid or is revoked while in use, the TUI automatically re-runs the setup wizard.
 
@@ -74,18 +77,20 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 
 | Key | Screen | Action |
 |---|---|---|
-| `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month |
+| `d` | Home | Open the **report range** picker (presets + custom from/to) |
+| `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month (only while the `this month` range is active) |
 | `t` | Home | Toggle scope `me` / `team` |
 | `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
-| `Enter` | Home | Generate the report for the selected month/scope |
+| `Enter` | Home | Generate the report for the selected range/scope |
 | `g` | Report | Cycle grouping: total → task → list → day → member (team) → total |
 | `e` | Report | Open the export menu (CSV/JSON/Markdown) |
-| `m` / `s` | Report | Go back home to change month/scope |
-| `r` | Report | Reload the time entries from the API for the same month/scope |
+| `m` / `s` | Report | Go back home to change range/scope |
+| `r` | Report | Reload the time entries from the API for the same range/scope |
 | `p` | Report | Open the **Per-list rates** screen |
+| `f` | Report | Open the **Filters** screen (list/tag/status) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
-| `Enter` | Export | Save `clickup-report-YYYY-MM.<ext>` in the cwd |
+| `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (`<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
 | `q` | Everywhere except setup | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
@@ -109,6 +114,26 @@ Since v1.1, each amount is computed from the list's real hours multiplied by its
 rate (not from the rounded hours), so a single amount may differ by a few cents from
 `shown_hours × list_rate`; however, the billing total is always the exact sum of the
 displayed amounts.
+
+#### Filters screen
+
+From the report screen, pressing `f` opens the **Filters** screen, with three
+sections: Lists, Tags and Statuses. Each section lists the distinct values found
+in the loaded entries; selecting one or more values in a section keeps only the
+matching entries (OR within a section, AND across sections); leaving a section
+empty means "no filter" for that dimension. Task statuses are not included in the
+initial API load, so the first time you open Filters in a session the app fetches
+each loaded task's current status from ClickUp (shown as "Loading statuses…");
+after that it is cached for the rest of the session. Filters compose with the
+team member selection and the active date range — they only narrow what is
+already loaded. Available commands:
+
+- `Tab` / `Shift+Tab`: switch section
+- `↑` / `↓` (also `k` / `j`): move within the section
+- `Space`: toggle the highlighted value
+- `a`: select/deselect all values in the section
+- `Enter`: apply the filter and return to the report
+- `Esc`: discard changes and return to the report
 
 #### Log hours screen
 
@@ -178,8 +203,8 @@ label. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Roadmap
 
 Roadmap and backlog live in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
-(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: report filters &
-custom date ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
+(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: custom date
+ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
 
 ## License
 

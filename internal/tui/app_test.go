@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +17,49 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+func TestCurrentRangeDefaultsToMonth(t *testing.T) {
+	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth}
+	start, end := m.currentRange()
+	ws, we := report.MonthRange(2026, time.July)
+	if !start.Equal(ws) || !end.Equal(we) {
+		t.Errorf("currentRange = [%s,%s), want month", start, end)
+	}
+}
+
+func TestCurrentRangeCustomIsInclusive(t *testing.T) {
+	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, time.July, 15, 0, 0, 0, 0, time.UTC)
+	m := Model{preset: report.PresetCustom, customStart: from, customEnd: to}
+	start, end := m.currentRange()
+	if !start.Equal(from) || !end.Equal(to.AddDate(0, 0, 1)) {
+		t.Errorf("custom range = [%s,%s), want [%s, %s+1d)", start, end, from, to)
+	}
+}
+
+func TestLoadEntriesUsesGivenRange(t *testing.T) {
+	var gotStart, gotEnd string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/time_entries") {
+			gotStart = r.URL.Query().Get("start_date")
+			gotEnd = r.URL.Query().Get("end_date")
+			w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 10)
+	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil)().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg")
+	}
+	if gotStart != strconv.FormatInt(start.UnixMilli(), 10) || gotEnd != strconv.FormatInt(end.UnixMilli(), 10) {
+		t.Errorf("range not forwarded: start=%s end=%s", gotStart, gotEnd)
+	}
+}
 
 func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
 	m := New(config.Config{})
@@ -60,7 +106,9 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
 	if _, ok := msg.(errMsg); !ok {
 		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
 	}
@@ -88,7 +136,9 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
@@ -113,7 +163,9 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 	c := clickup.New("t")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "me", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
@@ -151,7 +203,9 @@ func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", []int{7, 9})()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9})()
 	if _, ok := msg.(entriesMsg); !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}
@@ -331,7 +385,8 @@ func TestExportWritesFile(t *testing.T) {
 
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
 	m.year, m.month = 2026, 7
-	m.report = report.Report{Year: 2026, Month: 7, Currency: "EUR",
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), Currency: "EUR",
 		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
 	m.export = newExport(m.report)
 	m.screen = screenExport
@@ -552,6 +607,88 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	}
 }
 
+func TestVisibleEntriesAppliesFilter(t *testing.T) {
+	m := Model{
+		entries: []report.TimeEntry{
+			{ListName: "A", Duration: time.Hour},
+			{ListName: "B", Duration: time.Hour},
+		},
+		filterLists: map[string]bool{"A": true},
+	}
+	got := m.visibleEntries()
+	if len(got) != 1 || got[0].ListName != "A" {
+		t.Fatalf("visibleEntries = %+v", got)
+	}
+	if m.filteredNote() != " · filtered" {
+		t.Errorf("filteredNote = %q", m.filteredNote())
+	}
+	m.filterLists = nil
+	if m.filteredNote() != "" {
+		t.Errorf("no filter -> empty note, got %q", m.filteredNote())
+	}
+}
+
+func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
+	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth, filterLists: map[string]bool{"A": true}}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.report.TotalHours != 1 {
+		t.Errorf("filtered report total = %v, want 1", m.report.TotalHours)
+	}
+}
+
+func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
+	m := Model{
+		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		taskStatus:     map[string]string{"t1": "done"},
+		filterStatuses: map[string]bool{"done": true},
+	}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.report.TotalHours != 1 {
+		t.Fatalf("cached status should be re-applied on reload; total = %v, want 1", m.report.TotalHours)
+	}
+}
+
+func TestStatusesMsgAssignsAndOpens(t *testing.T) {
+	m := Model{
+		screen:  screenFilters,
+		entries: []report.TimeEntry{{TaskID: "t1", ListName: "A"}, {TaskID: "t2", ListName: "A"}},
+	}
+	u, _ := m.Update(statusesMsg{byTask: map[string]string{"t1": "open", "t2": "done"}})
+	m = u.(Model)
+	if m.screen != screenFilters {
+		t.Fatalf("screen = %v, want filters", m.screen)
+	}
+	if m.entries[0].Status != "open" || m.entries[1].Status != "done" {
+		t.Errorf("statuses not assigned: %+v", m.entries)
+	}
+	// the Statuses section now has both options
+	if len(m.filtersScreen.sections[2].options) != 2 {
+		t.Errorf("status options = %v", m.filtersScreen.sections[2].options)
+	}
+}
+
+func TestReportFEnrichesWhenStatusMissing(t *testing.T) {
+	m := Model{screen: screenReport, demo: true, entries: []report.TimeEntry{{TaskID: "t1", ListName: "A"}}}
+	u, cmd := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	m = u.(Model)
+	if m.screen != screenFilters || !m.filtersScreen.loadingStatuses {
+		t.Fatalf("expected loading-statuses filters screen")
+	}
+	if cmd == nil {
+		t.Fatal("expected a status enrichment command")
+	}
+	if _, ok := cmd().(statusesMsg); !ok {
+		t.Fatal("expected statusesMsg from the enrich command")
+	}
+}
+
 func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
@@ -577,5 +714,96 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	}
 	if m.ratesScreen.msg == "" {
 		t.Fatal("expected a save error message")
+	}
+}
+
+// Fix 1: a filter selection whose value is absent from the freshly loaded
+// entries (e.g. after a range change) must be pruned, so the report doesn't
+// silently stay stuck empty with no way to clear it from the Filters UI.
+func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
+	m := Model{
+		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		filterLists: map[string]bool{"Gone": true},
+	}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.filterLists["Gone"] {
+		t.Errorf("stale filter selection %q should have been pruned, got filterLists = %+v", "Gone", m.filterLists)
+	}
+	if m.report.TotalHours <= 0 {
+		t.Errorf("report should not stay stuck empty after pruning stale filters; TotalHours = %v", m.report.TotalHours)
+	}
+}
+
+// Fix 2: statusEnrichCmd must tolerate a single non-retrievable task (e.g.
+// deleted, no permission, rate-limited) instead of discarding everything
+// fetched and bricking the Filters screen for the whole session.
+func TestStatusEnrichCmdTolerantOfPerTaskFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/task/tgood":
+			w.Write([]byte(`{"id":"tgood","status":{"status":"open"}}`))
+		case "/task/tbad":
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"err":"Task not found","ECODE":"TASK_002"}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := statusEnrichCmd(c, []string{"tgood", "tbad"})()
+	sm, ok := msg.(statusesMsg)
+	if !ok {
+		t.Fatalf("a single unreachable task should not abort enrichment; got %T (%+v)", msg, msg)
+	}
+	if sm.byTask["tgood"] != "open" {
+		t.Errorf("byTask[tgood] = %q, want %q", sm.byTask["tgood"], "open")
+	}
+	if st, ok := sm.byTask["tbad"]; !ok || st != "" {
+		t.Errorf("byTask[tbad] = (%q, %v), want (\"\", true): unreachable tasks cache as empty status", st, ok)
+	}
+}
+
+// Fix 2 (auth exception): a 401 must still surface as errMsg to relaunch setup.
+func TestStatusEnrichCmdStillReturnsErrMsgOnUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_025"}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := statusEnrichCmd(c, []string{"t1"})()
+	em, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("401 should still return errMsg, got %T", msg)
+	}
+	if !errors.Is(em.err, clickup.ErrUnauthorized) {
+		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+}
+
+// Fix 3: 'q' must not quit while typing a custom date on the range screen —
+// it has free-text inputs, so a stray 'q' shouldn't kill the whole session.
+func TestQuitKeyDoesNotQuitWhileEditingCustomRange(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.screen = screenRange
+	m.rangeScreen = newRange(report.PresetThisMonth)
+	m.rangeScreen.editing = true
+	m.rangeScreen.field = 0
+	m.rangeScreen.fromInput = newTextInput("From (YYYY-MM-DD)")
+	m.rangeScreen.fromInput.Focus()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil && reflect.ValueOf(cmd).Pointer() == reflect.ValueOf(tea.Quit).Pointer() {
+		t.Fatal("'q' while editing a custom date must not quit the application")
+	}
+	mm := updated.(Model)
+	if !strings.Contains(mm.rangeScreen.fromInput.Value(), "q") {
+		t.Fatalf("'q' should have been typed into the From input, got %q", mm.rangeScreen.fromInput.Value())
 	}
 }

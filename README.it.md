@@ -56,7 +56,7 @@ go build -o clickup ./cmd/clickup
 
 1. **Installa** (vedi sopra) e lancia `clickup`.
 2. Al primo avvio, il **wizard di setup** chiede token API, workspace, tariffa oraria opzionale e valuta — salvati in `~/.config/clickup-cli/config.yml`.
-3. Scegli **mese** e **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
+3. Scegli un **periodo** (`d`) e lo **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
 
 ## Uso
 
@@ -66,7 +66,11 @@ API Token), il workspace da usare (scelto tra quelli visibili al token),
 una tariffa oraria opzionale e la valuta (default `EUR`). Il risultato viene
 salvato in `~/.config/clickup-cli/config.yml` e riusato ai lanci successivi.
 
-Dalla home scegli mese e scope, poi `Enter` genera il report. Nel report puoi
+Dalla home scegli un periodo e lo scope, poi `Enter` genera il report. Il report non
+è più limitato a un mese di calendario: premi `d` nella home per aprire il
+**selettore del periodo**, che offre preset (questo mese, mese scorso, ultimi 7
+giorni, ultimi 30 giorni, questa settimana) più un periodo **personalizzato**
+`From`/`To` (date in formato `YYYY-MM-DD`). Nel report puoi
 cambiare raggruppamento, riesportare o tornare alla home. Se il token risulta
 invalido o revocato durante l'uso, la TUI ripropone automaticamente il wizard
 di setup.
@@ -75,18 +79,20 @@ di setup.
 
 | Tasto | Schermata | Azione |
 |---|---|---|
-| `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese |
+| `d` | Home | Apre il **selettore del periodo** (preset + personalizzato from/to) |
+| `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese (solo mentre il periodo `this month` è attivo) |
 | `t` | Home | Alterna scope `me` / `team` |
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
-| `Enter` | Home | Genera il report per mese/scope selezionati |
+| `Enter` | Home | Genera il report per il periodo/scope selezionati |
 | `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → membro (team) → totale |
 | `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
-| `m` / `s` | Report | Torna alla home per cambiare mese/scope |
-| `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
+| `m` / `s` | Report | Torna alla home per cambiare range/scope |
+| `r` | Report | Ricarica le voci ore dall'API per lo stesso periodo/scope |
 | `p` | Report | Apre la schermata **Tariffe per lista** |
+| `f` | Report | Apre la schermata **Filtri** (lista/tag/status) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
-| `Enter` | Export | Salva `clickup-report-YYYY-MM.<ext>` nella cwd |
+| `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (`<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
 | `q` | Ovunque tranne il setup | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |
@@ -110,6 +116,27 @@ Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato p
 tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di
 qualche centesimo dal prodotto `ore_mostrate × tariffa_lista`; tuttavia, il totale della
 fatturazione resta sempre la somma esatta degli importi mostrati.
+
+#### Schermata Filtri
+
+Dalla schermata del report, premendo `f` si apre la schermata **Filtri**, con tre
+sezioni: Liste, Tag e Status. Ogni sezione elenca i valori distinti presenti nelle
+voci caricate; selezionando uno o più valori in una sezione si mantengono solo le
+voci corrispondenti (OR all'interno della sezione, AND tra sezioni diverse);
+lasciare una sezione vuota equivale a "nessun filtro" per quella dimensione. Gli
+status dei task non fanno parte del caricamento iniziale dall'API, quindi la
+prima volta che apri Filtri in una sessione l'app recupera lo status corrente di
+ogni task caricato da ClickUp (mostrando "Loading statuses…"); da quel momento
+resta in cache per il resto della sessione. I filtri si compongono con la
+selezione membri e con il periodo attivo: restringono solo ciò che è già stato
+caricato. Comandi disponibili:
+
+- `Tab` / `Shift+Tab`: cambia sezione
+- `↑` / `↓` (anche `k` / `j`): naviga all'interno della sezione
+- `Space`: attiva/disattiva il valore evidenziato
+- `a`: seleziona/deseleziona tutti i valori della sezione
+- `Enter`: applica il filtro e torna al report
+- `Esc`: scarta le modifiche e torna al report
 
 #### Schermata Log ore
 
@@ -182,8 +209,8 @@ Leggi anche il [Codice di Condotta](CODE_OF_CONDUCT.md).
 ## Roadmap
 
 Roadmap e backlog vivono nelle **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
-(label `roadmap`/`enhancement`, milestone `v1.3` / `v2.0`). In evidenza: filtri report e
-range date custom (v1.3), riepiloghi settimanali, export fattura, multi-valuta (v2.0).
+(label `roadmap`/`enhancement`, milestone `v1.3` / `v2.0`). In evidenza: range date
+custom (v1.3), riepiloghi settimanali, export fattura, multi-valuta (v2.0).
 
 ## Licenza
 

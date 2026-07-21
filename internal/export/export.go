@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -33,8 +34,8 @@ func CSV(w io.Writer, r report.Report) error {
 
 // jsonReport is the serialized (snake_case) form of the report.
 type jsonReport struct {
-	Year        int             `json:"year"`
-	Month       int             `json:"month"`
+	Start       string          `json:"start"`
+	End         string          `json:"end"`
 	Scope       string          `json:"scope"`
 	GroupBy     string          `json:"group_by"`
 	Currency    string          `json:"currency"`
@@ -47,7 +48,8 @@ type jsonReport struct {
 // JSON writes the report as indented JSON.
 func JSON(w io.Writer, r report.Report) error {
 	jr := jsonReport{
-		Year: r.Year, Month: int(r.Month), Scope: r.Scope, GroupBy: r.GroupBy,
+		Start: r.Start.Format(time.RFC3339), End: r.End.Format(time.RFC3339),
+		Scope: r.Scope, GroupBy: r.GroupBy,
 		Currency: r.Currency, Rate: r.Rate, Buckets: r.Buckets,
 		TotalHours: r.TotalHours, TotalAmount: r.TotalAmount,
 	}
@@ -58,7 +60,7 @@ func JSON(w io.Writer, r report.Report) error {
 
 // Markdown writes the report as a Markdown table.
 func Markdown(w io.Writer, r report.Report) error {
-	fmt.Fprintf(w, "# Hours report %04d-%02d\n\n", r.Year, int(r.Month))
+	fmt.Fprintf(w, "# Hours report %s\n\n", report.PeriodLabel(r.Start, r.End))
 	fmt.Fprintln(w, "| Label | Hours | Amount |")
 	fmt.Fprintln(w, "|---|---:|---:|")
 	for _, b := range r.Buckets {

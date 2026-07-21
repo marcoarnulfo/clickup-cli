@@ -95,7 +95,8 @@ func TestReloadDemoMeScopeIsSingleSelfUser(t *testing.T) {
 func TestDemoEntriesBuildReport(t *testing.T) {
 	entries := demoEntries(2026, time.July)
 	rates := report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}}
-	r := report.Build(entries, report.GroupByList, rates, "EUR", 2026, time.July)
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	r := report.Build(entries, report.GroupByList, rates, "EUR", start, start.AddDate(0, 1, 0))
 	if r.TotalHours <= 0 || r.TotalAmount <= 0 {
 		t.Errorf("empty demo report: hours=%v amount=%v", r.TotalHours, r.TotalAmount)
 	}
