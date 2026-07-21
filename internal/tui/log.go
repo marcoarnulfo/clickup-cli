@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -52,8 +53,7 @@ type logModel struct {
 	taskIdx int
 	loading bool
 
-	taskID   string
-	taskName string
+	taskID string
 
 	input textinput.Model
 
@@ -112,6 +112,21 @@ type taskListMsg struct{ tasks []clickup.Task }
 
 type timerMsg struct{ timer *clickup.RunningTimer }
 
+// logErrMsg is a log-flow error that keeps the user on the log screen (with the
+// message shown) instead of bouncing to the global error screen — so a failed
+// create/timer call doesn't discard the form. Auth errors are NOT wrapped in it
+// (they must still trigger the global re-setup via errMsg).
+type logErrMsg struct{ err error }
+
+// logErr routes a log command error: auth errors go to the global handler
+// (errMsg → re-setup); everything else stays on the log screen (logErrMsg).
+func logErr(err error) tea.Msg {
+	if errors.Is(err, clickup.ErrUnauthorized) {
+		return errMsg{err: err}
+	}
+	return logErrMsg{err: err}
+}
+
 // startTimerCmd starts the timer and then reads the current state to get the
 // authoritative start returned by ClickUp.
 func startTimerCmd(c *clickup.Client, teamID, tid, desc string) tea.Cmd {
@@ -119,11 +134,11 @@ func startTimerCmd(c *clickup.Client, teamID, tid, desc string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := c.StartTimer(ctx, teamID, tid, desc); err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
 		rt, err := c.CurrentTimer(ctx, teamID)
 		if err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
 		if rt == nil {
 			rt = &clickup.RunningTimer{TaskID: tid, TaskName: tid}
@@ -139,9 +154,9 @@ func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 		defer cancel()
 		e, err := c.StopTimer(ctx, teamID)
 		if err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
-		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", e.Duration)}
+		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(e.Duration))}
 	}
 }
 
@@ -152,7 +167,7 @@ func currentTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 		defer cancel()
 		rt, err := c.CurrentTimer(ctx, teamID)
 		if err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
 		return timerMsg{timer: rt}
 	}
@@ -165,7 +180,7 @@ func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
 		defer cancel()
 		tasks, err := c.ListTasks(ctx, listID)
 		if err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
 		return taskListMsg{tasks: tasks}
 	}
@@ -177,9 +192,9 @@ func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := c.CreateTimeEntry(ctx, teamID, tid, start, dur, desc); err != nil {
-			return errMsg{err: err}
+			return logErr(err)
 		}
-		return logDoneMsg{summary: fmt.Sprintf("%s logged on %s", dur, tid)}
+		return logDoneMsg{summary: fmt.Sprintf("%s logged on %s", duration.Format(dur), tid)}
 	}
 }
 
@@ -260,7 +275,6 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			lg.taskID = id
-			lg.taskName = id
 			lg.msg = ""
 			if lg.mode == modeTimer {
 				m.logScreen = lg
@@ -269,7 +283,6 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			lg = enterForm(lg)
 			lg.taskID = id
-			lg.taskName = id
 			m.logScreen = lg
 			return m, nil
 		}
@@ -340,7 +353,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.listIdx++
 			}
 		case "enter":
-			if len(lg.lists) > 0 {
+			if len(lg.lists) > 0 && !lg.loading {
 				lg.loading = true
 				m.logScreen = lg
 				return m, listTasksCmd(m.client, lg.lists[lg.listIdx].id)
@@ -363,15 +376,14 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(lg.tasks) > 0 {
 				t := lg.tasks[lg.taskIdx]
 				lg.taskID = t.ID
-				lg.taskName = t.Name
 				if lg.mode == modeTimer {
 					m.logScreen = lg
 					m.screen = screenLoading
 					return m, startTimerCmd(m.client, m.cfg.WorkspaceID, t.ID, "")
 				}
-				id, name := t.ID, t.Name
+				id := t.ID
 				lg = enterForm(lg)
-				lg.taskID, lg.taskName = id, name
+				lg.taskID = id
 				m.logScreen = lg
 				return m, nil
 			}

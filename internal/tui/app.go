@@ -186,6 +186,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case logErrMsg:
+		// Log-flow error: stay on the log screen with the message, so the
+		// filled form / selected task is not lost and the user can retry.
+		m.logScreen.loading = false
+		m.logScreen.msg = "Error: " + msg.err.Error()
+		m.screen = screenLog
+		return m, nil
+
 	case entriesMsg:
 		m.entries = msg.entries
 		groupBy := m.report.GroupBy
