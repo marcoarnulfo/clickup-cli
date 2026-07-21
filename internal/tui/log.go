@@ -362,17 +362,25 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case logListPick:
+		browseIdx := len(lg.lists) // trailing "Browse all workspace lists…" row
 		switch msg.String() {
 		case "up", "k":
 			if lg.listIdx > 0 {
 				lg.listIdx--
 			}
 		case "down", "j":
-			if lg.listIdx < len(lg.lists)-1 {
+			if lg.listIdx < browseIdx {
 				lg.listIdx++
 			}
 		case "enter":
-			if len(lg.lists) > 0 && !lg.loading {
+			if lg.loading {
+				break
+			}
+			if lg.listIdx == browseIdx {
+				m.logScreen = lg
+				return m.openListBrowser(screenLog)
+			}
+			if len(lg.lists) > 0 {
 				lg.loading = true
 				m.logScreen = lg
 				return m, listTasksCmd(m.client, lg.lists[lg.listIdx].id)
@@ -462,10 +470,13 @@ func (lg logModel) view() string {
 			}
 			b += cursor + line + "\n"
 		}
-		if len(lg.lists) == 0 {
-			b += styleHelp.Render("No known lists: use ID mode.") + "\n"
+		browseLine := "🔍 Browse all workspace lists…"
+		if lg.listIdx == len(lg.lists) {
+			b += "▸ " + styleAccent.Render(browseLine) + "\n"
+		} else {
+			b += "  " + browseLine + "\n"
 		}
-		b += "\n" + styleHelp.Render("↑/↓ select · Enter: open tasks")
+		b += "\n" + styleHelp.Render("↑/↓ select · Enter: open tasks / browse")
 	case logTaskPick:
 		b += "Choose the task:\n\n"
 		for i, tk := range lg.tasks {
