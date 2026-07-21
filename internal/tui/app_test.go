@@ -291,6 +291,18 @@ func TestReportCycleGroupBy(t *testing.T) {
 	}
 }
 
+func TestEntriesMsgMemberGroupingDoesNotLeakIntoMeScope(t *testing.T) {
+	// A "me" scope model that inherited a "member" GroupBy from a prior
+	// team report must fall back to total: member grouping is team-only.
+	m := Model{scope: "me"}
+	m.report.GroupBy = report.GroupByMember
+	updated, _ := m.Update(entriesMsg{entries: nil})
+	mm := updated.(Model)
+	if mm.report.GroupBy != report.GroupByTotal {
+		t.Fatalf("me scope should reset member grouping to total, got %q", mm.report.GroupBy)
+	}
+}
+
 func TestHomeChangesMonthAndScope(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	m.year, m.month = 2026, 7

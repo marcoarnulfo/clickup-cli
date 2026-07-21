@@ -74,6 +74,24 @@ func TestReloadDemoFiltersMembers(t *testing.T) {
 	}
 }
 
+func TestReloadDemoMeScopeIsSingleSelfUser(t *testing.T) {
+	// Real "me" scope is server-side filtered to the authenticated caller
+	// (one user); demo must mirror that instead of summing all demo users.
+	m := Model{demo: true, year: 2026, month: time.July, scope: "me"}
+	em, ok := m.reloadEntriesCmd()().(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg")
+	}
+	if len(em.entries) == 0 {
+		t.Fatal("expected self demo entries, got 0")
+	}
+	for _, e := range em.entries {
+		if e.UserID != demoSelfID {
+			t.Errorf("demo me scope leaked user %d (%s), want only demoSelfID", e.UserID, e.UserName)
+		}
+	}
+}
+
 func TestDemoEntriesBuildReport(t *testing.T) {
 	entries := demoEntries(2026, time.July)
 	rates := report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}}

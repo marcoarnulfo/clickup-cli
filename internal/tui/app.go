@@ -102,6 +102,11 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 		assignees = m.selectedAssignees()
 	}
 	if m.demo {
+		if m.scope != "team" {
+			// The real API filters "me" scope server-side to the authenticated
+			// caller; mirror that here instead of summing all demo users.
+			assignees = []int{demoSelfID}
+		}
 		return demoEntriesCmd(m.year, m.month, assignees)
 	}
 	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
@@ -227,6 +232,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		groupBy := m.report.GroupBy
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // first load: summary of the month
+		}
+		if groupBy == report.GroupByMember && m.scope != "team" {
+			// member grouping is team-only: never let it leak into a "me" report.
+			groupBy = report.GroupByTotal
 		}
 		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope

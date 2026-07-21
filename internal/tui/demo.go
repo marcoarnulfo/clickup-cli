@@ -26,6 +26,10 @@ func demoConfig() config.Config {
 	}
 }
 
+// demoSelfID is the demo "authenticated user": alice. Demo "me" scope filters
+// to this id, mirroring the real API's server-side self-filter.
+const demoSelfID = 1
+
 // demoEntries returns fake time entries for the given month, spread across a few
 // users so the member selection and per-member grouping are meaningful in demo.
 func demoEntries(year int, month time.Month) []report.TimeEntry {
