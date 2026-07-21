@@ -124,8 +124,9 @@ ClickUp tasks. Three modes:
 
 In the form, **duration** accepts flexible formats: `2h30`, `2h30m`, `1.5h`, `1,5h`,
 `90m`, `45` (bare number = hours). The **date** defaults to today (`YYYY-MM-DD`, editable)
-and the **note** is optional. After saving, press `r` to reload the report and see the new
-hours immediately. You always log **your own** hours.
+and the **note** is optional. Finally you set whether the entry is **billable** (`Y`/`n`,
+default yes). After saving, press `r` to reload the report and see the new hours immediately.
+You always log **your own** hours.
 
 ### Team scope
 

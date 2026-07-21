@@ -120,8 +120,14 @@ func TestFormValidFlowSubmits(t *testing.T) {
 	if m.logScreen.formField != 2 {
 		t.Fatalf("after date formField = %d, expected 2 (note)", m.logScreen.formField)
 	}
-	// note -> submit
+	// note -> billable step
 	m.logScreen.input.SetValue("work")
+	next, _ = m.Update(key("enter"))
+	m = next.(Model)
+	if m.logScreen.formField != 3 {
+		t.Fatalf("after note formField = %d, expected 3 (billable)", m.logScreen.formField)
+	}
+	// billable: Enter = yes -> submit
 	next, cmd := m.Update(key("enter"))
 	m = next.(Model)
 	if m.screen != screenLoading {
@@ -129,6 +135,32 @@ func TestFormValidFlowSubmits(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Errorf("expected a command (createEntryCmd) after submit")
+	}
+	if !m.logScreen.billable {
+		t.Errorf("Enter on the billable step should keep billable=true")
+	}
+}
+
+func TestFormBillableToggleNo(t *testing.T) {
+	m := reachForm(t)
+	m.logScreen.input.SetValue("1h")
+	next, _ := m.Update(key("enter")) // duration -> date
+	m = next.(Model)
+	next, _ = m.Update(key("enter")) // date (default) -> note
+	m = next.(Model)
+	m.logScreen.input.SetValue("x")
+	next, _ = m.Update(key("enter")) // note -> billable
+	m = next.(Model)
+	if m.logScreen.formField != 3 {
+		t.Fatalf("expected billable step (formField 3), got %d", m.logScreen.formField)
+	}
+	next, cmd := m.Update(key("n")) // billable = no -> submit
+	m = next.(Model)
+	if m.logScreen.billable {
+		t.Error("'n' should set billable=false")
+	}
+	if m.screen != screenLoading || cmd == nil {
+		t.Error("'n' should submit (screenLoading + non-nil cmd)")
 	}
 }
 
