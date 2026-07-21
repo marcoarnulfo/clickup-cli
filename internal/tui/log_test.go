@@ -222,3 +222,64 @@ func TestLogDoneMsgShowsConfirm(t *testing.T) {
 		t.Errorf("screen=%v step=%v, atteso screenLog/logDone", nm.screen, nm.logScreen.step)
 	}
 }
+
+func TestTimerPickRoutes(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(key("n"))
+	m = next.(Model)
+	next, _ = m.Update(key("3")) // timer
+	m = next.(Model)
+	if m.logScreen.step != logTimerPick {
+		t.Fatalf("step = %v, atteso logTimerPick", m.logScreen.step)
+	}
+	// 1 = guidato
+	g, _ := m.Update(key("1"))
+	if s := g.(Model).logScreen.step; s != logListPick {
+		t.Errorf("timer/guidato -> step = %v, atteso logListPick", s)
+	}
+	// 2 = ID
+	i, _ := m.Update(key("2"))
+	if s := i.(Model).logScreen.step; s != logIDInput {
+		t.Errorf("timer/id -> step = %v, atteso logIDInput", s)
+	}
+}
+
+func TestTimerMsgSetsRunning(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.screen = screenLog
+	rt := &clickup.RunningTimer{TaskID: "x1", TaskName: "Uno"}
+	next, _ := m.Update(timerMsg{timer: rt})
+	nm := next.(Model)
+	if nm.logScreen.step != logTimerRunning || nm.logScreen.timer == nil {
+		t.Errorf("step=%v timer=%v, atteso logTimerRunning con timer", nm.logScreen.step, nm.logScreen.timer)
+	}
+}
+
+func TestTimerMsgNilNoRunning(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logTimerRunning
+	m.screen = screenLog
+	next, _ := m.Update(timerMsg{timer: nil})
+	nm := next.(Model)
+	if nm.logScreen.timer != nil {
+		t.Errorf("timer atteso nil")
+	}
+}
+
+func TestTimerRunningStopIssuesCmd(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logTimerRunning
+	m.logScreen.timer = &clickup.RunningTimer{TaskID: "x1"}
+	m.screen = screenLog
+	next, cmd := m.Update(key("s"))
+	m = next.(Model)
+	if m.screen != screenLoading {
+		t.Errorf("dopo stop screen = %v, atteso screenLoading", m.screen)
+	}
+	if cmd == nil {
+		t.Errorf("atteso stopTimerCmd")
+	}
+}

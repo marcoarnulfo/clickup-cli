@@ -98,6 +98,54 @@ type logDoneMsg struct{ summary string }
 
 type taskListMsg struct{ tasks []clickup.Task }
 
+type timerMsg struct{ timer *clickup.RunningTimer }
+
+// startTimerCmd avvia il timer e poi legge lo stato corrente per avere lo start
+// autoritativo restituito da ClickUp.
+func startTimerCmd(c *clickup.Client, teamID, tid, desc string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := c.StartTimer(ctx, teamID, tid, desc); err != nil {
+			return errMsg{err: err}
+		}
+		rt, err := c.CurrentTimer(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		if rt == nil {
+			rt = &clickup.RunningTimer{TaskID: tid, TaskName: tid}
+		}
+		return timerMsg{timer: rt}
+	}
+}
+
+// stopTimerCmd ferma il timer; l'entry è creata da ClickUp.
+func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		e, err := c.StopTimer(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return logDoneMsg{summary: fmt.Sprintf("timer fermato: %s registrate", e.Duration)}
+	}
+}
+
+// currentTimerCmd legge il timer in corso (nil se nessuno).
+func currentTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		rt, err := c.CurrentTimer(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return timerMsg{timer: rt}
+	}
+}
+
 // listTasksCmd carica i task di una lista in background.
 func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
 	return func() tea.Msg {
@@ -157,7 +205,33 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "3":
 			lg.mode = modeTimer
 			lg.step = logTimerPick
+			m.logScreen = lg
+			return m, currentTimerCmd(m.client, m.cfg.WorkspaceID)
 		}
+
+	case logTimerPick:
+		switch msg.String() {
+		case "1":
+			lg.step = logListPick
+		case "2":
+			lg.step = logIDInput
+			lg.input = newTextInput("ID o URL del task")
+		}
+		m.logScreen = lg
+		return m, nil
+
+	case logTimerRunning:
+		switch msg.String() {
+		case "s":
+			m.logScreen = lg
+			m.screen = screenLoading
+			return m, stopTimerCmd(m.client, m.cfg.WorkspaceID)
+		case "esc":
+			m.screen = screenReport
+			return m, nil
+		}
+		m.logScreen = lg
+		return m, nil
 
 	case logIDInput:
 		if msg.Type == tea.KeyEsc {
@@ -177,10 +251,9 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			lg.taskName = id
 			lg.msg = ""
 			if lg.mode == modeTimer {
-				// Placeholder di navigazione: il Task 10 lo sostituirà con startTimerCmd.
-				lg.step = logTimerRunning
 				m.logScreen = lg
-				return m, nil
+				m.screen = screenLoading
+				return m, startTimerCmd(m.client, m.cfg.WorkspaceID, id, "")
 			}
 			lg = enterForm(lg)
 			lg.taskID = id
@@ -280,9 +353,9 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.taskID = t.ID
 				lg.taskName = t.Name
 				if lg.mode == modeTimer {
-					lg.step = logTimerRunning // Task 10 lo sostituirà con startTimerCmd
 					m.logScreen = lg
-					return m, nil
+					m.screen = screenLoading
+					return m, startTimerCmd(m.client, m.cfg.WorkspaceID, t.ID, "")
 				}
 				id, name := t.ID, t.Name
 				lg = enterForm(lg)
@@ -317,6 +390,21 @@ func (lg logModel) view() string {
 		b += "  " + styleAccent.Render("1") + ") Guidato — scegli lista e task\n"
 		b += "  " + styleAccent.Render("2") + ") Task ID/URL — vai diretto al form\n"
 		b += "  " + styleAccent.Render("3") + ") Timer — start/stop cronometro\n"
+	case logTimerPick:
+		b += "Timer — come scegli il task?\n\n"
+		b += "  " + styleAccent.Render("1") + ") Guidato (lista → task)\n"
+		b += "  " + styleAccent.Render("2") + ") Task ID/URL\n"
+	case logTimerRunning:
+		if lg.timer == nil {
+			b += styleHelp.Render("Nessun timer in corso.") + "\n"
+			b += "\n" + styleHelp.Render("Esc: torna al report")
+			break
+		}
+		b += "⏱  Timer in corso su: " + styleAccent.Render(lg.timer.TaskName) + "\n"
+		if !lg.timer.Start.IsZero() {
+			b += "Avviato: " + lg.timer.Start.Local().Format("15:04:05") + "\n"
+		}
+		b += "\n" + styleHelp.Render("s: ferma e registra · Esc: annulla")
 	case logListPick:
 		b += "Scegli la lista:\n\n"
 		for i, l := range lg.lists {

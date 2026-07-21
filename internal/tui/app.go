@@ -201,6 +201,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logScreen.loading = false
 		m.logScreen.step = logTaskPick
 		return m, nil
+
+	case timerMsg:
+		m.logScreen.timer = msg.timer
+		if msg.timer != nil {
+			m.logScreen.step = logTimerRunning
+		}
+		m.screen = screenLog
+		return m, nil
 	}
 	return m, nil
 }
