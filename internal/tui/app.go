@@ -30,6 +30,7 @@ const (
 type (
 	entriesMsg struct{ entries []report.TimeEntry }
 	teamsMsg   struct{ teams []clickup.Team }
+	membersMsg struct{ members []clickup.Member }
 	errMsg     struct{ err error }
 )
 
@@ -92,10 +93,16 @@ func (m Model) Init() tea.Cmd { return nil }
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
 // in demo mode, otherwise the real API call.
 func (m Model) reloadEntriesCmd() tea.Cmd {
-	if m.demo {
-		return demoEntriesCmd(m.year, m.month)
+	// The member filter is a team-scope concept; never carry a stale
+	// selection into a "me" load.
+	var assignees []int
+	if m.scope == "team" {
+		assignees = m.selectedAssignees()
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, m.selectedAssignees())
+	if m.demo {
+		return demoEntriesCmd(m.year, m.month, assignees)
+	}
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.

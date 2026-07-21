@@ -38,6 +38,42 @@ func TestReloadEntriesCmdUsesDemo(t *testing.T) {
 	}
 }
 
+func TestDemoMembers(t *testing.T) {
+	if len(demoMembers()) != 3 {
+		t.Fatalf("demoMembers = %d, want 3", len(demoMembers()))
+	}
+	if _, ok := demoMembersCmd()().(membersMsg); !ok {
+		t.Fatalf("demoMembersCmd should produce membersMsg")
+	}
+}
+
+func TestDemoEntriesMultipleUsers(t *testing.T) {
+	users := map[string]bool{}
+	for _, e := range demoEntries(2026, time.July) {
+		users[e.UserName] = true
+	}
+	if len(users) < 2 {
+		t.Errorf("expected multiple demo users, got %v", users)
+	}
+}
+
+func TestReloadDemoFiltersMembers(t *testing.T) {
+	// Team scope, only alice (id 1) selected: the demo report must exclude bob/carol.
+	m := Model{demo: true, year: 2026, month: time.July, scope: "team", selectedMembers: map[int]bool{1: true}}
+	em, ok := m.reloadEntriesCmd()().(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg")
+	}
+	if len(em.entries) == 0 {
+		t.Fatal("expected alice's demo entries, got 0")
+	}
+	for _, e := range em.entries {
+		if e.UserID != 1 {
+			t.Errorf("demo filter leaked user %d (%s)", e.UserID, e.UserName)
+		}
+	}
+}
+
 func TestDemoEntriesBuildReport(t *testing.T) {
 	entries := demoEntries(2026, time.July)
 	rates := report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}}

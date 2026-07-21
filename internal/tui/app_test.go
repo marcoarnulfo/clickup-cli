@@ -188,6 +188,34 @@ func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
 	}
 }
 
+func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			if got := r.URL.Query().Get("assignee"); got != "" {
+				t.Errorf("me scope must not filter by assignee, got %q", got)
+			}
+			w.Write([]byte(`{"data":[]}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	m := Model{
+		client:          c,
+		cfg:             config.Config{WorkspaceID: "900"},
+		year:            2026,
+		month:           time.July,
+		scope:           "me",
+		selectedMembers: map[int]bool{5: true}, // stale from a prior team selection
+	}
+	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg from reloadEntriesCmd")
+	}
+}
+
 func TestNewStartsInSetupWhenInvalid(t *testing.T) {
 	m := New(config.Config{})
 	if m.screen != screenSetup {
