@@ -152,9 +152,24 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.Type == tea.KeyEnter {
-			lg.taskID = clickup.ExtractTaskID(lg.input.Value())
-			lg.taskName = lg.taskID
+			id := clickup.ExtractTaskID(lg.input.Value())
+			if id == "" {
+				lg.msg = "Inserisci un id o un URL valido"
+				m.logScreen = lg
+				return m, nil
+			}
+			lg.taskID = id
+			lg.taskName = id
+			lg.msg = ""
+			if lg.mode == modeTimer {
+				// Placeholder di navigazione: il Task 10 lo sostituirà con startTimerCmd.
+				lg.step = logTimerRunning
+				m.logScreen = lg
+				return m, nil
+			}
 			lg = enterForm(lg)
+			lg.taskID = id
+			lg.taskName = id
 			m.logScreen = lg
 			return m, nil
 		}

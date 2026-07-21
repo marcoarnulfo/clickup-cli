@@ -129,6 +129,40 @@ func TestFormValidFlowSubmits(t *testing.T) {
 	}
 }
 
+func TestIDInputToForm(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(key("n"))
+	m = next.(Model)
+	next, _ = m.Update(key("2"))
+	m = next.(Model)
+	m.logScreen.input.SetValue("https://app.clickup.com/t/86abc")
+	next, _ = m.Update(key("enter"))
+	nm := next.(Model)
+	if nm.logScreen.step != logForm {
+		t.Fatalf("step = %v, atteso logForm", nm.logScreen.step)
+	}
+	if nm.logScreen.taskID != "86abc" {
+		t.Errorf("taskID = %q, atteso 86abc", nm.logScreen.taskID)
+	}
+}
+
+func TestIDInputEmptyStays(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(key("n"))
+	m = next.(Model)
+	next, _ = m.Update(key("2")) // modalità ID
+	m = next.(Model)
+	m.logScreen.input.SetValue("") // vuoto
+	next, _ = m.Update(key("enter"))
+	nm := next.(Model)
+	if nm.logScreen.step != logIDInput {
+		t.Errorf("con id vuoto step = %v, atteso restare in logIDInput", nm.logScreen.step)
+	}
+	if nm.logScreen.msg == "" {
+		t.Errorf("atteso messaggio d'errore per id vuoto")
+	}
+}
+
 func TestLogDoneMsgShowsConfirm(t *testing.T) {
 	m := newTestModelOnReport()
 	m.screen = screenLoading
