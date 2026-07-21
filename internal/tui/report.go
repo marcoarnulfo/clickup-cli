@@ -72,8 +72,19 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logScreen = newLog(m.entries, m.cfg)
 		m.screen = screenLog
 	case "f":
-		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		missing := m.tasksMissingStatus()
+		if len(missing) == 0 {
+			m.assignStatuses()
+			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+			m.screen = screenFilters
+			return m, nil
+		}
+		m.filtersScreen = filtersModel{loadingStatuses: true}
 		m.screen = screenFilters
+		if m.demo {
+			return m, demoStatusEnrichCmd(m.entries)
+		}
+		return m, statusEnrichCmd(m.client, missing)
 	}
 	return m, nil
 }

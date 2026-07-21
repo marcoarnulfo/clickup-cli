@@ -86,6 +86,17 @@ func demoMembersCmd() tea.Cmd {
 	return func() tea.Msg { return membersMsg{members: demoMembers()} }
 }
 
+// demoStatusEnrichCmd returns the demo entries' statuses as a statusesMsg (no I/O).
+func demoStatusEnrichCmd(entries []report.TimeEntry) tea.Cmd {
+	return func() tea.Msg {
+		byTask := make(map[string]string, len(entries))
+		for _, e := range entries {
+			byTask[e.TaskID] = e.Status
+		}
+		return statusesMsg{byTask: byTask}
+	}
+}
+
 // demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
 // selected member ids and clipped to [start, end).
 func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {

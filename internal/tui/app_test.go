@@ -638,6 +638,40 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 	}
 }
 
+func TestStatusesMsgAssignsAndOpens(t *testing.T) {
+	m := Model{
+		screen:  screenFilters,
+		entries: []report.TimeEntry{{TaskID: "t1", ListName: "A"}, {TaskID: "t2", ListName: "A"}},
+	}
+	u, _ := m.Update(statusesMsg{byTask: map[string]string{"t1": "open", "t2": "done"}})
+	m = u.(Model)
+	if m.screen != screenFilters {
+		t.Fatalf("screen = %v, want filters", m.screen)
+	}
+	if m.entries[0].Status != "open" || m.entries[1].Status != "done" {
+		t.Errorf("statuses not assigned: %+v", m.entries)
+	}
+	// the Statuses section now has both options
+	if len(m.filtersScreen.sections[2].options) != 2 {
+		t.Errorf("status options = %v", m.filtersScreen.sections[2].options)
+	}
+}
+
+func TestReportFEnrichesWhenStatusMissing(t *testing.T) {
+	m := Model{screen: screenReport, demo: true, entries: []report.TimeEntry{{TaskID: "t1", ListName: "A"}}}
+	u, cmd := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	m = u.(Model)
+	if m.screen != screenFilters || !m.filtersScreen.loadingStatuses {
+		t.Fatalf("expected loading-statuses filters screen")
+	}
+	if cmd == nil {
+		t.Fatal("expected a status enrichment command")
+	}
+	if _, ok := cmd().(statusesMsg); !ok {
+		t.Fatal("expected statusesMsg from the enrich command")
+	}
+}
+
 func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {

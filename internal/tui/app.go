@@ -30,10 +30,11 @@ const (
 
 // Async messages.
 type (
-	entriesMsg struct{ entries []report.TimeEntry }
-	teamsMsg   struct{ teams []clickup.Team }
-	membersMsg struct{ members []clickup.Member }
-	errMsg     struct{ err error }
+	entriesMsg  struct{ entries []report.TimeEntry }
+	teamsMsg    struct{ teams []clickup.Team }
+	membersMsg  struct{ members []clickup.Member }
+	statusesMsg struct{ byTask map[string]string }
+	errMsg      struct{ err error }
 )
 
 // Model is the root model of the TUI.
@@ -64,6 +65,7 @@ type Model struct {
 	filterLists    map[string]bool
 	filterTags     map[string]bool
 	filterStatuses map[string]bool
+	taskStatus     map[string]string // task id -> current status (session cache)
 
 	// sub-models
 	setup         setupModel
@@ -219,6 +221,50 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 	}
 }
 
+// statusEnrichCmd fetches the current status of each task id and returns them
+// as a statusesMsg (or errMsg on the first failure).
+func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		byTask := make(map[string]string, len(taskIDs))
+		for _, id := range taskIDs {
+			st, err := c.TaskStatus(ctx, id)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			byTask[id] = st
+		}
+		return statusesMsg{byTask: byTask}
+	}
+}
+
+// tasksMissingStatus returns the distinct task ids of loaded entries whose status
+// is not yet cached.
+func (m Model) tasksMissingStatus() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range m.entries {
+		if e.TaskID == "" || seen[e.TaskID] {
+			continue
+		}
+		seen[e.TaskID] = true
+		if _, ok := m.taskStatus[e.TaskID]; !ok {
+			out = append(out, e.TaskID)
+		}
+	}
+	return out
+}
+
+// assignStatuses copies cached statuses onto the loaded entries.
+func (m *Model) assignStatuses() {
+	for i := range m.entries {
+		if st, ok := m.taskStatus[m.entries[i].TaskID]; ok {
+			m.entries[i].Status = st
+		}
+	}
+}
+
 // loadMembersCmd fetches the workspace members in the background and returns
 // membersMsg or errMsg.
 func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
@@ -324,6 +370,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.membersScreen = newMembers(msg.members, m.selectedMembers)
 		m.screen = screenMembers
+		return m, nil
+
+	case statusesMsg:
+		if m.taskStatus == nil {
+			m.taskStatus = map[string]string{}
+		}
+		for id, st := range msg.byTask {
+			m.taskStatus[id] = st
+		}
+		m.assignStatuses()
+		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		m.screen = screenFilters
 		return m, nil
 	}
 	return m, nil

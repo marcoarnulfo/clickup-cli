@@ -89,6 +89,7 @@ di setup.
 | `m` / `s` | Report | Torna alla home per cambiare mese/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
 | `p` | Report | Apre la schermata **Tariffe per lista** |
+| `f` | Report | Apre la schermata **Filtri** (lista/tag/status) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-YYYY-MM.<ext>` nella cwd |
@@ -115,6 +116,27 @@ Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato p
 tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di
 qualche centesimo dal prodotto `ore_mostrate × tariffa_lista`; tuttavia, il totale della
 fatturazione resta sempre la somma esatta degli importi mostrati.
+
+#### Schermata Filtri
+
+Dalla schermata del report, premendo `f` si apre la schermata **Filtri**, con tre
+sezioni: Liste, Tag e Status. Ogni sezione elenca i valori distinti presenti nelle
+voci caricate; selezionando uno o più valori in una sezione si mantengono solo le
+voci corrispondenti (OR all'interno della sezione, AND tra sezioni diverse);
+lasciare una sezione vuota equivale a "nessun filtro" per quella dimensione. Gli
+status dei task non fanno parte del caricamento iniziale dall'API, quindi la
+prima volta che apri Filtri in una sessione l'app recupera lo status corrente di
+ogni task caricato da ClickUp (mostrando "Loading statuses…"); da quel momento
+resta in cache per il resto della sessione. I filtri si compongono con la
+selezione membri e con il periodo attivo: restringono solo ciò che è già stato
+caricato. Comandi disponibili:
+
+- `Tab` / `Shift+Tab`: cambia sezione
+- `↑` / `↓` (anche `k` / `j`): naviga all'interno della sezione
+- `Space`: attiva/disattiva il valore evidenziato
+- `a`: seleziona/deseleziona tutti i valori della sezione
+- `Enter`: applica il filtro e torna al report
+- `Esc`: scarta le modifiche e torna al report
 
 #### Schermata Log ore
 
@@ -187,8 +209,8 @@ Leggi anche il [Codice di Condotta](CODE_OF_CONDUCT.md).
 ## Roadmap
 
 Roadmap e backlog vivono nelle **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
-(label `roadmap`/`enhancement`, milestone `v1.3` / `v2.0`). In evidenza: filtri report e
-range date custom (v1.3), riepiloghi settimanali, export fattura, multi-valuta (v2.0).
+(label `roadmap`/`enhancement`, milestone `v1.3` / `v2.0`). In evidenza: range date
+custom (v1.3), riepiloghi settimanali, export fattura, multi-valuta (v2.0).
 
 ## Licenza
 

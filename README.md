@@ -87,6 +87,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `m` / `s` | Report | Go back home to change month/scope |
 | `r` | Report | Reload the time entries from the API for the same month/scope |
 | `p` | Report | Open the **Per-list rates** screen |
+| `f` | Report | Open the **Filters** screen (list/tag/status) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
 | `Enter` | Export | Save `clickup-report-YYYY-MM.<ext>` in the cwd |
@@ -113,6 +114,26 @@ Since v1.1, each amount is computed from the list's real hours multiplied by its
 rate (not from the rounded hours), so a single amount may differ by a few cents from
 `shown_hours × list_rate`; however, the billing total is always the exact sum of the
 displayed amounts.
+
+#### Filters screen
+
+From the report screen, pressing `f` opens the **Filters** screen, with three
+sections: Lists, Tags and Statuses. Each section lists the distinct values found
+in the loaded entries; selecting one or more values in a section keeps only the
+matching entries (OR within a section, AND across sections); leaving a section
+empty means "no filter" for that dimension. Task statuses are not included in the
+initial API load, so the first time you open Filters in a session the app fetches
+each loaded task's current status from ClickUp (shown as "Loading statuses…");
+after that it is cached for the rest of the session. Filters compose with the
+team member selection and the active date range — they only narrow what is
+already loaded. Available commands:
+
+- `Tab` / `Shift+Tab`: switch section
+- `↑` / `↓` (also `k` / `j`): move within the section
+- `Space`: toggle the highlighted value
+- `a`: select/deselect all values in the section
+- `Enter`: apply the filter and return to the report
+- `Esc`: discard changes and return to the report
 
 #### Log hours screen
 
@@ -182,8 +203,8 @@ label. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Roadmap
 
 Roadmap and backlog live in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
-(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: report filters &
-custom date ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
+(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: custom date
+ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
 
 ## License
 
