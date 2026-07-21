@@ -1,96 +1,96 @@
+**English** · [Italiano](README.it.md)
+
 # clickup — ClickUp Hours CLI
 
-TUI da terminale per il report ore mensile di ClickUp (self + team), con
-calcolo dell'importo da fatturare ed export CSV/JSON/Markdown.
+Terminal TUI for ClickUp monthly hours reports (self + team), with billable-amount
+calculation and CSV/JSON/Markdown export.
 
-## Installazione
+## Installation
 
 ```bash
 go install github.com/marcoarnulfo/clickup-cli/cmd/clickup@latest
 ```
 
-## Uso
+## Usage
 
-Lancia `clickup`. Al primo avvio parte un wizard di setup che chiede, in
-sequenza: il token API personale (lo trovi in ClickUp → Settings → Apps →
-API Token), il workspace da usare (scelto tra quelli visibili al token),
-una tariffa oraria opzionale e la valuta (default `EUR`). Il risultato viene
-salvato in `~/.config/clickup-cli/config.yml` e riusato ai lanci successivi.
+Run `clickup`. On first launch a setup wizard asks, in sequence: your personal API
+token (find it in ClickUp → Settings → Apps → API Token), the workspace to use
+(chosen among those visible to the token), an optional hourly rate, and the currency
+(default `EUR`). The result is saved to `~/.config/clickup-cli/config.yml` and reused
+on subsequent launches.
 
-Dalla home scegli mese e scope, poi `Enter` genera il report. Nel report puoi
-cambiare raggruppamento, riesportare o tornare alla home. Se il token risulta
-invalido o revocato durante l'uso, la TUI ripropone automaticamente il wizard
-di setup.
+From the home screen pick a month and scope, then `Enter` generates the report. In the
+report you can change the grouping, re-export, or go back home. If the token becomes
+invalid or is revoked while in use, the TUI automatically re-runs the setup wizard.
 
-### Comandi nella TUI
+### TUI commands
 
-| Tasto | Schermata | Azione |
+| Key | Screen | Action |
 |---|---|---|
-| `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese |
-| `t` | Home | Alterna scope `me` / `team` |
-| `Enter` | Home | Genera il report per mese/scope selezionati |
-| `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → totale |
-| `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
-| `m` / `s` | Report | Torna alla home per cambiare mese/scope |
-| `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
-| `p` | Report | Apre la schermata **Tariffe per lista** |
-| `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
-| `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
-| `Enter` | Export | Salva `clickup-report-YYYY-MM.<ext>` nella cwd |
-| `Esc` | Export | Torna al report senza esportare |
-| `q` | Ovunque tranne il setup | Esce dall'applicazione |
-| `Ctrl+C` | Sempre | Esce dall'applicazione |
+| `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month |
+| `t` | Home | Toggle scope `me` / `team` |
+| `Enter` | Home | Generate the report for the selected month/scope |
+| `g` | Report | Cycle grouping: total → task → list → day → total |
+| `e` | Report | Open the export menu (CSV/JSON/Markdown) |
+| `m` / `s` | Report | Go back home to change month/scope |
+| `r` | Report | Reload the time entries from the API for the same month/scope |
+| `p` | Report | Open the **Per-list rates** screen |
+| `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
+| `↑`/`↓` (also `k`/`j`) | Export | Select the format |
+| `Enter` | Export | Save `clickup-report-YYYY-MM.<ext>` in the cwd |
+| `Esc` | Export | Return to the report without exporting |
+| `q` | Everywhere except setup | Quit the application |
+| `Ctrl+C` | Always | Quit the application |
 
-Nella schermata di setup non è previsto `q` per uscire, per evitare di
-premerlo per errore durante l'inserimento del token: usa `Ctrl+C`.
+The setup screen has no `q`-to-quit, to avoid pressing it by mistake while typing the
+token: use `Ctrl+C`.
 
-#### Schermata Tariffe per lista
+#### Per-list rates screen
 
-Dalla schermata del report, premendo `p` si apre la schermata **Tariffe per lista**,
-dove è possibile configurare una tariffa specifica per ogni lista (diverse dal default).
-I comandi disponibili sono:
+From the report screen, pressing `p` opens the **Per-list rates** screen, where you can
+configure a specific hourly rate for each list (different from the default). Available
+commands:
 
-- `↑` / `↓` (anche `k` / `j`): naviga tra le liste
-- `Enter`: modifica la tariffa della lista selezionata (solo cifre e separatore decimale)
-- `d`: ripristina la lista alla tariffa di default
-- `s`: salva le modifiche e torna al report
-- `Esc`: annulla (scarta le modifiche non salvate) e torna al report
+- `↑` / `↓` (also `k` / `j`): navigate the lists
+- `Enter`: edit the selected list's rate (digits and decimal separator only)
+- `d`: reset the list to the default rate
+- `s`: save changes and return to the report
+- `Esc`: cancel (discard unsaved changes) and return to the report
 
-Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato per la sua
-tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di
-qualche centesimo dal prodotto `ore_mostrate × tariffa_lista`; tuttavia, il totale della
-fatturazione resta sempre la somma esatta degli importi mostrati.
+Since v1.1, each amount is computed from the list's real hours multiplied by its specific
+rate (not from the rounded hours), so a single amount may differ by a few cents from
+`shown_hours × list_rate`; however, the billing total is always the exact sum of the
+displayed amounts.
 
-#### Schermata Log ore
+#### Log hours screen
 
-Premendo `n` (dalla Home o dal Report) si apre **Log ore**, per registrare tempo
-sui propri task ClickUp. Tre modalità:
+Pressing `n` (from Home or Report) opens **Log hours**, to record time on your own
+ClickUp tasks. Three modes:
 
-1. **Guidato** — scegli una lista tra quelle note (report corrente ∪ config), poi
-   un task della lista, poi compili il form.
-2. **Task ID/URL** — incolli l'ID del task o un URL ClickUp (es. `.../t/86abc`) e
-   vai diretto al form.
-3. **Timer** — avvii un cronometro sul task scelto (guidato o ID); premendo `s` lo
-   fermi e ClickUp registra la time entry. Se all'apertura c'è già un timer in
-   corso, viene mostrato e puoi fermarlo subito.
+1. **Guided** — pick a list among the known ones (current report ∪ config), then a task
+   of that list, then fill in the form.
+2. **Task ID/URL** — paste the task ID or a ClickUp URL (e.g. `.../t/86abc`) and go
+   straight to the form.
+3. **Timer** — start a stopwatch on the chosen task (guided or ID); pressing `s` stops it
+   and ClickUp records the time entry. If a timer is already running when you open the
+   screen, it is shown and you can stop it right away.
 
-Nel form la **durata** accetta formati flessibili: `2h30`, `2h30m`, `1.5h`, `1,5h`,
-`90m`, `45` (numero nudo = ore). La **data** default è oggi (`YYYY-MM-DD`, editabile)
-e la **nota** è opzionale. Dopo il salvataggio puoi premere `r` per ricaricare il
-report e vedere subito le nuove ore. Si registrano sempre **le proprie** ore.
+In the form, **duration** accepts flexible formats: `2h30`, `2h30m`, `1.5h`, `1,5h`,
+`90m`, `45` (bare number = hours). The **date** defaults to today (`YYYY-MM-DD`, editable)
+and the **note** is optional. After saving, press `r` to reload the report and see the new
+hours immediately. You always log **your own** hours.
 
-### Scope team
+### Team scope
 
-Per lo scope `team` il token deve avere permessi Owner/Admin sul workspace:
-senza questi permessi la chiamata API fallisce e l'errore viene mostrato
-nella schermata d'errore. In v1.0 lo scope `team` aggrega le ore di **tutti**
-i membri del workspace configurato (nessuna selezione puntuale dei singoli
-membri, prevista per una versione futura, v1.3).
+For the `team` scope the token must have Owner/Admin permissions on the workspace: without
+them the API call fails and the error is shown on the error screen. In v1.0 the `team`
+scope aggregates the hours of **all** members of the configured workspace (no per-member
+selection — that is planned for a future version, v1.3).
 
-## Configurazione
+## Configuration
 
-La configurazione persiste in `~/.config/clickup-cli/config.yml` (segue
-`os.UserConfigDir()`, quindi rispetta `XDG_CONFIG_HOME` su Linux):
+Configuration persists in `~/.config/clickup-cli/config.yml` (it follows
+`os.UserConfigDir()`, so it respects `XDG_CONFIG_HOME` on Linux):
 
 ```yaml
 token: pk_xxx...
@@ -102,22 +102,21 @@ rates:
   "222": 30
 ```
 
-- `token`: token API personale ClickUp.
-- `workspace_id`: id del workspace (team ClickUp) scelto in fase di setup.
-- `currency`: valuta usata nel report e negli export.
-- `rate`: tariffa oraria di default usata per calcolare l'importo da fatturare.
-- `rates` (opzionale): mappa `list_id: tariffa` con tariffe orarie specifiche per
-  singola lista. Le liste non elencate usano la tariffa di default `rate`. La mappa
-  si compila comodamente dalla TUI premendo `p` nella schermata del report.
+- `token`: personal ClickUp API token.
+- `workspace_id`: id of the workspace (ClickUp team) chosen during setup.
+- `currency`: currency used in the report and exports.
+- `rate`: default hourly rate used to compute the billable amount.
+- `rates` (optional): a `list_id: rate` map with per-list hourly rates. Lists not listed
+  use the default `rate`. The map is conveniently filled from the TUI by pressing `p` on
+  the report screen.
 
-La variabile d'ambiente `CLICKUP_TOKEN`, se impostata, sovrascrive sempre il
-`token` letto dal file di config (comodo per CI o per non salvare il token su
-disco):
+The `CLICKUP_TOKEN` environment variable, when set, always overrides the `token` read from
+the config file (handy for CI or to avoid saving the token to disk):
 
 ```bash
 CLICKUP_TOKEN=pk_xxx clickup
 ```
 
-## Licenza
+## License
 
 MIT
