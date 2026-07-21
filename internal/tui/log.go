@@ -96,6 +96,21 @@ func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 
 type logDoneMsg struct{ summary string }
 
+type taskListMsg struct{ tasks []clickup.Task }
+
+// listTasksCmd carica i task di una lista in background.
+func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tasks, err := c.ListTasks(ctx, listID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return taskListMsg{tasks: tasks}
+	}
+}
+
 // createEntryCmd crea la time entry in background.
 func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur time.Duration, desc string) tea.Cmd {
 	return func() tea.Msg {
@@ -229,6 +244,56 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logScreen = lg
 		return m, cmd
 
+	case logListPick:
+		switch msg.String() {
+		case "up", "k":
+			if lg.listIdx > 0 {
+				lg.listIdx--
+			}
+		case "down", "j":
+			if lg.listIdx < len(lg.lists)-1 {
+				lg.listIdx++
+			}
+		case "enter":
+			if len(lg.lists) > 0 {
+				lg.loading = true
+				m.logScreen = lg
+				return m, listTasksCmd(m.client, lg.lists[lg.listIdx].id)
+			}
+		}
+		m.logScreen = lg
+		return m, nil
+
+	case logTaskPick:
+		switch msg.String() {
+		case "up", "k":
+			if lg.taskIdx > 0 {
+				lg.taskIdx--
+			}
+		case "down", "j":
+			if lg.taskIdx < len(lg.tasks)-1 {
+				lg.taskIdx++
+			}
+		case "enter":
+			if len(lg.tasks) > 0 {
+				t := lg.tasks[lg.taskIdx]
+				lg.taskID = t.ID
+				lg.taskName = t.Name
+				if lg.mode == modeTimer {
+					lg.step = logTimerRunning // Task 10 lo sostituirà con startTimerCmd
+					m.logScreen = lg
+					return m, nil
+				}
+				id, name := t.ID, t.Name
+				lg = enterForm(lg)
+				lg.taskID, lg.taskName = id, name
+				m.logScreen = lg
+				return m, nil
+			}
+		}
+		m.logScreen = lg
+		return m, nil
+
 	case logDone:
 		switch msg.String() {
 		case "r":
@@ -252,6 +317,40 @@ func (lg logModel) view() string {
 		b += "  " + styleAccent.Render("1") + ") Guidato — scegli lista e task\n"
 		b += "  " + styleAccent.Render("2") + ") Task ID/URL — vai diretto al form\n"
 		b += "  " + styleAccent.Render("3") + ") Timer — start/stop cronometro\n"
+	case logListPick:
+		b += "Scegli la lista:\n\n"
+		for i, l := range lg.lists {
+			cursor := "  "
+			line := l.name
+			if i == lg.listIdx {
+				cursor = "▸ "
+				line = styleAccent.Render(line)
+			}
+			b += cursor + line + "\n"
+		}
+		if len(lg.lists) == 0 {
+			b += styleHelp.Render("Nessuna lista nota: usa la modalità ID.") + "\n"
+		}
+		b += "\n" + styleHelp.Render("↑/↓ scegli · Enter: apri i task")
+	case logTaskPick:
+		if lg.loading {
+			b += styleHelp.Render("Caricamento task…")
+			break
+		}
+		b += "Scegli il task:\n\n"
+		for i, tk := range lg.tasks {
+			cursor := "  "
+			line := truncate(tk.Name, 40)
+			if i == lg.taskIdx {
+				cursor = "▸ "
+				line = styleAccent.Render(line)
+			}
+			b += cursor + line + "\n"
+		}
+		if len(lg.tasks) == 0 {
+			b += styleHelp.Render("Nessun task nella lista.") + "\n"
+		}
+		b += "\n" + styleHelp.Render("↑/↓ scegli · Enter: continua")
 	case logIDInput:
 		b += "ID o URL del task:\n\n" + lg.input.View()
 	case logForm:

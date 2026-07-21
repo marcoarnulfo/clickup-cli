@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -160,6 +161,54 @@ func TestIDInputEmptyStays(t *testing.T) {
 	}
 	if nm.logScreen.msg == "" {
 		t.Errorf("atteso messaggio d'errore per id vuoto")
+	}
+}
+
+func TestGuidedListPickIssuesCmd(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(key("n"))
+	m = next.(Model)
+	next, _ = m.Update(key("1")) // guidato -> listPick
+	m = next.(Model)
+	if len(m.logScreen.lists) == 0 {
+		t.Fatal("nessuna lista nota (attesa Lista 1 dalle entries)")
+	}
+	next, cmd := m.Update(key("enter"))
+	m = next.(Model)
+	if !m.logScreen.loading {
+		t.Errorf("atteso loading=true dopo Enter sulla lista")
+	}
+	if cmd == nil {
+		t.Errorf("atteso listTasksCmd dopo Enter sulla lista")
+	}
+}
+
+func TestGuidedTaskListMsgPopulatesPicker(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logListPick
+	m.screen = screenLog
+	next, _ := m.Update(taskListMsg{tasks: []clickup.Task{{ID: "x1", Name: "Uno"}, {ID: "x2", Name: "Due"}}})
+	nm := next.(Model)
+	if nm.logScreen.step != logTaskPick {
+		t.Fatalf("step = %v, atteso logTaskPick", nm.logScreen.step)
+	}
+	if len(nm.logScreen.tasks) != 2 {
+		t.Errorf("tasks = %d, attesi 2", len(nm.logScreen.tasks))
+	}
+}
+
+func TestGuidedTaskSelectToForm(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logTaskPick
+	m.logScreen.mode = modeGuided
+	m.logScreen.tasks = []clickup.Task{{ID: "x1", Name: "Uno"}}
+	m.screen = screenLog
+	next, _ := m.Update(key("enter"))
+	nm := next.(Model)
+	if nm.logScreen.step != logForm || nm.logScreen.taskID != "x1" {
+		t.Errorf("step=%v taskID=%q, atteso logForm/x1", nm.logScreen.step, nm.logScreen.taskID)
 	}
 }
 

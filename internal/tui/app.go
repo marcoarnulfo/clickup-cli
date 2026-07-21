@@ -194,6 +194,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logScreen.msg = msg.summary
 		m.screen = screenLog
 		return m, nil
+
+	case taskListMsg:
+		m.logScreen.tasks = msg.tasks
+		m.logScreen.taskIdx = 0
+		m.logScreen.loading = false
+		m.logScreen.step = logTaskPick
+		return m, nil
 	}
 	return m, nil
 }
