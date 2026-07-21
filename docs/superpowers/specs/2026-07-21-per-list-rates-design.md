@@ -90,11 +90,19 @@ func (r Rates) For(listID string) float64 {
 
 `report.Build` cambia firma: il parametro `rate float64` diventa `rates Rates`.
 L'aggregazione resta invariata per le **ore**; l'**importo** di ogni bucket diventa
-la somma, sulle entry del bucket, di `entry.Duration.Hours() × rates.For(entry.ListID)`
-(arrotondata a 2 decimali come oggi). Il campo `Report.Rate float64` viene **rimosso**:
-non serve più un rate scalare sul `Report` perché l'importo calcolato vive già in
-`Bucket.Amount` (e in `Report.TotalAmount`); `Report.Currency` resta. Nessun nuovo
-campo `Rates` sul `Report`.
+la somma, sulle entry del bucket, di `entry.Duration.Hours() × rates.For(entry.ListID)`,
+arrotondata a 2 decimali (il totale del report è la somma degli importi dei bucket
+arrotondati). Il campo `Report.Rate float64` viene **ridefinito** come *tariffa di
+default* (valorizzato da `Build` con `rates.Default`): serve all'export JSON, che
+continua a esporre un campo `rate` di riferimento, mentre gli importi effettivi
+(potenzialmente a tariffa mista) vivono in `Bucket.Amount` / `Report.TotalAmount`.
+`Report.Currency` resta.
+
+**Nota sull'arrotondamento (cambio intenzionale rispetto a v1.0):** in v1.0 l'importo
+era `round2(oreArrotondate × rate)`; da v1.1 è `round2(Σ oreReali × tariffaLista)`.
+Per una singola lista alla tariffa di default questo produce l'importo *matematicamente
+esatto* (es. 1/3 h × 30 = 10.00 anziché 0.33 × 30 = 9.90). È un miglioramento di
+accuratezza; il test `TestRoundingTwoDecimals` va aggiornato di conseguenza.
 
 Nota implementativa: poiché l'importo non è più `bucket.Hours × rate_unico`, il calcolo
 va fatto accumulando per entry durante l'aggregazione, non a posteriori sui bucket.
@@ -142,8 +150,9 @@ Nuovo screen `screenRates` e sotto-modello `ratesModel`:
 ## 4. Impatti su codice esistente
 
 - `internal/config/config.go`: aggiungere `Rates`.
-- `internal/report/model.go` + `aggregate.go`: `Rates` type, `Report` con `Rate float64`
-  rimosso, `Build` con `rates Rates`, calcolo importo per-entry.
+- `internal/report/model.go` + `aggregate.go`: `Rates` type, `Report.Rate` ridefinito
+  come tariffa di default (`= rates.Default`), `Build` con `rates Rates`, calcolo
+  importo per-entry. `internal/export` invariato (continua a leggere `Report.Rate`).
 - `internal/clickup`: `ListName` + cache con mutex; il Client diventa non più
   banalmente value-copyable — usare sempre il puntatore (già così).
 - `internal/tui`: nuovo `rates.go` (screen + model), modifiche a `report.go` (tasto `p`,
