@@ -169,7 +169,7 @@ func TestReportCycleGroupBy(t *testing.T) {
 func TestHomeChangesMonthAndScope(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	m.year, m.month = 2026, 7
-	m.home = newHome(2026, 7)
+	m.home = newHome()
 
 	// freccia sinistra -> mese precedente
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
@@ -212,7 +212,7 @@ func TestExportWritesFile(t *testing.T) {
 
 func TestHomeEnterStartsLoading(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
-	m.home = newHome(m.year, m.month)
+	m.home = newHome()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := updated.(Model)
 	if mm.screen != screenLoading {
