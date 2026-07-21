@@ -45,7 +45,8 @@ func TestFormat(t *testing.T) {
 		45 * time.Minute:             "45m",
 		3*time.Hour + 30*time.Minute: "3h 30m",
 		0:                            "0m",
-		2*time.Hour + 30*time.Second: "2h", // sub-minute dropped
+		2*time.Hour + 30*time.Second: "2h",     // sub-minute dropped
+		-90 * time.Minute:            "1h 30m", // negative is normalized
 	}
 	for in, want := range cases {
 		if got := Format(in); got != want {
