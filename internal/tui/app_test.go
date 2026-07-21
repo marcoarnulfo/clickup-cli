@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -712,5 +714,96 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	}
 	if m.ratesScreen.msg == "" {
 		t.Fatal("expected a save error message")
+	}
+}
+
+// Fix 1: a filter selection whose value is absent from the freshly loaded
+// entries (e.g. after a range change) must be pruned, so the report doesn't
+// silently stay stuck empty with no way to clear it from the Filters UI.
+func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
+	m := Model{
+		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		filterLists: map[string]bool{"Gone": true},
+	}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.filterLists["Gone"] {
+		t.Errorf("stale filter selection %q should have been pruned, got filterLists = %+v", "Gone", m.filterLists)
+	}
+	if m.report.TotalHours <= 0 {
+		t.Errorf("report should not stay stuck empty after pruning stale filters; TotalHours = %v", m.report.TotalHours)
+	}
+}
+
+// Fix 2: statusEnrichCmd must tolerate a single non-retrievable task (e.g.
+// deleted, no permission, rate-limited) instead of discarding everything
+// fetched and bricking the Filters screen for the whole session.
+func TestStatusEnrichCmdTolerantOfPerTaskFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/task/tgood":
+			w.Write([]byte(`{"id":"tgood","status":{"status":"open"}}`))
+		case "/task/tbad":
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"err":"Task not found","ECODE":"TASK_002"}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := statusEnrichCmd(c, []string{"tgood", "tbad"})()
+	sm, ok := msg.(statusesMsg)
+	if !ok {
+		t.Fatalf("a single unreachable task should not abort enrichment; got %T (%+v)", msg, msg)
+	}
+	if sm.byTask["tgood"] != "open" {
+		t.Errorf("byTask[tgood] = %q, want %q", sm.byTask["tgood"], "open")
+	}
+	if st, ok := sm.byTask["tbad"]; !ok || st != "" {
+		t.Errorf("byTask[tbad] = (%q, %v), want (\"\", true): unreachable tasks cache as empty status", st, ok)
+	}
+}
+
+// Fix 2 (auth exception): a 401 must still surface as errMsg to relaunch setup.
+func TestStatusEnrichCmdStillReturnsErrMsgOnUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_025"}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := statusEnrichCmd(c, []string{"t1"})()
+	em, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("401 should still return errMsg, got %T", msg)
+	}
+	if !errors.Is(em.err, clickup.ErrUnauthorized) {
+		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+}
+
+// Fix 3: 'q' must not quit while typing a custom date on the range screen —
+// it has free-text inputs, so a stray 'q' shouldn't kill the whole session.
+func TestQuitKeyDoesNotQuitWhileEditingCustomRange(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.screen = screenRange
+	m.rangeScreen = newRange(report.PresetThisMonth)
+	m.rangeScreen.editing = true
+	m.rangeScreen.field = 0
+	m.rangeScreen.fromInput = newTextInput("From (YYYY-MM-DD)")
+	m.rangeScreen.fromInput.Focus()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil && reflect.ValueOf(cmd).Pointer() == reflect.ValueOf(tea.Quit).Pointer() {
+		t.Fatal("'q' while editing a custom date must not quit the application")
+	}
+	mm := updated.(Model)
+	if !strings.Contains(mm.rangeScreen.fromInput.Value(), "q") {
+		t.Fatalf("'q' should have been typed into the From input, got %q", mm.rangeScreen.fromInput.Value())
 	}
 }

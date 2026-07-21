@@ -81,16 +81,16 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month (only while the `this month` range is active) |
 | `t` | Home | Toggle scope `me` / `team` |
 | `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
-| `Enter` | Home | Generate the report for the selected month/scope |
+| `Enter` | Home | Generate the report for the selected range/scope |
 | `g` | Report | Cycle grouping: total → task → list → day → member (team) → total |
 | `e` | Report | Open the export menu (CSV/JSON/Markdown) |
 | `m` / `s` | Report | Go back home to change range/scope |
-| `r` | Report | Reload the time entries from the API for the same month/scope |
+| `r` | Report | Reload the time entries from the API for the same range/scope |
 | `p` | Report | Open the **Per-list rates** screen |
 | `f` | Report | Open the **Filters** screen (list/tag/status) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
-| `Enter` | Export | Save `clickup-report-YYYY-MM.<ext>` in the cwd |
+| `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (`<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
 | `q` | Everywhere except setup | Quit the application |
 | `Ctrl+C` | Always | Quit the application |

@@ -122,7 +122,7 @@ func (rm reportModel) view() string {
 	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
-		body = styleBox.Render("No hours tracked this month.")
+		body = styleBox.Render("No hours to show.")
 	}
 	return title + "\n\n" + body + "\n\n" + help
 }

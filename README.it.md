@@ -83,16 +83,16 @@ di setup.
 | `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese (solo mentre il periodo `this month` è attivo) |
 | `t` | Home | Alterna scope `me` / `team` |
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
-| `Enter` | Home | Genera il report per mese/scope selezionati |
+| `Enter` | Home | Genera il report per il periodo/scope selezionati |
 | `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → membro (team) → totale |
 | `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
 | `m` / `s` | Report | Torna alla home per cambiare range/scope |
-| `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
+| `r` | Report | Ricarica le voci ore dall'API per lo stesso periodo/scope |
 | `p` | Report | Apre la schermata **Tariffe per lista** |
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
-| `Enter` | Export | Salva `clickup-report-YYYY-MM.<ext>` nella cwd |
+| `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (`<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
 | `q` | Ovunque tranne il setup | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |

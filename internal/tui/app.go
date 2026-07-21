@@ -222,7 +222,11 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 }
 
 // statusEnrichCmd fetches the current status of each task id and returns them
-// as a statusesMsg (or errMsg on the first failure).
+// as a statusesMsg. A single non-retrievable task (deleted, no permission,
+// rate-limited, …) must not brick the Filters screen for the whole session:
+// per the spec, its status resolves to "" and enrichment continues with the
+// rest. An unauthorized token is the one failure worth surfacing as errMsg,
+// since it means the token itself needs re-entering via the setup wizard.
 func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -231,7 +235,11 @@ func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
 		for _, id := range taskIDs {
 			st, err := c.TaskStatus(ctx, id)
 			if err != nil {
-				return errMsg{err: err}
+				if errors.Is(err, clickup.ErrUnauthorized) {
+					return errMsg{err: err}
+				}
+				byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
+				continue
 			}
 			byTask[id] = st
 		}
@@ -265,6 +273,46 @@ func (m *Model) assignStatuses() {
 	}
 }
 
+// pruneFilters intersects each of filterLists/filterTags/filterStatuses with
+// the values actually present in m.entries, dropping any selection whose
+// value no longer occurs (e.g. after a range change swaps in a different set
+// of entries). Without this, a stale selection silently filters the report
+// down to nothing with no way to clear it from the Filters screen.
+func (m *Model) pruneFilters() {
+	lists := map[string]bool{}
+	tags := map[string]bool{}
+	statuses := map[string]bool{}
+	for _, e := range m.entries {
+		if e.ListName != "" {
+			lists[e.ListName] = true
+		}
+		for _, t := range e.Tags {
+			tags[t] = true
+		}
+		if e.Status != "" {
+			statuses[e.Status] = true
+		}
+	}
+	m.filterLists = pruneFilterSet(m.filterLists, lists)
+	m.filterTags = pruneFilterSet(m.filterTags, tags)
+	m.filterStatuses = pruneFilterSet(m.filterStatuses, statuses)
+}
+
+// pruneFilterSet keeps only the selected (true) entries of sel whose key is
+// present in the current set, dropping stale keys and any lingering false ones.
+func pruneFilterSet(sel, present map[string]bool) map[string]bool {
+	if len(sel) == 0 {
+		return sel
+	}
+	out := make(map[string]bool, len(sel))
+	for k, v := range sel {
+		if v && present[k] {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // loadMembersCmd fetches the workspace members in the background and returns
 // membersMsg or errMsg.
 func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
@@ -286,7 +334,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -316,6 +364,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entriesMsg:
 		m.entries = msg.entries
 		m.assignStatuses() // re-stamp session-cached statuses onto the freshly loaded entries
+		m.pruneFilters()   // drop filter selections whose value no longer occurs in the new entries
 		groupBy := m.report.GroupBy
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // first load: summary of the month
