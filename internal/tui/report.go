@@ -71,8 +71,24 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "n":
 		m.logScreen = newLog(m.entries, m.cfg)
 		m.screen = screenLog
+	case "f":
+		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		m.screen = screenFilters
 	}
 	return m, nil
+}
+
+// applyReport rebuilds m.report from the visible entries over the current range,
+// keeping the active grouping.
+func (m *Model) applyReport() {
+	g := m.report.GroupBy
+	if g == "" {
+		g = report.GroupByTotal
+	}
+	start, end := m.currentRange()
+	m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+	m.report.Scope = m.scope
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 }
 
 func (rm reportModel) view() string {
@@ -92,7 +108,7 @@ func (rm reportModel) view() string {
 		"TOTAL", r.TotalHours, r.TotalAmount, r.Currency))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · m/s: change month/scope · r: reload · q: quit")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change month/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("No hours tracked this month.")

@@ -25,6 +25,7 @@ const (
 	screenError
 	screenMembers
 	screenRange
+	screenFilters
 )
 
 // Async messages.
@@ -73,6 +74,7 @@ type Model struct {
 	logScreen     logModel
 	membersScreen membersModel
 	rangeScreen   rangeModel
+	filtersScreen filtersModel
 }
 
 // New builds the root model from the config.
@@ -346,6 +348,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateMembers(msg)
 	case screenRange:
 		return m.updateRange(msg)
+	case screenFilters:
+		return m.updateFilters(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -378,6 +382,8 @@ func (m Model) View() string {
 		return m.membersScreen.view()
 	case screenRange:
 		return m.rangeScreen.view()
+	case screenFilters:
+		return m.filtersScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}
