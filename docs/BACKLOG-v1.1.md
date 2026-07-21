@@ -10,35 +10,32 @@ Rilievi minori/importanti-non-bloccanti individuati dopo il merge di v1.0. L'uni
 bloccante (token mostrato in chiaro nel wizard) è già stato risolto in v1.0
 (`fix: mask API token input in setup wizard`).
 
+### ✅ Chiusi in v0.1.1
+
+- [x] **`flexString` più robusto** — ora usa `encoding/json` (string/number/null);
+  `null` → stringa vuota, stringhe de-escaped correttamente.
+- [x] **Parsing durata/inizio con errore esplicito** — `TimeEntries` ora ritorna
+  errore su `duration`/`start` malformati (i timer in corso restano skippati).
+- [x] **Scope "team": errore se workspace non trovato** — `loadEntriesCmd` segnala
+  l'errore invece del fallback silenzioso su "me".
+- [x] **Validazione input nel wizard** — input bloccato durante la validazione del
+  token; tariffa non numerica rifiutata con messaggio d'errore.
+- [x] **Allineamento colonne tabella report** — header allineato alle righe dati.
+- [x] **Asserzione test più stretta** — `TestBuildByTaskSortedByHoursDesc` verifica
+  anche `Buckets[1]`.
+
+### Ancora aperti
+
 - [ ] **Nome leggibile della lista** — `internal/clickup/timeentries.go`: l'endpoint
   `time_entries` restituisce solo `list_id`. Oggi usiamo l'ID come `ListName` (il
   raggruppamento "per progetto" funziona ma mostra l'ID). Risolvere il nome via
-  `GET /list/{id}` con una cache `list_id -> name`.
-- [ ] **`flexString` più robusto** — `internal/clickup/timeentries.go:16`: usa
-  `strings.Trim(b, '"')`. Passare a `strconv.Unquote` per gestire caratteri
-  escaped, e aggiungere una guardia per `list_id` JSON `null` (oggi diventerebbe
-  la stringa letterale `"null"` come etichetta di un bucket).
-- [ ] **Parsing durata/inizio con errore esplicito** — `internal/clickup/timeentries.go:64`:
-  gli errori di `strconv.ParseInt` su `duration`/`start` sono scartati; un valore
-  malformato dall'API produce silenziosamente una entry a durata zero datata
-  all'epoch, distorcendo i totali. Propagare un errore invece di ingoiarlo.
-- [ ] **Scope "team": errore se workspace non trovato** — `internal/tui/app.go`
-  (`loadEntriesCmd`): se il workspace configurato non è tra quelli di `Teams()`,
-  `assignees` resta vuoto e il report mostra silenziosamente solo le ore "me" sotto
-  l'intestazione "team". Segnalare l'errore invece del fallback silenzioso.
-- [ ] **Validazione input nel wizard** — `internal/tui/setup.go`: (a) `s.loading`
-  non blocca l'input durante la validazione del token (l'utente può ridigitare/
-  ri-inviare, lanciando una seconda validazione); (b) l'errore di `strconv.ParseFloat`
-  sulla tariffa è scartato (input non valido → `0` silenzioso, senza feedback).
+  `GET /list/{id}` con una cache `list_id -> name`. (Da valutare con la feature v1.1.)
 - [ ] **Stato duplicato in `homeModel`** — i campi `homeModel.scope/year/month`
   duplicano lo stato del root `Model`, sincronizzati a mano. Rimuoverli o far
   accettare a `newHome` lo scope, per evitare drift futuri.
-- [ ] **Allineamento colonne tabella report** (cosmetico) — `internal/tui/report.go`:
-  l'header usa `%12s` mentre le righe usano `%10.2f %s`; le colonne non sono
-  allineate. Uniformare i formati.
-- [ ] **Asserzione test più stretta** — `internal/report/aggregate_test.go`:
-  `TestBuildByTaskSortedByHoursDesc` non asserisce `Buckets[1]`; verificare anche
-  il secondo bucket per coprire completamente il tie-break dell'ordinamento.
+- [ ] **Test path "happy" scope team** — manca un test che copra `loadEntriesCmd`
+  con `found == true` (membri del team → `entriesMsg`); oggi è coperto solo il caso
+  workspace-non-trovato. Gap preesistente, non regressione.
 
 ## Roadmap funzionale (dal piano v1.0)
 
