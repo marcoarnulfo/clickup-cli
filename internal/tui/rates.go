@@ -145,6 +145,9 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rt.msg = ""
 			rt.input = newNumberInput("new rate (Esc to cancel)")
 		}
+	case "b":
+		m.ratesScreen = rt
+		return m.openListBrowser(screenRates)
 	case "d":
 		if len(rt.rows) > 0 {
 			delete(rt.rates, rt.rows[rt.idx].listID) // revert to the default rate
@@ -212,6 +215,6 @@ func (rt ratesModel) view() string {
 	if rt.msg != "" {
 		b += "\n" + styleErr.Render(rt.msg)
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ select · Enter: edit · d: use default · s: save · Esc: cancel")
+	b += "\n\n" + styleHelp.Render("↑/↓ select · Enter: edit · d: use default · b: browse lists · s: save · Esc: cancel")
 	return b
 }
