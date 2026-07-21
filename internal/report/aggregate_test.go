@@ -38,6 +38,9 @@ func TestBuildByTaskSortedByHoursDesc(t *testing.T) {
 	if r.Buckets[0].Label != "Bug fix" || r.Buckets[0].Hours != 3 {
 		t.Fatalf("bucket[0] = %+v", r.Buckets[0])
 	}
+	if r.Buckets[1].Label != "Feature X" || r.Buckets[1].Hours != 3 {
+		t.Fatalf("bucket[1] = %+v", r.Buckets[1])
+	}
 }
 
 func TestBuildByList(t *testing.T) {
