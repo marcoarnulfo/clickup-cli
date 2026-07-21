@@ -24,12 +24,14 @@ bloccante (token mostrato in chiaro nel wizard) è già stato risolto in v1.0
 - [x] **Asserzione test più stretta** — `TestBuildByTaskSortedByHoursDesc` verifica
   anche `Buckets[1]`.
 
+### ✅ Chiuso in v1.1
+
+- [x] **Nome leggibile della lista** — risolto via `GET /list/{id}` con cache
+  (`clickup.Client.ListName`), usato nella schermata tariffe e nel raggruppamento
+  "per progetto" del report.
+
 ### Ancora aperti
 
-- [ ] **Nome leggibile della lista** — `internal/clickup/timeentries.go`: l'endpoint
-  `time_entries` restituisce solo `list_id`. Oggi usiamo l'ID come `ListName` (il
-  raggruppamento "per progetto" funziona ma mostra l'ID). Risolvere il nome via
-  `GET /list/{id}` con una cache `list_id -> name`. (Da valutare con la feature v1.1.)
 - [ ] **Stato duplicato in `homeModel`** — i campi `homeModel.scope/year/month`
   duplicano lo stato del root `Model`, sincronizzati a mano. Rimuoverli o far
   accettare a `newHome` lo scope, per evitare drift futuri.
@@ -37,10 +39,26 @@ bloccante (token mostrato in chiaro nel wizard) è già stato risolto in v1.0
   con `found == true` (membri del team → `entriesMsg`); oggi è coperto solo il caso
   workspace-non-trovato. Gap preesistente, non regressione.
 
+## Papercut dalla review finale v1.1 (schermata tariffe)
+
+Rilievi minori (non bloccanti) dalla review Opus della feature tariffe per lista.
+Il più rilevante — salvataggio silenzioso — è già stato risolto in v1.1
+(`fix: surface config save errors on the rates screen`).
+
+- [ ] **Semantica `Esc` incoerente tra schermate** — nella schermata tariffe `Esc`
+  (fuori editing) **salva** come `s`; nella schermata export `Esc` **annulla**.
+  Valutare un percorso di "scarta senza salvare" distinto, o documentare meglio.
+- [ ] **Input tariffa non filtrato** — il campo accetta qualsiasi carattere e valida
+  solo all'Enter (`validRate`). Un textinput numerico-only rifiuterebbe subito il junk.
+- [ ] **Override uguale al default persistito** — impostare una tariffa pari al default
+  salva comunque una entry ridondante in `cfg.Rates` (rimovibile con `d`).
+- [ ] **Latenza risoluzione nomi a cache fredda** — con molte liste distinte in un mese,
+  le `GET /list/{id}` sequenziali dentro il ctx da 30s potrebbero avvicinarsi al timeout;
+  valutare parallelizzazione o budget più ampio.
+
 ## Roadmap funzionale (dal piano v1.0)
 
-- **v1.1** — Tariffe **per progetto/cliente** (mappatura in config), oltre alla
-  tariffa unica attuale.
+- **v1.1** — ✅ **fatto**: tariffe **per lista** (con nomi leggibili e schermata TUI).
 - **v1.2** — **Log ore rapido** da TUI (creazione di time entry via API).
 - **v1.3** — Filtri (progetto/tag/status) + **range date custom** (non solo mese);
   **selezione puntuale dei membri** del team (multiselezione), oggi lo scope "team"
