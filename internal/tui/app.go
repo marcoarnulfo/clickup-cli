@@ -52,15 +52,17 @@ type Model struct {
 	// data
 	report          report.Report
 	entries         []report.TimeEntry
-	selectedMembers map[int]bool // selected member ids; empty = all (no filter)
+	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
+	teamMembers     []clickup.Member // workspace members (session cache)
 
 	// sub-models
-	setup       setupModel
-	home        homeModel
-	rep         reportModel
-	export      exportModel
-	ratesScreen ratesModel
-	logScreen   logModel
+	setup         setupModel
+	home          homeModel
+	rep           reportModel
+	export        exportModel
+	ratesScreen   ratesModel
+	logScreen     logModel
+	membersScreen membersModel
 }
 
 // New builds the root model from the config.
@@ -247,6 +249,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = screenLog
 		return m, nil
+
+	case membersMsg:
+		m.teamMembers = msg.members
+		if len(m.selectedMembers) == 0 {
+			m.selectedMembers = make(map[int]bool, len(msg.members))
+			for _, mem := range msg.members {
+				m.selectedMembers[mem.ID] = true // default: all selected
+			}
+		}
+		m.membersScreen = newMembers(msg.members, m.selectedMembers)
+		m.screen = screenMembers
+		return m, nil
 	}
 	return m, nil
 }
@@ -266,6 +280,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateRates(msg)
 	case screenLog:
 		return m.updateLog(msg)
+	case screenMembers:
+		return m.updateMembers(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -294,6 +310,8 @@ func (m Model) View() string {
 		return m.ratesScreen.view()
 	case screenLog:
 		return m.logScreen.view()
+	case screenMembers:
+		return m.membersScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}
