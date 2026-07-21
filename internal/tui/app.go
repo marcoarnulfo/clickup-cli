@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
+	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +23,7 @@ const (
 	screenRates
 	screenLog
 	screenError
+	screenMembers
 )
 
 // Async messages.
@@ -48,8 +49,9 @@ type Model struct {
 	scope string // "me" | "team"
 
 	// data
-	report  report.Report
-	entries []report.TimeEntry
+	report          report.Report
+	entries         []report.TimeEntry
+	selectedMembers map[int]bool // selected member ids; empty = all (no filter)
 
 	// sub-models
 	setup       setupModel
@@ -93,7 +95,20 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 	if m.demo {
 		return demoEntriesCmd(m.year, m.month)
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, m.selectedAssignees())
+}
+
+// selectedAssignees returns the ids of the currently selected members, sorted.
+// An empty result means "no member filter" (all members).
+func (m Model) selectedAssignees() []int {
+	var ids []int
+	for id, on := range m.selectedMembers {
+		if on {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // ratesFromConfig builds the report rates from config (default + overrides).
@@ -102,31 +117,21 @@ func ratesFromConfig(cfg config.Config) report.Rates {
 }
 
 // loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
-// For scope "team" it derives the ids of all workspace members (via Teams)
-// and passes them as assignees, so the report covers the whole team; for "me" no
-// assignee is set (the API returns the entries of the authenticated user).
-func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string) tea.Cmd {
+// For scope "team" with an empty assignees slice it derives ALL workspace members
+// (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
+// (skipping the members lookup). For scope "me" no assignee filter is applied.
+func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string, assignees []int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		var assignees []int
-		if scope == "team" {
-			teams, err := c.Teams(ctx)
+		if scope == "team" && len(assignees) == 0 {
+			members, err := c.TeamMembers(ctx, teamID)
 			if err != nil {
 				return errMsg{err: err}
 			}
-			found := false
-			for _, t := range teams {
-				if t.ID == teamID {
-					found = true
-					for _, mem := range t.Members {
-						assignees = append(assignees, mem.ID)
-					}
-				}
-			}
-			if !found {
-				return errMsg{err: fmt.Errorf("workspace %s not found or not accessible with this token", teamID)}
+			for _, mem := range members {
+				assignees = append(assignees, mem.ID)
 			}
 		}
 

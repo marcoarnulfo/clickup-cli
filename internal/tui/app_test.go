@@ -60,7 +60,7 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
 	if _, ok := msg.(errMsg); !ok {
 		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
 	}
@@ -88,7 +88,7 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
@@ -113,13 +113,78 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 	c := clickup.New("t")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "me")()
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "me", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}
 	if len(em.entries) != 1 || em.entries[0].ListName != "Client Z" {
 		t.Fatalf("list name not resolved: %+v", em.entries)
+	}
+}
+
+func TestSelectedAssignees(t *testing.T) {
+	m := Model{selectedMembers: map[int]bool{3: true, 1: false, 2: true}}
+	got := m.selectedAssignees()
+	if len(got) != 2 || got[0] != 2 || got[1] != 3 {
+		t.Errorf("selectedAssignees = %v, want [2 3]", got)
+	}
+}
+
+func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
+	teamCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			if got := r.URL.Query().Get("assignee"); got != "7,9" {
+				t.Errorf("assignee = %q, want 7,9", got)
+			}
+			w.Write([]byte(`{"data":[]}`))
+		case strings.HasSuffix(r.URL.Path, "/team"):
+			teamCalled = true
+			w.Write([]byte(`{"teams":[]}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", []int{7, 9})()
+	if _, ok := msg.(entriesMsg); !ok {
+		t.Fatalf("expected entriesMsg, got %T", msg)
+	}
+	if teamCalled {
+		t.Error("explicit assignees: /team must not be called")
+	}
+}
+
+func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			if got := r.URL.Query().Get("assignee"); got != "5" {
+				t.Errorf("assignee = %q, want 5", got)
+			}
+			w.Write([]byte(`{"data":[]}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	m := Model{
+		client:          c,
+		cfg:             config.Config{WorkspaceID: "900"},
+		year:            2026,
+		month:           time.July,
+		scope:           "team",
+		selectedMembers: map[int]bool{5: true},
+	}
+	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
 
