@@ -20,6 +20,7 @@ const (
 	screenLoading
 	screenReport
 	screenExport
+	screenRates
 	screenError
 )
 
@@ -49,10 +50,11 @@ type Model struct {
 	entries []report.TimeEntry
 
 	// sotto-modelli
-	setup  setupModel
-	home   homeModel
-	rep    reportModel
-	export exportModel
+	setup       setupModel
+	home        homeModel
+	rep         reportModel
+	export      exportModel
+	ratesScreen ratesModel
 }
 
 // New costruisce il modello radice a partire dalla config.
@@ -148,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -199,6 +201,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateReport(msg)
 	case screenExport:
 		return m.updateExport(msg)
+	case screenRates:
+		return m.updateRates(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -223,6 +227,8 @@ func (m Model) View() string {
 		return m.rep.view()
 	case screenExport:
 		return m.export.view()
+	case screenRates:
+		return m.ratesScreen.view()
 	case screenError:
 		return styleErr.Render("Errore: ") + m.err.Error() + "\n\n" + styleHelp.Render("premi un tasto per tornare alla home")
 	}
