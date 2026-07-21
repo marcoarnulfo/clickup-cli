@@ -1,32 +1,32 @@
 # docs/demo.tape — vhs script for the README demo GIF.
 #
-# Generate:  vhs docs/demo.tape   (writes docs/demo.gif)
-# Install vhs: https://github.com/charmbracelet/vhs  (brew install vhs)
+# Generate:  vhs docs/demo.tape        (writes docs/demo.gif)
+# Install vhs: https://github.com/charmbracelet/vhs   (brew install vhs)
 #
-# NOTE: the app needs to reach the report to show a meaningful demo, so run this
-# with a configured ~/.config/clickup-cli/config.yml (or CLICKUP_TOKEN set),
-# which lands the TUI on the home screen with real data.
+# Uses the built-in demo mode (CLICKUP_DEMO=1): fixture data, no ClickUp
+# account or token needed, so the GIF is fully reproducible. Requires the
+# `clickup` binary on PATH (go install ./cmd/clickup).
 
 Output docs/demo.gif
 
 Set Shell "bash"
 Set FontSize 18
 Set Width 1100
-Set Height 640
-Set Padding 16
+Set Height 660
+Set Padding 18
 Set Theme "Dracula"
 
-# Launch (hidden while it boots)
+# Launch in demo mode (hidden while it boots)
 Hide
-Type "clickup"
+Type "CLICKUP_DEMO=1 clickup"
 Enter
 Sleep 2s
 Show
 
-# Home: pick a month, toggle scope
+# Home: pick an earlier month, toggle scope me/team
 Sleep 1s
-Left@500ms 2
-Sleep 800ms
+Left@450ms 2
+Sleep 900ms
 Type "t"
 Sleep 900ms
 Type "t"
@@ -36,19 +36,21 @@ Sleep 900ms
 Enter
 Sleep 2500ms
 
-# Cycle the grouping (total -> task -> list -> day)
+# Cycle the grouping: total -> task -> list -> day
 Type "g"
-Sleep 1500ms
+Sleep 1600ms
 Type "g"
-Sleep 1500ms
+Sleep 1600ms
 Type "g"
-Sleep 1500ms
+Sleep 1600ms
 
-# Peek at the Log hours screen, then back
+# Peek at Log hours: open, choose Guided, see the list picker, go back
 Type "n"
-Sleep 1800ms
+Sleep 1400ms
+Type "1"
+Sleep 1600ms
 Escape
-Sleep 1000ms
+Sleep 900ms
 
 # Quit
 Type "q"
