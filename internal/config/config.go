@@ -12,10 +12,11 @@ import (
 
 // Config è la configurazione persistita della CLI.
 type Config struct {
-	Token       string  `yaml:"token"`
-	WorkspaceID string  `yaml:"workspace_id"`
-	Currency    string  `yaml:"currency"`
-	Rate        float64 `yaml:"rate"`
+	Token       string             `yaml:"token"`
+	WorkspaceID string             `yaml:"workspace_id"`
+	Currency    string             `yaml:"currency"`
+	Rate        float64            `yaml:"rate"`
+	Rates       map[string]float64 `yaml:"rates,omitempty"` // list_id -> tariffa override
 }
 
 // Valid indica se la config è utilizzabile per interrogare l'API.
