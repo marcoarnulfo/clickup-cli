@@ -21,6 +21,7 @@ const (
 	screenReport
 	screenExport
 	screenRates
+	screenLog
 	screenError
 )
 
@@ -55,6 +56,7 @@ type Model struct {
 	rep         reportModel
 	export      exportModel
 	ratesScreen ratesModel
+	logScreen   logModel
 }
 
 // New costruisce il modello radice a partire dalla config.
@@ -203,6 +205,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateExport(msg)
 	case screenRates:
 		return m.updateRates(msg)
+	case screenLog:
+		return m.updateLog(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -229,6 +233,8 @@ func (m Model) View() string {
 		return m.export.view()
 	case screenRates:
 		return m.ratesScreen.view()
+	case screenLog:
+		return m.logScreen.view()
 	case screenError:
 		return styleErr.Render("Errore: ") + m.err.Error() + "\n\n" + styleHelp.Render("premi un tasto per tornare alla home")
 	}
