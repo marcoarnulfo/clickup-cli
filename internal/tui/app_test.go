@@ -1,14 +1,32 @@
 package tui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /team ritorna un workspace con id DIVERSO da quello richiesto
+		w.Write([]byte(`{"teams":[{"id":"OTHER","name":"X","members":[{"user":{"id":1,"username":"a"}}]}]}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("scope team con workspace non trovato deve dare errMsg, got %T", msg)
+	}
+}
 
 func TestNewStartsInSetupWhenInvalid(t *testing.T) {
 	m := New(config.Config{})
