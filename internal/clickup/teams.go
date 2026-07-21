@@ -1,6 +1,9 @@
 package clickup
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Member is a member of a workspace.
 type Member struct {
@@ -41,4 +44,19 @@ func (c *Client) Teams(ctx context.Context) ([]Team, error) {
 		teams = append(teams, team)
 	}
 	return teams, nil
+}
+
+// TeamMembers returns the members of the given workspace (team) id.
+// It errors if the workspace is not accessible with the token.
+func (c *Client) TeamMembers(ctx context.Context, teamID string) ([]Member, error) {
+	teams, err := c.Teams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range teams {
+		if t.ID == teamID {
+			return t.Members, nil
+		}
+	}
+	return nil, fmt.Errorf("workspace %s not found or not accessible with this token", teamID)
 }

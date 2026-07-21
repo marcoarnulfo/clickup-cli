@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
+	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,12 +23,14 @@ const (
 	screenRates
 	screenLog
 	screenError
+	screenMembers
 )
 
 // Async messages.
 type (
 	entriesMsg struct{ entries []report.TimeEntry }
 	teamsMsg   struct{ teams []clickup.Team }
+	membersMsg struct{ members []clickup.Member }
 	errMsg     struct{ err error }
 )
 
@@ -48,16 +50,19 @@ type Model struct {
 	scope string // "me" | "team"
 
 	// data
-	report  report.Report
-	entries []report.TimeEntry
+	report          report.Report
+	entries         []report.TimeEntry
+	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
+	teamMembers     []clickup.Member // workspace members (session cache)
 
 	// sub-models
-	setup       setupModel
-	home        homeModel
-	rep         reportModel
-	export      exportModel
-	ratesScreen ratesModel
-	logScreen   logModel
+	setup         setupModel
+	home          homeModel
+	rep           reportModel
+	export        exportModel
+	ratesScreen   ratesModel
+	logScreen     logModel
+	membersScreen membersModel
 }
 
 // New builds the root model from the config.
@@ -90,10 +95,34 @@ func (m Model) Init() tea.Cmd { return nil }
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
 // in demo mode, otherwise the real API call.
 func (m Model) reloadEntriesCmd() tea.Cmd {
-	if m.demo {
-		return demoEntriesCmd(m.year, m.month)
+	// The member filter is a team-scope concept; never carry a stale
+	// selection into a "me" load.
+	var assignees []int
+	if m.scope == "team" {
+		assignees = m.selectedAssignees()
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+	if m.demo {
+		if m.scope != "team" {
+			// The real API filters "me" scope server-side to the authenticated
+			// caller; mirror that here instead of summing all demo users.
+			assignees = []int{demoSelfID}
+		}
+		return demoEntriesCmd(m.year, m.month, assignees)
+	}
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
+}
+
+// selectedAssignees returns the ids of the currently selected members, sorted.
+// An empty result means "no member filter" (all members).
+func (m Model) selectedAssignees() []int {
+	var ids []int
+	for id, on := range m.selectedMembers {
+		if on {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // ratesFromConfig builds the report rates from config (default + overrides).
@@ -102,31 +131,21 @@ func ratesFromConfig(cfg config.Config) report.Rates {
 }
 
 // loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
-// For scope "team" it derives the ids of all workspace members (via Teams)
-// and passes them as assignees, so the report covers the whole team; for "me" no
-// assignee is set (the API returns the entries of the authenticated user).
-func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string) tea.Cmd {
+// For scope "team" with an empty assignees slice it derives ALL workspace members
+// (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
+// (skipping the members lookup). For scope "me" no assignee filter is applied.
+func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string, assignees []int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		var assignees []int
-		if scope == "team" {
-			teams, err := c.Teams(ctx)
+		if scope == "team" && len(assignees) == 0 {
+			members, err := c.TeamMembers(ctx, teamID)
 			if err != nil {
 				return errMsg{err: err}
 			}
-			found := false
-			for _, t := range teams {
-				if t.ID == teamID {
-					found = true
-					for _, mem := range t.Members {
-						assignees = append(assignees, mem.ID)
-					}
-				}
-			}
-			if !found {
-				return errMsg{err: fmt.Errorf("workspace %s not found or not accessible with this token", teamID)}
+			for _, mem := range members {
+				assignees = append(assignees, mem.ID)
 			}
 		}
 
@@ -157,6 +176,20 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 			}
 		}
 		return entriesMsg{entries: entries}
+	}
+}
+
+// loadMembersCmd fetches the workspace members in the background and returns
+// membersMsg or errMsg.
+func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		members, err := c.TeamMembers(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return membersMsg{members: members}
 	}
 }
 
@@ -200,9 +233,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // first load: summary of the month
 		}
+		if groupBy == report.GroupByMember && m.scope != "team" {
+			// member grouping is team-only: never let it leak into a "me" report.
+			groupBy = report.GroupByTotal
+		}
 		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report)
+		m.rep = newReport(m.report, m.memberFilterNote())
 		m.screen = screenReport
 		return m, nil
 
@@ -235,6 +272,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = screenLog
 		return m, nil
+
+	case membersMsg:
+		m.teamMembers = msg.members
+		if len(m.selectedMembers) == 0 {
+			m.selectedMembers = make(map[int]bool, len(msg.members))
+			for _, mem := range msg.members {
+				m.selectedMembers[mem.ID] = true // default: all selected
+			}
+		}
+		m.membersScreen = newMembers(msg.members, m.selectedMembers)
+		m.screen = screenMembers
+		return m, nil
 	}
 	return m, nil
 }
@@ -254,6 +303,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateRates(msg)
 	case screenLog:
 		return m.updateLog(msg)
+	case screenMembers:
+		return m.updateMembers(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -271,7 +322,7 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.year, m.month, m.scope)
+		return m.home.view(m.year, m.month, m.scope, m.homeMembersNote())
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
@@ -282,6 +333,8 @@ func (m Model) View() string {
 		return m.ratesScreen.view()
 	case screenLog:
 		return m.logScreen.view()
+	case screenMembers:
+		return m.membersScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}

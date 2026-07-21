@@ -9,13 +9,15 @@ import (
 )
 
 type reportModel struct {
-	r report.Report
+	r    report.Report
+	note string
 }
 
-func newReport(r report.Report) reportModel { return reportModel{r: r} }
+func newReport(r report.Report, note string) reportModel { return reportModel{r: r, note: note} }
 
-// nextGroupBy cicla total -> task -> list -> day -> total.
-func nextGroupBy(g string) string {
+// nextGroupBy cycles total -> task -> list -> day -> [member] -> total.
+// The member grouping is only offered for the team scope.
+func nextGroupBy(g, scope string) string {
 	switch g {
 	case report.GroupByTotal:
 		return report.GroupByTask
@@ -23,18 +25,37 @@ func nextGroupBy(g string) string {
 		return report.GroupByList
 	case report.GroupByList:
 		return report.GroupByDay
-	default:
+	case report.GroupByDay:
+		if scope == "team" {
+			return report.GroupByMember
+		}
+		return report.GroupByTotal
+	default: // includes GroupByMember
 		return report.GroupByTotal
 	}
+}
+
+// memberFilterNote returns " (k/n members)" when the team scope has a partial
+// member selection, else "".
+func (m Model) memberFilterNote() string {
+	if m.scope != "team" || len(m.teamMembers) == 0 {
+		return ""
+	}
+	k := len(m.selectedAssignees())
+	n := len(m.teamMembers)
+	if k == 0 || k == n {
+		return ""
+	}
+	return fmt.Sprintf(" (%d/%d members)", k, n)
 }
 
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
-		g := nextGroupBy(m.report.GroupBy)
+		g := nextGroupBy(m.report.GroupBy, m.scope)
 		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report)
+		m.rep = newReport(m.report, m.memberFilterNote())
 	case "m", "s":
 		m.screen = screenHome
 	case "r":
@@ -55,8 +76,8 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (rm reportModel) view() string {
 	r := rm.r
-	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s — grouped by %s",
-		r.Year, int(r.Month), r.Scope, r.GroupBy))
+	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s%s — grouped by %s",
+		r.Year, int(r.Month), r.Scope, rm.note, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("%-32s %8s %10s %s", "Item", "Hours", "Amount", "Cur"))

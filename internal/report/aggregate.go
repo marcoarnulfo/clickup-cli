@@ -9,10 +9,11 @@ import (
 
 // Supported grouping modes.
 const (
-	GroupByTask  = "task"
-	GroupByList  = "list"
-	GroupByDay   = "day"
-	GroupByTotal = "total"
+	GroupByTask   = "task"
+	GroupByList   = "list"
+	GroupByDay    = "day"
+	GroupByMember = "member"
+	GroupByTotal  = "total"
 )
 
 // round2 rounds to 2 decimal places.
@@ -36,6 +37,8 @@ func keyFor(e TimeEntry, groupBy string) string {
 		return e.ListName
 	case GroupByDay:
 		return e.Start.Format("2006-01-02")
+	case GroupByMember:
+		return e.UserName
 	default:
 		return "Total"
 	}
