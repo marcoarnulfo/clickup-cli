@@ -653,6 +653,23 @@ func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 	if m.report.TotalHours != 1 {
 		t.Fatalf("cached status should be re-applied on reload; total = %v, want 1", m.report.TotalHours)
 	}
+	// The cached status must be assigned BEFORE pruning runs, otherwise pruneFilters
+	// would see entries with no status yet and drop the "done" selection.
+	if !m.filterStatuses["done"] {
+		t.Error("filterStatuses[\"done\"] should survive: assign must happen before prune")
+	}
+}
+
+func TestMembersMsgPreservesExistingSelection(t *testing.T) {
+	m := Model{selectedMembers: map[int]bool{1: true}}
+	u, _ := m.Update(membersMsg{members: []clickup.Member{{ID: 1, Username: "a"}, {ID: 2, Username: "b"}}})
+	m = u.(Model)
+	if !m.selectedMembers[1] {
+		t.Error("member 1 should remain selected")
+	}
+	if m.selectedMembers[2] {
+		t.Error("existing selection must be preserved: member 2 should stay deselected, not default to all-selected")
+	}
 }
 
 func TestStatusesMsgAssignsAndOpens(t *testing.T) {

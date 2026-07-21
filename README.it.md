@@ -94,7 +94,7 @@ di setup.
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (`<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
-| `q` | Ovunque tranne il setup | Esce dall'applicazione |
+| `q` | Ovunque tranne setup / rates / range | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |
 
 Nella schermata di setup non è previsto `q` per uscire, per evitare di
@@ -129,7 +129,10 @@ prima volta che apri Filtri in una sessione l'app recupera lo status corrente di
 ogni task caricato da ClickUp (mostrando "Loading statuses…"); da quel momento
 resta in cache per il resto della sessione. I filtri si compongono con la
 selezione membri e con il periodo attivo: restringono solo ciò che è già stato
-caricato. Comandi disponibili:
+caricato. Quando il periodo cambia, le selezioni dei filtri si adattano
+automaticamente alle nuove voci: ogni valore selezionato che non compare più
+viene scartato, così il report non resta mai bloccato vuoto per un filtro
+ormai obsoleto. Comandi disponibili:
 
 - `Tab` / `Shift+Tab`: cambia sezione
 - `↑` / `↓` (anche `k` / `j`): naviga all'interno della sezione
