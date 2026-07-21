@@ -16,3 +16,27 @@ func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start 
 	}
 	return c.post(ctx, "/team/"+teamID+"/time_entries", body, nil)
 }
+
+// Task è un task ClickUp minimale (id + nome) per il picker della TUI.
+type Task struct {
+	ID   string
+	Name string
+}
+
+// ListTasks ritorna i task di una lista. GET /list/{list_id}/task.
+func (c *Client) ListTasks(ctx context.Context, listID string) ([]Task, error) {
+	var resp struct {
+		Tasks []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"tasks"`
+	}
+	if err := c.get(ctx, "/list/"+listID+"/task", nil, &resp); err != nil {
+		return nil, err
+	}
+	out := make([]Task, len(resp.Tasks))
+	for i, t := range resp.Tasks {
+		out[i] = Task{ID: t.ID, Name: t.Name}
+	}
+	return out, nil
+}

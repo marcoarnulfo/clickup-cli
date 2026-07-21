@@ -67,3 +67,24 @@ func TestCreateTimeEntryUnauthorized(t *testing.T) {
 		t.Fatal("atteso errore 401")
 	}
 }
+
+func TestListTasks(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"tasks":[{"id":"a1","name":"Task A"},{"id":"b2","name":"Task B"}]}`))
+	}))
+	defer srv.Close()
+	c := New("tok")
+	c.BaseURL = srv.URL
+	tasks, err := c.ListTasks(context.Background(), "list7")
+	if err != nil {
+		t.Fatalf("ListTasks errore: %v", err)
+	}
+	if gotPath != "/list/list7/task" {
+		t.Errorf("path = %q", gotPath)
+	}
+	if len(tasks) != 2 || tasks[0].ID != "a1" || tasks[1].Name != "Task B" {
+		t.Errorf("tasks = %+v", tasks)
+	}
+}
