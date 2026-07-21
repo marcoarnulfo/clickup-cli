@@ -1,14 +1,68 @@
 package tui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
+	m := New(config.Config{})
+	for _, r := range "tok" {
+		u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	// Enter avvia la validazione (loading=true)
+	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if !m.setup.loading {
+		t.Fatal("dopo Enter dovrebbe essere in loading")
+	}
+	before := m.setup.token()
+	// digitazioni successive devono essere ignorate finché è in loading
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	m = u.(Model)
+	if m.setup.token() != before {
+		t.Fatalf("input ignorato durante loading atteso; token %q -> %q", before, m.setup.token())
+	}
+}
+
+func TestSetupRejectsInvalidRate(t *testing.T) {
+	m := New(config.Config{})
+	m.setup.step = stepRate
+	m.setup.input = newNumberInput("")
+	m.setup.input.SetValue("abc")
+	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.setup.step != stepRate {
+		t.Fatalf("tariffa non valida deve restare su stepRate, got %v", m.setup.step)
+	}
+	if m.setup.msg == "" {
+		t.Fatal("attesa un messaggio d'errore per tariffa non valida")
+	}
+}
+
+func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /team ritorna un workspace con id DIVERSO da quello richiesto
+		w.Write([]byte(`{"teams":[{"id":"OTHER","name":"X","members":[{"user":{"id":1,"username":"a"}}]}]}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
+	if _, ok := msg.(errMsg); !ok {
+		t.Fatalf("scope team con workspace non trovato deve dare errMsg, got %T", msg)
+	}
+}
 
 func TestNewStartsInSetupWhenInvalid(t *testing.T) {
 	m := New(config.Config{})

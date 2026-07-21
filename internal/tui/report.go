@@ -53,7 +53,7 @@ func (rm reportModel) view() string {
 		r.Year, int(r.Month), r.Scope, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("%-32s %8s %12s", "Voce", "Ore", "Importo"))
+		fmt.Sprintf("%-32s %8s %10s %s", "Voce", "Ore", "Importo", "Val"))
 	rows := header + "\n"
 	for _, b := range r.Buckets {
 		rows += fmt.Sprintf("%-32s %8.2f %10.2f %s\n",

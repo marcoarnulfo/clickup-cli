@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -91,12 +92,17 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 			if err != nil {
 				return errMsg{err: err}
 			}
+			found := false
 			for _, t := range teams {
 				if t.ID == teamID {
+					found = true
 					for _, mem := range t.Members {
 						assignees = append(assignees, mem.ID)
 					}
 				}
+			}
+			if !found {
+				return errMsg{err: fmt.Errorf("workspace %s non trovato o non accessibile con questo token", teamID)}
 			}
 		}
 
