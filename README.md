@@ -2,14 +2,57 @@
 
 # clickup — ClickUp Hours CLI
 
-Terminal TUI for ClickUp monthly hours reports (self + team), with billable-amount
-calculation and CSV/JSON/Markdown export.
+[![CI](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/marcoarnulfo/clickup-cli)](https://github.com/marcoarnulfo/clickup-cli/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/marcoarnulfo/clickup-cli)](go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+> A fast, colorful terminal TUI to pull your **monthly ClickUp hours** — self or team — compute the **billable amount**, and log time back to ClickUp. Free and open-source (MIT).
+
+## Features
+
+- 📊 **Monthly hours report** (self or whole team), grouped by total / task / list / day.
+- 💶 **Billable amount** from a default hourly rate, with **per-list rates** overrides.
+- ⏱️ **Log hours** back to ClickUp from the TUI: guided (list → task), by task ID/URL, or with a start/stop timer.
+- 📤 **Export** to CSV / JSON / Markdown.
+- ⌨️ Fully interactive, keyboard-driven TUI (built with [Charm](https://charm.sh) bubbletea).
+- 🔒 Token stays local (config file or `CLICKUP_TOKEN` env var).
+
+## Demo
+
+> 🎬 _Demo GIF coming soon._ It is scripted with [vhs](https://github.com/charmbracelet/vhs) in [`docs/demo.tape`](docs/demo.tape) — run `vhs docs/demo.tape` to (re)generate `docs/demo.gif`.
+
+## Requirements
+
+- **[Go](https://go.dev/dl/) 1.26 or newer** — only needed to install/build from source.
+  - macOS: `brew install go` · Linux: [official install](https://go.dev/doc/install) · check with `go version`.
+- A **ClickUp personal API token** (ClickUp → Settings → Apps → API Token).
 
 ## Installation
 
 ```bash
 go install github.com/marcoarnulfo/clickup-cli/cmd/clickup@latest
 ```
+
+This installs the `clickup` binary into `$(go env GOPATH)/bin` (make sure it's on your `PATH`).
+
+<details>
+<summary>Build from source</summary>
+
+```bash
+git clone https://github.com/marcoarnulfo/clickup-cli.git
+cd clickup-cli
+go build -o clickup ./cmd/clickup
+./clickup
+```
+</details>
+
+## Quick start
+
+1. **Install** (see above) and run `clickup`.
+2. On first launch, the **setup wizard** asks for your API token, workspace, an optional hourly rate, and currency — saved to `~/.config/clickup-cli/config.yml`.
+3. Pick a **month** and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
 
 ## Usage
 
@@ -117,6 +160,21 @@ the config file (handy for CI or to avoid saving the token to disk):
 CLICKUP_TOKEN=pk_xxx clickup
 ```
 
+## Contributing
+
+Contributions are very welcome — this is a free, open-source project. See
+**[CONTRIBUTING.md](CONTRIBUTING.md)** for how to set up the dev environment, run the
+tests, and open a PR. New here? Look for the
+[`good first issue`](https://github.com/marcoarnulfo/clickup-cli/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+label. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Roadmap
+
+Roadmap and backlog live in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
+(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: report filters &
+custom date ranges (v1.3), per-member selection (v1.3), weekly summaries, invoice export,
+multi-currency (v2.0).
+
 ## License
 
-MIT
+[MIT](LICENSE)
