@@ -150,18 +150,22 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			delete(rt.rates, rt.rows[rt.idx].listID) // torna alla tariffa di default
 		}
 	case "s":
-		// Non persistere override ridondanti (uguali alla tariffa di default).
+		// Costruisci la mappa da salvare escludendo gli override ridondanti
+		// (uguali al default). Usa una copia: se il salvataggio fallisce il
+		// working-copy resta intatto.
+		toSave := map[string]float64{}
 		for id, v := range rt.rates {
-			if v == rt.def {
-				delete(rt.rates, id)
+			if v != rt.def {
+				toSave[id] = v
 			}
 		}
-		m.cfg.Rates = rt.rates
+		m.cfg.Rates = toSave
 		if err := config.Save(m.cfg); err != nil {
 			rt.msg = "Errore nel salvataggio della config: " + err.Error()
 			m.ratesScreen = rt
 			return m, nil
 		}
+		rt.rates = toSave // aggiorna il working-copy solo dopo il salvataggio riuscito
 		g := m.report.GroupBy
 		if g == "" {
 			g = report.GroupByTotal
