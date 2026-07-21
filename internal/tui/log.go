@@ -58,9 +58,11 @@ type logModel struct {
 	input textinput.Model
 
 	// form (fields filled in sequence)
-	formField int // 0=duration 1=date 2=note
+	formField int // 0=duration 1=date 2=note 3=billable
 	durStr    string
 	dateStr   string
+	noteStr   string
+	billable  bool
 
 	// timer
 	timer *clickup.RunningTimer
@@ -187,11 +189,11 @@ func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
 }
 
 // createEntryCmd creates the time entry in the background.
-func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur time.Duration, desc string) tea.Cmd {
+func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur time.Duration, desc string, billable bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := c.CreateTimeEntry(ctx, teamID, tid, start, dur, desc); err != nil {
+		if err := c.CreateTimeEntry(ctx, teamID, tid, start, dur, desc, billable); err != nil {
 			return logErr(err)
 		}
 		return logDoneMsg{summary: fmt.Sprintf("%s logged on %s", duration.Format(dur), tid)}
@@ -204,6 +206,8 @@ func enterForm(lg logModel) logModel {
 	lg.formField = 0
 	lg.durStr = ""
 	lg.dateStr = time.Now().Format("2006-01-02")
+	lg.noteStr = ""
+	lg.billable = true // billing-focused tool: billable by default
 	lg.msg = ""
 	lg.input = newTextInput("Duration (e.g. 2h30, 1.5h, 90m)")
 	return lg
@@ -296,6 +300,23 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenReport
 			return m, nil
 		}
+		if lg.formField == 3 { // billable toggle (keypress, not a text field)
+			switch msg.String() {
+			case "n", "N":
+				lg.billable = false
+			case "y", "Y", "enter":
+				lg.billable = true
+			default:
+				m.logScreen = lg
+				return m, nil // ignore other keys
+			}
+			dur, _ := duration.Parse(lg.durStr)
+			day, _ := time.Parse("2006-01-02", lg.dateStr)
+			start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, time.Local)
+			m.logScreen = lg
+			m.screen = screenLoading
+			return m, createEntryCmd(m.client, m.cfg.WorkspaceID, lg.taskID, start, dur, lg.noteStr, lg.billable)
+		}
 		if msg.Type == tea.KeyEnter {
 			val := lg.input.Value()
 			switch lg.formField {
@@ -327,14 +348,12 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.input = newTextInput("Note (optional)")
 				m.logScreen = lg
 				return m, nil
-			case 2: // note -> submit
-				dur, _ := duration.Parse(lg.durStr)
-				day, _ := time.Parse("2006-01-02", lg.dateStr)
-				start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, time.Local)
-				note := lg.input.Value()
+			case 2: // note -> billable step
+				lg.noteStr = lg.input.Value()
+				lg.formField = 3
+				lg.msg = ""
 				m.logScreen = lg
-				m.screen = screenLoading
-				return m, createEntryCmd(m.client, m.cfg.WorkspaceID, lg.taskID, start, dur, note)
+				return m, nil
 			}
 		}
 		var cmd tea.Cmd
@@ -465,9 +484,13 @@ func (lg logModel) view() string {
 	case logIDInput:
 		b += "Task ID or URL:\n\n" + lg.input.View()
 	case logForm:
-		labels := []string{"Duration", "Date", "Note (optional)"}
 		b += "Task: " + styleAccent.Render(lg.taskID) + "\n\n"
-		b += labels[lg.formField] + ":\n\n" + lg.input.View()
+		if lg.formField == 3 {
+			b += "Billable? " + styleAccent.Render("[Y/n]") + "   (Enter = yes)"
+		} else {
+			labels := []string{"Duration", "Date", "Note (optional)"}
+			b += labels[lg.formField] + ":\n\n" + lg.input.View()
+		}
 	case logDone:
 		b += styleOK.Render("✓ Hours logged.") + "\n\n"
 		if lg.msg != "" {

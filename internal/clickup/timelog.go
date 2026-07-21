@@ -8,12 +8,13 @@ import (
 
 // CreateTimeEntry creates a time entry for the authenticated user.
 // POST /team/{team_id}/time_entries with {tid, start(ms), duration(ms), description}.
-func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start time.Time, dur time.Duration, description string) error {
+func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start time.Time, dur time.Duration, description string, billable bool) error {
 	body := map[string]any{
 		"tid":         tid,
 		"start":       start.UnixMilli(),
 		"duration":    dur.Milliseconds(),
 		"description": description,
+		"billable":    billable,
 	}
 	return c.post(ctx, "/team/"+teamID+"/time_entries", body, nil)
 }

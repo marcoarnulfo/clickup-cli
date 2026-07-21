@@ -27,7 +27,7 @@ func TestCreateTimeEntry(t *testing.T) {
 	c := New("tok_x")
 	c.BaseURL = srv.URL
 	start := time.UnixMilli(1_700_000_000_000).UTC()
-	err := c.CreateTimeEntry(context.Background(), "team1", "task9", start, 90*time.Minute, "note")
+	err := c.CreateTimeEntry(context.Background(), "team1", "task9", start, 90*time.Minute, "note", true)
 	if err != nil {
 		t.Fatalf("CreateTimeEntry error: %v", err)
 	}
@@ -52,6 +52,9 @@ func TestCreateTimeEntry(t *testing.T) {
 	if gotBody["description"] != "note" {
 		t.Errorf("description = %v", gotBody["description"])
 	}
+	if gotBody["billable"] != true {
+		t.Errorf("billable = %v, want true", gotBody["billable"])
+	}
 }
 
 func TestCreateTimeEntryUnauthorized(t *testing.T) {
@@ -62,7 +65,7 @@ func TestCreateTimeEntryUnauthorized(t *testing.T) {
 	defer srv.Close()
 	c := New("bad")
 	c.BaseURL = srv.URL
-	err := c.CreateTimeEntry(context.Background(), "t", "x", time.Now(), time.Hour, "")
+	err := c.CreateTimeEntry(context.Background(), "t", "x", time.Now(), time.Hour, "", false)
 	if err == nil {
 		t.Fatal("expected 401 error")
 	}

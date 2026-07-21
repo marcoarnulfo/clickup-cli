@@ -125,8 +125,9 @@ sui propri task ClickUp. Tre modalità:
 
 Nel form la **durata** accetta formati flessibili: `2h30`, `2h30m`, `1.5h`, `1,5h`,
 `90m`, `45` (numero nudo = ore). La **data** default è oggi (`YYYY-MM-DD`, editabile)
-e la **nota** è opzionale. Dopo il salvataggio puoi premere `r` per ricaricare il
-report e vedere subito le nuove ore. Si registrano sempre **le proprie** ore.
+e la **nota** è opzionale. Infine scegli se la voce è **billable** (`Y`/`n`, default sì).
+Dopo il salvataggio puoi premere `r` per ricaricare il report e vedere subito le nuove
+ore. Si registrano sempre **le proprie** ore.
 
 ### Scope team
 
