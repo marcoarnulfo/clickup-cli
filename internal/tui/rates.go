@@ -105,7 +105,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				rt.editing = false
 				rt.msg = ""
 			} else {
-				rt.msg = "Tariffa non valida: inserisci un numero ≥ 0"
+				rt.msg = "Invalid rate: enter a number ≥ 0"
 			}
 			m.ratesScreen = rt
 			return m, nil
@@ -143,7 +143,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(rt.rows) > 0 {
 			rt.editing = true
 			rt.msg = ""
-			rt.input = newNumberInput("nuova tariffa (Esc annulla)")
+			rt.input = newNumberInput("new rate (Esc to cancel)")
 		}
 	case "d":
 		if len(rt.rows) > 0 {
@@ -161,7 +161,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.cfg.Rates = toSave
 		if err := config.Save(m.cfg); err != nil {
-			rt.msg = "Errore nel salvataggio della config: " + err.Error()
+			rt.msg = "Error saving config: " + err.Error()
 			m.ratesScreen = rt
 			return m, nil
 		}
@@ -186,9 +186,9 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (rt ratesModel) view() string {
-	b := styleTitle.Render("Tariffe per lista") + "\n\n"
+	b := styleTitle.Render("Per-list rates") + "\n\n"
 	if len(rt.rows) == 0 {
-		b += styleHelp.Render("Nessuna lista nel report corrente.") + "\n"
+		b += styleHelp.Render("No lists in the current report.") + "\n"
 	}
 	for i, row := range rt.rows {
 		rate := rt.def
@@ -211,6 +211,6 @@ func (rt ratesModel) view() string {
 	if rt.msg != "" {
 		b += "\n" + styleErr.Render(rt.msg)
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica · d: usa default · s: salva · Esc: annulla")
+	b += "\n\n" + styleHelp.Render("↑/↓ select · Enter: edit · d: use default · s: save · Esc: cancel")
 	return b
 }

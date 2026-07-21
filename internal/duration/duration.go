@@ -25,7 +25,7 @@ func Parse(s string) (time.Duration, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.ReplaceAll(s, ",", ".")
 	if s == "" {
-		return 0, fmt.Errorf("durata vuota")
+		return 0, fmt.Errorf("empty duration")
 	}
 
 	var d time.Duration
@@ -47,11 +47,11 @@ func Parse(s string) (time.Duration, error) {
 		f, _ := strconv.ParseFloat(s, 64)
 		d = time.Duration(f * float64(time.Hour))
 	default:
-		return 0, fmt.Errorf("durata non riconosciuta: %q", s)
+		return 0, fmt.Errorf("unrecognized duration: %q", s)
 	}
 
 	if d <= 0 {
-		return 0, fmt.Errorf("durata deve essere > 0: %q", s)
+		return 0, fmt.Errorf("duration must be > 0: %q", s)
 	}
 	return d, nil
 }

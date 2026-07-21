@@ -15,7 +15,7 @@ import (
 
 // ErrUnauthorized indica un token mancante/invalido/revocato (HTTP 401).
 // I chiamanti la usano con errors.Is per rilanciare il setup wizard.
-var ErrUnauthorized = errors.New("token non autorizzato")
+var ErrUnauthorized = errors.New("unauthorized token")
 
 // retryDelay è il backoff tra i tentativi in caso di 429 (override nei test).
 var retryDelay = 2 * time.Second
@@ -80,7 +80,7 @@ func (c *Client) getRetry(ctx context.Context, path string, query map[string]str
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		if attempt >= maxRetries {
-			return fmt.Errorf("clickup API 429: rate limit superato dopo %d tentativi", attempt)
+			return fmt.Errorf("clickup API 429: rate limit exceeded after %d attempts", attempt)
 		}
 		select {
 		case <-ctx.Done():

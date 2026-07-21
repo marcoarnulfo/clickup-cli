@@ -59,7 +59,7 @@ func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (e exportModel) view() string {
-	b := styleTitle.Render("Esporta report") + "\n\n"
+	b := styleTitle.Render("Export report") + "\n\n"
 	for i, f := range exportFormats {
 		cursor := "  "
 		line := f.label
@@ -70,11 +70,11 @@ func (e exportModel) view() string {
 		b += cursor + line + "\n"
 	}
 	if e.done != "" {
-		b += "\n" + styleOK.Render("Salvato: "+e.done)
+		b += "\n" + styleOK.Render("Saved: "+e.done)
 	}
 	if e.err != nil {
-		b += "\n" + styleErr.Render("Errore: "+e.err.Error())
+		b += "\n" + styleErr.Render("Error: "+e.err.Error())
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: esporta · Esc: torna al report")
+	b += "\n\n" + styleHelp.Render("↑/↓ select · Enter: export · Esc: back to report")
 	return b
 }

@@ -55,11 +55,11 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (rm reportModel) view() string {
 	r := rm.r
-	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s — raggruppo per %s",
+	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s — grouped by %s",
 		r.Year, int(r.Month), r.Scope, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("%-32s %8s %10s %s", "Voce", "Ore", "Importo", "Val"))
+		fmt.Sprintf("%-32s %8s %10s %s", "Item", "Hours", "Amount", "Cur"))
 	rows := header + "\n"
 	for _, b := range r.Buckets {
 		rows += fmt.Sprintf("%-32s %8.2f %10.2f %s\n",
@@ -67,13 +67,13 @@ func (rm reportModel) view() string {
 	}
 
 	total := styleOK.Render(fmt.Sprintf("%-32s %8.2f %10.2f %s",
-		"TOTALE", r.TotalHours, r.TotalAmount, r.Currency))
+		"TOTAL", r.TotalHours, r.TotalAmount, r.Currency))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: raggruppamento · e: esporta · p: tariffe · n: log ore · m/s: cambia mese/scope · r: ricarica · q: esci")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · m/s: change month/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
-		body = styleBox.Render("Nessuna ora tracciata in questo mese.")
+		body = styleBox.Render("No hours tracked this month.")
 	}
 	return title + "\n\n" + body + "\n\n" + help
 }

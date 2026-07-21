@@ -141,7 +141,7 @@ func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 		if err != nil {
 			return errMsg{err: err}
 		}
-		return logDoneMsg{summary: fmt.Sprintf("timer fermato: %s registrate", e.Duration)}
+		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", e.Duration)}
 	}
 }
 
@@ -179,7 +179,7 @@ func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur 
 		if err := c.CreateTimeEntry(ctx, teamID, tid, start, dur, desc); err != nil {
 			return errMsg{err: err}
 		}
-		return logDoneMsg{summary: fmt.Sprintf("%s registrate su %s", dur, tid)}
+		return logDoneMsg{summary: fmt.Sprintf("%s logged on %s", dur, tid)}
 	}
 }
 
@@ -190,7 +190,7 @@ func enterForm(lg logModel) logModel {
 	lg.durStr = ""
 	lg.dateStr = time.Now().Format("2006-01-02")
 	lg.msg = ""
-	lg.input = newTextInput("Durata (es. 2h30, 1.5h, 90m)")
+	lg.input = newTextInput("Duration (e.g. 2h30, 1.5h, 90m)")
 	return lg
 }
 
@@ -213,7 +213,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "2":
 			lg.mode = modeID
 			lg.step = logIDInput
-			lg.input = newTextInput("ID o URL del task")
+			lg.input = newTextInput("Task ID or URL")
 		case "3":
 			lg.mode = modeTimer
 			lg.step = logTimerPick
@@ -227,7 +227,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			lg.step = logListPick
 		case "2":
 			lg.step = logIDInput
-			lg.input = newTextInput("ID o URL del task")
+			lg.input = newTextInput("Task ID or URL")
 		}
 		m.logScreen = lg
 		return m, nil
@@ -255,7 +255,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyEnter {
 			id := clickup.ExtractTaskID(lg.input.Value())
 			if id == "" {
-				lg.msg = "Inserisci un id o un URL valido"
+				lg.msg = "Enter a valid id or URL"
 				m.logScreen = lg
 				return m, nil
 			}
@@ -288,14 +288,14 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			switch lg.formField {
 			case 0: // durata
 				if _, err := duration.Parse(val); err != nil {
-					lg.msg = "Durata non valida (es. 2h30, 1.5h, 90m)"
+					lg.msg = "Invalid duration (e.g. 2h30, 1.5h, 90m)"
 					m.logScreen = lg
 					return m, nil
 				}
 				lg.durStr = val
 				lg.formField = 1
 				lg.msg = ""
-				lg.input = newTextInput("Data (YYYY-MM-DD)")
+				lg.input = newTextInput("Date (YYYY-MM-DD)")
 				lg.input.SetValue(lg.dateStr)
 				m.logScreen = lg
 				return m, nil
@@ -304,14 +304,14 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					val = lg.dateStr
 				}
 				if _, err := time.Parse("2006-01-02", val); err != nil {
-					lg.msg = "Data non valida (formato YYYY-MM-DD)"
+					lg.msg = "Invalid date (format YYYY-MM-DD)"
 					m.logScreen = lg
 					return m, nil
 				}
 				lg.dateStr = val
 				lg.formField = 2
 				lg.msg = ""
-				lg.input = newTextInput("Nota (opzionale)")
+				lg.input = newTextInput("Note (optional)")
 				m.logScreen = lg
 				return m, nil
 			case 2: // nota -> submit
@@ -395,33 +395,33 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (lg logModel) view() string {
-	b := styleTitle.Render("Log ore") + "\n\n"
+	b := styleTitle.Render("Log hours") + "\n\n"
 	switch lg.step {
 	case logModeSelect:
-		b += "Scegli la modalità:\n\n"
-		b += "  " + styleAccent.Render("1") + ") Guidato — scegli lista e task\n"
-		b += "  " + styleAccent.Render("2") + ") Task ID/URL — vai diretto al form\n"
-		b += "  " + styleAccent.Render("3") + ") Timer — start/stop cronometro\n"
+		b += "Choose the mode:\n\n"
+		b += "  " + styleAccent.Render("1") + ") Guided — pick list and task\n"
+		b += "  " + styleAccent.Render("2") + ") Task ID/URL — straight to the form\n"
+		b += "  " + styleAccent.Render("3") + ") Timer — start/stop stopwatch\n"
 	case logTimerPick:
-		b += "Timer — come scegli il task?\n\n"
-		b += "  " + styleAccent.Render("1") + ") Guidato (lista → task)\n"
+		b += "Timer — how do you pick the task?\n\n"
+		b += "  " + styleAccent.Render("1") + ") Guided (list → task)\n"
 		b += "  " + styleAccent.Render("2") + ") Task ID/URL\n"
 	case logTimerRunning:
 		if lg.timer == nil {
-			b += styleHelp.Render("Nessun timer in corso.") + "\n"
-			b += "\n" + styleHelp.Render("Esc: torna al report")
+			b += styleHelp.Render("No timer running.") + "\n"
+			b += "\n" + styleHelp.Render("Esc: back to the report")
 			break
 		}
-		b += "⏱  Timer in corso su: " + styleAccent.Render(lg.timer.TaskName) + "\n"
+		b += "⏱  Timer running on: " + styleAccent.Render(lg.timer.TaskName) + "\n"
 		if !lg.timer.Start.IsZero() {
-			b += "Avviato: " + lg.timer.Start.Local().Format("15:04:05") + "\n"
+			b += "Started: " + lg.timer.Start.Local().Format("15:04:05") + "\n"
 		}
-		b += "\n" + styleHelp.Render("s: ferma e registra · Esc: annulla")
+		b += "\n" + styleHelp.Render("s: stop and record · Esc: cancel")
 	case logListPick:
 		if lg.loading {
-			b += styleHelp.Render("Caricamento task…") + "\n\n"
+			b += styleHelp.Render("Loading tasks…") + "\n\n"
 		}
-		b += "Scegli la lista:\n\n"
+		b += "Choose the list:\n\n"
 		for i, l := range lg.lists {
 			cursor := "  "
 			line := l.name
@@ -432,11 +432,11 @@ func (lg logModel) view() string {
 			b += cursor + line + "\n"
 		}
 		if len(lg.lists) == 0 {
-			b += styleHelp.Render("Nessuna lista nota: usa la modalità ID.") + "\n"
+			b += styleHelp.Render("No known lists: use ID mode.") + "\n"
 		}
-		b += "\n" + styleHelp.Render("↑/↓ scegli · Enter: apri i task")
+		b += "\n" + styleHelp.Render("↑/↓ select · Enter: open tasks")
 	case logTaskPick:
-		b += "Scegli il task:\n\n"
+		b += "Choose the task:\n\n"
 		for i, tk := range lg.tasks {
 			cursor := "  "
 			line := truncate(tk.Name, 40)
@@ -447,27 +447,27 @@ func (lg logModel) view() string {
 			b += cursor + line + "\n"
 		}
 		if len(lg.tasks) == 0 {
-			b += styleHelp.Render("Nessun task nella lista.") + "\n"
+			b += styleHelp.Render("No tasks in the list.") + "\n"
 		}
-		b += "\n" + styleHelp.Render("↑/↓ scegli · Enter: continua")
+		b += "\n" + styleHelp.Render("↑/↓ select · Enter: continue")
 	case logIDInput:
-		b += "ID o URL del task:\n\n" + lg.input.View()
+		b += "Task ID or URL:\n\n" + lg.input.View()
 	case logForm:
-		labels := []string{"Durata", "Data", "Nota (opzionale)"}
+		labels := []string{"Duration", "Date", "Note (optional)"}
 		b += "Task: " + styleAccent.Render(lg.taskID) + "\n\n"
 		b += labels[lg.formField] + ":\n\n" + lg.input.View()
 	case logDone:
-		b += styleOK.Render("✓ Ore registrate.") + "\n\n"
+		b += styleOK.Render("✓ Hours logged.") + "\n\n"
 		if lg.msg != "" {
 			b += styleOK.Render(lg.msg) + "\n\n"
 		}
-		b += styleHelp.Render("r: ricarica il report · Esc: torna al report")
+		b += styleHelp.Render("r: reload the report · Esc: back to the report")
 	default:
 		b += styleHelp.Render("…")
 	}
 	if lg.msg != "" && lg.step != logDone {
 		b += "\n" + styleErr.Render(lg.msg)
 	}
-	b += "\n\n" + styleHelp.Render("Esc: annulla · Ctrl+C: esci")
+	b += "\n\n" + styleHelp.Render("Esc: cancel · Ctrl+C: quit")
 	return b
 }

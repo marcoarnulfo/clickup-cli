@@ -126,7 +126,7 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 				}
 			}
 			if !found {
-				return errMsg{err: fmt.Errorf("workspace %s non trovato o non accessibile con questo token", teamID)}
+				return errMsg{err: fmt.Errorf("workspace %s not found or not accessible with this token", teamID)}
 			}
 		}
 
@@ -265,7 +265,7 @@ func (m Model) View() string {
 	case screenHome:
 		return m.home.view(m.year, m.month, m.scope)
 	case screenLoading:
-		return styleTitle.Render("Caricamento ore…")
+		return styleTitle.Render("Loading hours…")
 	case screenReport:
 		return m.rep.view()
 	case screenExport:
@@ -275,7 +275,7 @@ func (m Model) View() string {
 	case screenLog:
 		return m.logScreen.view()
 	case screenError:
-		return styleErr.Render("Errore: ") + m.err.Error() + "\n\n" + styleHelp.Render("premi un tasto per tornare alla home")
+		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}
 	return ""
 }

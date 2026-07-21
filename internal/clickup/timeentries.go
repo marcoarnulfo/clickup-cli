@@ -31,7 +31,7 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 		*f = flexString(n.String())
 		return nil
 	}
-	return fmt.Errorf("flexString: valore non gestibile: %s", b)
+	return fmt.Errorf("flexString: unhandled value: %s", b)
 }
 
 // rawEntry rispecchia una voce dell'array "data" di /team/{id}/time_entries.
@@ -57,11 +57,11 @@ type rawEntry struct {
 func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 	ms, err := strconv.ParseInt(r.Duration, 10, 64)
 	if err != nil {
-		return report.TimeEntry{}, fmt.Errorf("durata non valida per la voce %s: %q", r.ID, r.Duration)
+		return report.TimeEntry{}, fmt.Errorf("invalid duration for entry %s: %q", r.ID, r.Duration)
 	}
 	startMs, err := strconv.ParseInt(r.Start, 10, 64)
 	if err != nil {
-		return report.TimeEntry{}, fmt.Errorf("inizio non valido per la voce %s: %q", r.ID, r.Start)
+		return report.TimeEntry{}, fmt.Errorf("invalid start for entry %s: %q", r.ID, r.Start)
 	}
 	listID := string(r.TaskLocation.ListID)
 	return report.TimeEntry{
