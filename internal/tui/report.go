@@ -32,7 +32,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy)
-		m.report = report.Build(m.entries, g, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 	case "m", "s":

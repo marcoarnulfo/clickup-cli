@@ -77,6 +77,11 @@ func New(cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
+// ratesFromConfig costruisce le tariffe per il report dalla config (default + override).
+func ratesFromConfig(cfg config.Config) report.Rates {
+	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+}
+
 // loadEntriesCmd chiama l'API in background e ritorna entriesMsg o errMsg.
 // Per lo scope "team" ricava gli id di tutti i membri del workspace (via Teams)
 // e li passa come assignees, così il report copre l'intero team; per "me" nessun
@@ -147,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // primo caricamento: sintesi del mese
 		}
-		m.report = report.Build(msg.entries, groupBy, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 		m.screen = screenReport
