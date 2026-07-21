@@ -237,7 +237,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
-		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		start, end := report.MonthRange(m.year, m.month)
+		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote())
 		m.screen = screenReport

@@ -170,7 +170,8 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if g == "" {
 			g = report.GroupByTotal
 		}
-		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		start, end := report.MonthRange(m.year, m.month)
+		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote())
 		m.screen = screenReport

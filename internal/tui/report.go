@@ -53,7 +53,8 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
-		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		start, end := report.MonthRange(m.year, m.month)
+		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote())
 	case "m", "s":
@@ -76,8 +77,8 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (rm reportModel) view() string {
 	r := rm.r
-	title := styleTitle.Render(fmt.Sprintf("Report %04d-%02d — scope %s%s — grouped by %s",
-		r.Year, int(r.Month), r.Scope, rm.note, r.GroupBy))
+	title := styleTitle.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s",
+		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("%-32s %8s %10s %s", "Item", "Hours", "Amount", "Cur"))

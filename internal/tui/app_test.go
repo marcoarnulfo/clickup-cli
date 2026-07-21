@@ -331,7 +331,8 @@ func TestExportWritesFile(t *testing.T) {
 
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
 	m.year, m.month = 2026, 7
-	m.report = report.Report{Year: 2026, Month: 7, Currency: "EUR",
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), Currency: "EUR",
 		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
 	m.export = newExport(m.report)
 	m.screen = screenExport

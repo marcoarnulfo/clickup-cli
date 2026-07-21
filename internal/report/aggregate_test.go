@@ -7,6 +7,11 @@ import (
 
 func d(h float64) time.Duration { return time.Duration(h * float64(time.Hour)) }
 
+var (
+	julStart = time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	julEnd   = julStart.AddDate(0, 1, 0)
+)
+
 func sampleEntries() []TimeEntry {
 	base := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
 	return []TimeEntry{
@@ -17,7 +22,7 @@ func sampleEntries() []TimeEntry {
 }
 
 func TestBuildTotal(t *testing.T) {
-	r := Build(sampleEntries(), GroupByTotal, Rates{Default: 50}, "EUR", 2026, time.July)
+	r := Build(sampleEntries(), GroupByTotal, Rates{Default: 50}, "EUR", julStart, julEnd)
 	if r.TotalHours != 6 {
 		t.Fatalf("total hours = %v, want 6", r.TotalHours)
 	}
@@ -30,7 +35,7 @@ func TestBuildTotal(t *testing.T) {
 }
 
 func TestBuildByTaskSortedByHoursDesc(t *testing.T) {
-	r := Build(sampleEntries(), GroupByTask, Rates{Default: 0}, "EUR", 2026, time.July)
+	r := Build(sampleEntries(), GroupByTask, Rates{Default: 0}, "EUR", julStart, julEnd)
 	if len(r.Buckets) != 2 {
 		t.Fatalf("want 2 task buckets, got %d", len(r.Buckets))
 	}
@@ -44,7 +49,7 @@ func TestBuildByTaskSortedByHoursDesc(t *testing.T) {
 }
 
 func TestBuildByList(t *testing.T) {
-	r := Build(sampleEntries(), GroupByList, Rates{Default: 0}, "EUR", 2026, time.July)
+	r := Build(sampleEntries(), GroupByList, Rates{Default: 0}, "EUR", julStart, julEnd)
 	if len(r.Buckets) != 2 {
 		t.Fatalf("want 2 list buckets, got %d", len(r.Buckets))
 	}
@@ -58,7 +63,7 @@ func TestBuildByList(t *testing.T) {
 }
 
 func TestBuildByDayChronological(t *testing.T) {
-	r := Build(sampleEntries(), GroupByDay, Rates{Default: 0}, "EUR", 2026, time.July)
+	r := Build(sampleEntries(), GroupByDay, Rates{Default: 0}, "EUR", julStart, julEnd)
 	if len(r.Buckets) != 2 {
 		t.Fatalf("want 2 day buckets, got %d", len(r.Buckets))
 	}
@@ -71,7 +76,7 @@ func TestBuildByDayChronological(t *testing.T) {
 }
 
 func TestBuildEmpty(t *testing.T) {
-	r := Build(nil, GroupByTask, Rates{Default: 50}, "EUR", 2026, time.July)
+	r := Build(nil, GroupByTask, Rates{Default: 50}, "EUR", julStart, julEnd)
 	if r.TotalHours != 0 || len(r.Buckets) != 0 {
 		t.Fatalf("empty report should be zero, got %+v", r)
 	}
@@ -79,7 +84,7 @@ func TestBuildEmpty(t *testing.T) {
 
 func TestRoundingTwoDecimals(t *testing.T) {
 	e := []TimeEntry{{TaskName: "x", Start: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), Duration: d(1.0 / 3.0)}}
-	r := Build(e, GroupByTask, Rates{Default: 30}, "EUR", 2026, time.July)
+	r := Build(e, GroupByTask, Rates{Default: 30}, "EUR", julStart, julEnd)
 	if r.Buckets[0].Hours != 0.33 {
 		t.Fatalf("hours should round to 0.33, got %v", r.Buckets[0].Hours)
 	}
@@ -105,7 +110,7 @@ func TestBuildPerListRates(t *testing.T) {
 		{TaskName: "B", ListID: "2", ListName: "Client B", Start: base, Duration: d(1)},
 	}
 	rates := Rates{Default: 30, ByList: map[string]float64{"1": 50}}
-	r := Build(entries, GroupByList, rates, "EUR", 2026, time.July)
+	r := Build(entries, GroupByList, rates, "EUR", julStart, julEnd)
 	amt := map[string]float64{}
 	for _, b := range r.Buckets {
 		amt[b.Label] = b.Amount
@@ -132,7 +137,7 @@ func TestBuildMixedRatePerTask(t *testing.T) {
 		{TaskName: "X", ListID: "2", Start: base, Duration: d(1)},
 	}
 	rates := Rates{Default: 0, ByList: map[string]float64{"1": 50, "2": 30}}
-	r := Build(entries, GroupByTask, rates, "EUR", 2026, time.July)
+	r := Build(entries, GroupByTask, rates, "EUR", julStart, julEnd)
 	if len(r.Buckets) != 1 {
 		t.Fatalf("want 1 task bucket, got %d", len(r.Buckets))
 	}
@@ -160,7 +165,7 @@ func TestBuildGroupByMember(t *testing.T) {
 		{UserName: "bob", ListID: "l1", Duration: 1 * time.Hour},
 		{UserName: "alice", ListID: "l1", Duration: 30 * time.Minute},
 	}
-	r := Build(entries, GroupByMember, Rates{Default: 10}, "EUR", 2026, time.July)
+	r := Build(entries, GroupByMember, Rates{Default: 10}, "EUR", julStart, julEnd)
 	if len(r.Buckets) != 2 {
 		t.Fatalf("buckets = %d, want 2", len(r.Buckets))
 	}

@@ -46,7 +46,7 @@ func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		f := exportFormats[e.idx]
-		path := fmt.Sprintf("clickup-report-%04d-%02d.%s", e.r.Year, int(e.r.Month), f.ext)
+		path := fmt.Sprintf("clickup-report-%s.%s", report.PeriodFileSlug(e.r.Start, e.r.End), f.ext)
 		if err := export.ToFile(f.key, e.r, path); err != nil {
 			e.err = err
 		} else {
