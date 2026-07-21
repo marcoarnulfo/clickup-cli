@@ -209,7 +209,7 @@ git commit -m "feat(report): add date-range preset and period helpers"
 - Modify: `internal/report/model.go`, `internal/report/aggregate.go`, `internal/report/aggregate_test.go`
 - Modify: `internal/export/export.go`, `internal/export/export_test.go`
 - Modify: `internal/tui/report.go`, `internal/tui/export.go`, `internal/tui/app.go`, `internal/tui/rates.go`
-- Modify: `internal/tui/demo_test.go`, `internal/tui/log_test.go`
+- Modify: `internal/tui/demo_test.go`, `internal/tui/log_test.go`, `internal/tui/app_test.go`
 
 **Interfaces:**
 - Consumes: `report.PeriodLabel`/`PeriodFileSlug` (Task 1), `report.MonthRange`.
@@ -353,6 +353,16 @@ In the three production `Build` call sites, pass the month period explicitly for
 ```
 - `internal/tui/report.go` (`g` case) and `internal/tui/rates.go` (`s` case): same two-line pattern (`start, end := report.MonthRange(m.year, m.month)` then `Build(..., start, end)`).
 
+Also fix `internal/tui/app_test.go` `TestExportWritesFile` (~line 334), which constructs a `report.Report` literal with the removed `Year`/`Month` fields — switch it to July `Start`/`End` bounds (so `PeriodFileSlug` still yields `2026-07` and the existing `clickup-report-2026-07.csv` assertion holds):
+
+```go
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), Currency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
+```
+
+(`app_test.go` already imports `time` and `report`.)
+
 In tests: `internal/tui/demo_test.go:98` and `internal/tui/log_test.go:30` — replace the `2026, time.July` / `m.year, m.month` trailing args with a period, e.g.:
 ```go
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -371,7 +381,7 @@ Run: `go build ./...` → clean. `go test ./... -race` → PASS. `gofmt -l .` em
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/report/model.go internal/report/aggregate.go internal/report/aggregate_test.go internal/export/ internal/tui/report.go internal/tui/export.go internal/tui/app.go internal/tui/rates.go internal/tui/demo_test.go internal/tui/log_test.go
+git add internal/report/model.go internal/report/aggregate.go internal/report/aggregate_test.go internal/export/ internal/tui/report.go internal/tui/export.go internal/tui/app.go internal/tui/rates.go internal/tui/demo_test.go internal/tui/log_test.go internal/tui/app_test.go
 git commit -m "refactor(report): build over a [start,end) period instead of year/month"
 ```
 
@@ -528,7 +538,7 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 }
 ```
 
-(f) In the `entriesMsg` handler, build over `m.currentRange()` (replaces the `MonthRange` lines added in Task 2):
+(f) In the `entriesMsg` handler, build over `m.currentRange()` (replaces ONLY the `MonthRange`/`Build` lines added in Task 2 — keep the existing `groupBy` computation above them intact, including the `GroupByMember → GroupByTotal` guard when `scope != "team"`):
 
 ```go
 		start, end := m.currentRange()
@@ -1253,7 +1263,7 @@ func (m Model) filteredNote() string {
 }
 ```
 
-Route every report build through `visibleEntries()` and combine the notes. In the `entriesMsg` handler, `report.go` (`g`) and `rates.go` (`s`):
+Route every report build through `visibleEntries()` and combine the notes. Change ONLY the `Build` entries argument (`msg.entries`/`m.entries` → `m.visibleEntries()`) and the `newReport` note argument — leave each site's `groupBy` computation untouched (the `entriesMsg` handler keeps its default-total + `GroupByMember→GroupByTotal` guard; the `g` case keeps its `nextGroupBy(...)`). In the `entriesMsg` handler, `report.go` (`g`) and `rates.go` (`s`):
 ```go
 		start, end := m.currentRange()
 		m.report = report.Build(m.visibleEntries(), groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
