@@ -54,6 +54,9 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	s := m.setup
 	switch s.step {
 	case stepToken:
+		if s.loading {
+			return m, nil // validazione in corso: ignora ulteriori input
+		}
 		if msg.Type == tea.KeyEnter && s.input.Value() != "" {
 			s.tmpCfg.Token = s.input.Value()
 			s.loading = true
@@ -91,8 +94,15 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case stepRate:
 		if msg.Type == tea.KeyEnter {
 			if v := s.input.Value(); v != "" {
-				s.tmpCfg.Rate, _ = strconv.ParseFloat(v, 64)
+				rate, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					s.msg = "Tariffa non valida: inserisci un numero (es. 45)"
+					m.setup = s
+					return m, nil
+				}
+				s.tmpCfg.Rate = rate
 			}
+			s.msg = ""
 			s.step = stepCurrency
 			s.input = newTextInput("Valuta (es. EUR) — vuoto per EUR")
 			m.setup = s
@@ -145,6 +155,9 @@ func (s setupModel) view() string {
 		}
 	case stepRate:
 		b += s.input.View()
+		if s.msg != "" {
+			b += "\n\n" + styleErr.Render(s.msg)
+		}
 	case stepCurrency:
 		b += s.input.View()
 	}
