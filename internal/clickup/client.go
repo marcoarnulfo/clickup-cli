@@ -1,4 +1,4 @@
-// Package clickup è un client minimale per la ClickUp API v2 (time tracking).
+// Package clickup is a minimal client for the ClickUp API v2 (time tracking).
 package clickup
 
 import (
@@ -13,27 +13,27 @@ import (
 	"time"
 )
 
-// ErrUnauthorized indica un token mancante/invalido/revocato (HTTP 401).
-// I chiamanti la usano con errors.Is per rilanciare il setup wizard.
+// ErrUnauthorized indicates a missing/invalid/revoked token (HTTP 401).
+// Callers use it with errors.Is to relaunch the setup wizard.
 var ErrUnauthorized = errors.New("unauthorized token")
 
-// retryDelay è il backoff tra i tentativi in caso di 429 (override nei test).
+// retryDelay is the backoff between retries on 429 (overridden in tests).
 var retryDelay = 2 * time.Second
 
-// maxRetries è il numero massimo di ritentativi su 429.
+// maxRetries is the maximum number of retries on 429.
 const maxRetries = 2
 
-// Client interroga la ClickUp API v2.
+// Client queries the ClickUp API v2.
 type Client struct {
 	token   string
 	BaseURL string
 	http    *http.Client
 
-	mu        sync.Mutex        // protegge listNames (usata da comandi in goroutine)
-	listNames map[string]string // cache list_id -> nome
+	mu        sync.Mutex        // protects listNames (used by commands running in a goroutine)
+	listNames map[string]string // cache list_id -> name
 }
 
-// New crea un client con il token personale.
+// New creates a client with the personal token.
 func New(token string) *Client {
 	return &Client{
 		token:     token,
@@ -43,18 +43,18 @@ func New(token string) *Client {
 	}
 }
 
-// apiError rappresenta il corpo d'errore standard di ClickUp.
+// apiError represents ClickUp's standard error body.
 type apiError struct {
 	Err   string `json:"err"`
 	ECODE string `json:"ECODE"`
 }
 
-// get esegue una GET autenticata e decodifica il JSON in out.
+// get performs an authenticated GET and decodes the JSON into out.
 func (c *Client) get(ctx context.Context, path string, query map[string]string, out any) error {
 	return c.getRetry(ctx, path, query, out, 0)
 }
 
-// getRetry implementa la GET con backoff limitato sul 429 (attempt = tentativi già fatti).
+// getRetry implements the GET with limited backoff on 429 (attempt = attempts already made).
 func (c *Client) getRetry(ctx context.Context, path string, query map[string]string, out any, attempt int) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+path, nil)
 	if err != nil {
@@ -92,7 +92,7 @@ func (c *Client) getRetry(ctx context.Context, path string, query map[string]str
 	return finishJSON(resp.StatusCode, body, out)
 }
 
-// finishJSON gestisce status code e decodifica comuni a GET e POST.
+// finishJSON handles the status code and decoding shared by GET and POST.
 func finishJSON(status int, body []byte, out any) error {
 	if status == http.StatusUnauthorized {
 		var ae apiError
@@ -113,8 +113,8 @@ func finishJSON(status int, body []byte, out any) error {
 	return nil
 }
 
-// post esegue una POST autenticata con body JSON (body nil = nessun corpo) e,
-// se out != nil, decodifica la risposta.
+// post performs an authenticated POST with a JSON body (body nil = no body) and,
+// if out != nil, decodes the response.
 func (c *Client) post(ctx context.Context, path string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

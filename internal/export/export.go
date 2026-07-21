@@ -1,4 +1,4 @@
-// Package export serializza un report.Report in CSV, JSON o Markdown.
+// Package export serializes a report.Report into CSV, JSON, or Markdown.
 package export
 
 import (
@@ -12,7 +12,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// CSV scrive il report come CSV con riga di intestazione e riga totale.
+// CSV writes the report as CSV with a header row and a total row.
 func CSV(w io.Writer, r report.Report) error {
 	cw := csv.NewWriter(w)
 	if err := cw.Write([]string{"label", "hours", "amount", "currency"}); err != nil {
@@ -31,7 +31,7 @@ func CSV(w io.Writer, r report.Report) error {
 	return cw.Error()
 }
 
-// jsonReport è la forma serializzata (snake_case) del report.
+// jsonReport is the serialized (snake_case) form of the report.
 type jsonReport struct {
 	Year        int             `json:"year"`
 	Month       int             `json:"month"`
@@ -44,7 +44,7 @@ type jsonReport struct {
 	TotalAmount float64         `json:"total_amount"`
 }
 
-// JSON scrive il report come JSON indentato.
+// JSON writes the report as indented JSON.
 func JSON(w io.Writer, r report.Report) error {
 	jr := jsonReport{
 		Year: r.Year, Month: int(r.Month), Scope: r.Scope, GroupBy: r.GroupBy,
@@ -56,21 +56,21 @@ func JSON(w io.Writer, r report.Report) error {
 	return enc.Encode(jr)
 }
 
-// Markdown scrive il report come tabella Markdown.
+// Markdown writes the report as a Markdown table.
 func Markdown(w io.Writer, r report.Report) error {
-	fmt.Fprintf(w, "# Report ore %04d-%02d\n\n", r.Year, int(r.Month))
-	fmt.Fprintln(w, "| Label | Ore | Importo |")
+	fmt.Fprintf(w, "# Hours report %04d-%02d\n\n", r.Year, int(r.Month))
+	fmt.Fprintln(w, "| Label | Hours | Amount |")
 	fmt.Fprintln(w, "|---|---:|---:|")
 	for _, b := range r.Buckets {
 		fmt.Fprintf(w, "| %s | %.2f | %.2f %s |\n", b.Label, b.Hours, b.Amount, r.Currency)
 	}
-	fmt.Fprintf(w, "| **Totale** | **%.2f** | **%.2f %s** |\n", r.TotalHours, r.TotalAmount, r.Currency)
+	fmt.Fprintf(w, "| **Total** | **%.2f** | **%.2f %s** |\n", r.TotalHours, r.TotalAmount, r.Currency)
 	return nil
 }
 
-// ToFile scrive il report nel formato dato sul path indicato.
-// Valida il formato PRIMA di creare il file, così un formato ignoto
-// non lascia un file vuoto sul disco.
+// ToFile writes the report in the given format to the given path.
+// It validates the format BEFORE creating the file, so an unknown format
+// doesn't leave an empty file on disk.
 func ToFile(format string, r report.Report, path string) error {
 	var fn func(io.Writer, report.Report) error
 	switch format {
@@ -81,7 +81,7 @@ func ToFile(format string, r report.Report, path string) error {
 	case "markdown":
 		fn = Markdown
 	default:
-		return fmt.Errorf("formato non supportato: %q", format)
+		return fmt.Errorf("unsupported format: %q", format)
 	}
 	f, err := os.Create(path)
 	if err != nil {

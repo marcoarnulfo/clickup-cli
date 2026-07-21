@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-// isolateConfig reindirizza la config in una dir temporanea su TUTTE le
-// piattaforme. Su macOS os.UserConfigDir usa $HOME/Library/Application Support
-// (ignora XDG_CONFIG_HOME); su Linux usa XDG_CONFIG_HOME. Settiamo entrambe,
-// così i test non toccano MAI la config reale dell'utente.
+// isolateConfig redirects the config to a temp dir on ALL platforms.
+// On macOS os.UserConfigDir uses $HOME/Library/Application Support
+// (ignoring XDG_CONFIG_HOME); on Linux it uses XDG_CONFIG_HOME. We set both,
+// so tests NEVER touch the user's real config.
 func isolateConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("CLICKUP_TOKEN", "") // evita override durante i test
+	t.Setenv("CLICKUP_TOKEN", "") // avoid override during tests
 	return dir
 }
 

@@ -1,5 +1,5 @@
-// Package duration parsa durate in formato umano (2h30, 1.5h, 90m, 45).
-// È puro: nessun I/O, nessuna dipendenza esterna.
+// Package duration parses durations in human-readable format (2h30, 1.5h, 90m, 45).
+// It is pure: no I/O, no external dependencies.
 package duration
 
 import (
@@ -14,13 +14,13 @@ var (
 	reHM  = regexp.MustCompile(`^(\d+)h(\d+)m?$`)    // 2h30, 2h30m
 	reH   = regexp.MustCompile(`^(\d+(?:\.\d+)?)h$`) // 2h, 1.5h
 	reM   = regexp.MustCompile(`^(\d+)m$`)           // 90m
-	reNum = regexp.MustCompile(`^\d+(?:\.\d+)?$`)    // 45 (numero nudo = ore)
+	reNum = regexp.MustCompile(`^\d+(?:\.\d+)?$`)    // 45 (bare number = hours)
 )
 
-// Parse converte una stringa durata in time.Duration.
-// Formati: Nh, NhMm/NhM (ore+minuti), N.Nh/N,Nh (ore decimali), Nm (minuti),
-// numero nudo = ore. La virgola è accettata come il punto (tastiera italiana).
-// Ritorna errore su input non riconosciuto o durata ≤ 0.
+// Parse converts a duration string into a time.Duration.
+// Formats: Nh, NhMm/NhM (hours+minutes), N.Nh/N,Nh (decimal hours), Nm (minutes),
+// bare number = hours. The comma is accepted like the dot (Italian keyboard).
+// Returns an error on unrecognized input or duration <= 0.
 func Parse(s string) (time.Duration, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = strings.ReplaceAll(s, ",", ".")

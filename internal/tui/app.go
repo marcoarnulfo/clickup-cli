@@ -25,33 +25,33 @@ const (
 	screenError
 )
 
-// Messaggi async.
+// Async messages.
 type (
 	entriesMsg struct{ entries []report.TimeEntry }
 	teamsMsg   struct{ teams []clickup.Team }
 	errMsg     struct{ err error }
 )
 
-// Model è il modello radice della TUI.
+// Model is the root model of the TUI.
 type Model struct {
 	cfg    config.Config
 	client *clickup.Client
-	demo   bool // modalità demo (dati fittizi, nessuna API)
+	demo   bool // demo mode (fake data, no API)
 	screen screen
 	err    error
 
 	width, height int
 
-	// selezione corrente
+	// current selection
 	year  int
 	month time.Month
 	scope string // "me" | "team"
 
-	// dati
+	// data
 	report  report.Report
 	entries []report.TimeEntry
 
-	// sotto-modelli
+	// sub-models
 	setup       setupModel
 	home        homeModel
 	rep         reportModel
@@ -60,7 +60,7 @@ type Model struct {
 	logScreen   logModel
 }
 
-// New costruisce il modello radice a partire dalla config.
+// New builds the root model from the config.
 func New(cfg config.Config) Model {
 	now := time.Now()
 	demo := demoEnabled()
@@ -87,8 +87,8 @@ func New(cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-// reloadEntriesCmd sceglie la sorgente delle voci ore: dati demo (nessuna I/O)
-// in modalità demo, altrimenti la chiamata reale all'API.
+// reloadEntriesCmd picks the source for time entries: demo data (no I/O)
+// in demo mode, otherwise the real API call.
 func (m Model) reloadEntriesCmd() tea.Cmd {
 	if m.demo {
 		return demoEntriesCmd(m.year, m.month)
@@ -96,15 +96,15 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
 }
 
-// ratesFromConfig costruisce le tariffe per il report dalla config (default + override).
+// ratesFromConfig builds the report rates from config (default + overrides).
 func ratesFromConfig(cfg config.Config) report.Rates {
 	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
 }
 
-// loadEntriesCmd chiama l'API in background e ritorna entriesMsg o errMsg.
-// Per lo scope "team" ricava gli id di tutti i membri del workspace (via Teams)
-// e li passa come assignees, così il report copre l'intero team; per "me" nessun
-// assignee (l'API torna le voci dell'utente autenticato).
+// loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
+// For scope "team" it derives the ids of all workspace members (via Teams)
+// and passes them as assignees, so the report covers the whole team; for "me" no
+// assignee is set (the API returns the entries of the authenticated user).
 func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -135,8 +135,8 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 		if err != nil {
 			return errMsg{err: err}
 		}
-		// Risolvi i nomi leggibili delle liste UNA sola volta per list_id unico
-		// (evita chiamate ripetute, incluse quelle fallite, per la stessa lista).
+		// Resolve human-readable list names ONCE per unique list_id
+		// (avoids repeated calls, including failed ones, for the same list).
 		resolved := map[string]string{}
 		for _, e := range entries {
 			if e.ListID == "" {
@@ -148,7 +148,7 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 			if name, err := c.ListName(ctx, e.ListID); err == nil {
 				resolved[e.ListID] = name
 			} else {
-				resolved[e.ListID] = "" // tentato: non ritentare in questo caricamento
+				resolved[e.ListID] = "" // attempted: don't retry within this load
 			}
 		}
 		for i := range entries {
@@ -177,7 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.err = msg.err
-		// Token invalido/revocato: rilancia il setup wizard (spec §8).
+		// Invalid/revoked token: relaunch the setup wizard (spec §8).
 		if errors.Is(msg.err, clickup.ErrUnauthorized) {
 			m.screen = screenSetup
 			m.setup = newSetup()
@@ -190,7 +190,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.entries = msg.entries
 		groupBy := m.report.GroupBy
 		if groupBy == "" {
-			groupBy = report.GroupByTotal // primo caricamento: sintesi del mese
+			groupBy = report.GroupByTotal // first load: summary of the month
 		}
 		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
@@ -199,7 +199,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case teamsMsg:
-		// consegnato al setup per la scelta workspace
+		// delivered to setup for workspace selection
 		var cmd tea.Cmd
 		m.setup, cmd = m.setup.withTeams(msg.teams)
 		return m, cmd
@@ -219,7 +219,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case timerMsg:
 		if m.screen != screenLog && m.screen != screenLoading {
-			return m, nil // messaggio timer obsoleto: l'utente ha lasciato la schermata
+			return m, nil // stale timer message: the user left the screen
 		}
 		m.logScreen.timer = msg.timer
 		if msg.timer != nil {
@@ -231,7 +231,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// routeKey inoltra i tasti allo screen attivo.
+// routeKey forwards keys to the active screen.
 func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.screen {
 	case screenSetup:

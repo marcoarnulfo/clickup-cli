@@ -2,20 +2,20 @@ package clickup
 
 import "context"
 
-// Member è un membro di un workspace.
+// Member is a member of a workspace.
 type Member struct {
 	ID       int
 	Username string
 }
 
-// Team è un workspace ClickUp (nell'API "team").
+// Team is a ClickUp workspace (called "team" in the API).
 type Team struct {
 	ID      string
 	Name    string
 	Members []Member
 }
 
-// Teams ritorna i workspace accessibili col token, con i loro membri.
+// Teams returns the workspaces accessible with the token, along with their members.
 func (c *Client) Teams(ctx context.Context) ([]Team, error) {
 	var resp struct {
 		Teams []struct {

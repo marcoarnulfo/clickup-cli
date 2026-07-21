@@ -21,18 +21,18 @@ func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
 		u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
 	}
-	// Enter avvia la validazione (loading=true)
+	// Enter starts validation (loading=true)
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
 	if !m.setup.loading {
-		t.Fatal("dopo Enter dovrebbe essere in loading")
+		t.Fatal("should be loading after Enter")
 	}
 	before := m.setup.token()
-	// digitazioni successive devono essere ignorate finché è in loading
+	// subsequent keystrokes must be ignored while loading
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	m = u.(Model)
 	if m.setup.token() != before {
-		t.Fatalf("input ignorato durante loading atteso; token %q -> %q", before, m.setup.token())
+		t.Fatalf("input should be ignored while loading; token %q -> %q", before, m.setup.token())
 	}
 }
 
@@ -44,16 +44,16 @@ func TestSetupRejectsInvalidRate(t *testing.T) {
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
 	if m.setup.step != stepRate {
-		t.Fatalf("tariffa non valida deve restare su stepRate, got %v", m.setup.step)
+		t.Fatalf("invalid rate should stay on stepRate, got %v", m.setup.step)
 	}
 	if m.setup.msg == "" {
-		t.Fatal("attesa un messaggio d'errore per tariffa non valida")
+		t.Fatal("expected an error message for invalid rate")
 	}
 }
 
 func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// /team ritorna un workspace con id DIVERSO da quello richiesto
+		// /team returns a workspace with an id DIFFERENT from the one requested
 		w.Write([]byte(`{"teams":[{"id":"OTHER","name":"X","members":[{"user":{"id":1,"username":"a"}}]}]}`))
 	}))
 	defer srv.Close()
@@ -62,7 +62,7 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 
 	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
 	if _, ok := msg.(errMsg); !ok {
-		t.Fatalf("scope team con workspace non trovato deve dare errMsg, got %T", msg)
+		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
 	}
 }
 
@@ -70,16 +70,16 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/team") && strings.Contains(r.URL.Path, "/time_entries"):
-			// deve filtrare sui membri del team (assignee valorizzato)
+			// must filter on team members (assignee set)
 			if r.URL.Query().Get("assignee") == "" {
-				t.Errorf("scope team: atteso parametro assignee valorizzato")
+				t.Errorf("team scope: expected assignee parameter to be set")
 			}
 			w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_location":{"list_id":"55"},"user":{"id":7,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
 		case strings.HasSuffix(r.URL.Path, "/team"):
-			// workspace 900 con due membri
+			// workspace 900 with two members
 			w.Write([]byte(`{"teams":[{"id":"900","name":"WS","members":[{"user":{"id":7,"username":"a"}},{"user":{"id":8,"username":"b"}}]}]}`))
 		case strings.Contains(r.URL.Path, "/list/"):
-			w.Write([]byte(`{"id":"55","name":"Cliente Z"}`))
+			w.Write([]byte(`{"id":"55","name":"Client Z"}`))
 		default:
 			w.Write([]byte(`{}`))
 		}
@@ -91,10 +91,10 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
 	em, ok := msg.(entriesMsg)
 	if !ok {
-		t.Fatalf("scope team con workspace trovato deve dare entriesMsg, got %T", msg)
+		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
 	}
-	if len(em.entries) != 1 || em.entries[0].ListName != "Cliente Z" {
-		t.Fatalf("entries team errate: %+v", em.entries)
+	if len(em.entries) != 1 || em.entries[0].ListName != "Client Z" {
+		t.Fatalf("wrong team entries: %+v", em.entries)
 	}
 }
 
@@ -104,7 +104,7 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/time_entries"):
 			w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_location":{"list_id":"55"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
 		case strings.Contains(r.URL.Path, "/list/"):
-			w.Write([]byte(`{"id":"55","name":"Cliente Z"}`))
+			w.Write([]byte(`{"id":"55","name":"Client Z"}`))
 		default:
 			w.Write([]byte(`{}`))
 		}
@@ -118,7 +118,7 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}
-	if len(em.entries) != 1 || em.entries[0].ListName != "Cliente Z" {
+	if len(em.entries) != 1 || em.entries[0].ListName != "Client Z" {
 		t.Fatalf("list name not resolved: %+v", em.entries)
 	}
 }
@@ -166,7 +166,7 @@ func TestQuitKey(t *testing.T) {
 
 func TestSetupTokenStepAcceptsInput(t *testing.T) {
 	m := New(config.Config{})
-	// digita un carattere nel campo token
+	// type a character in the token field
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	mm := updated.(Model)
 	if mm.setup.token() == "" {
@@ -203,7 +203,7 @@ func TestHomeChangesMonthAndScope(t *testing.T) {
 	m.year, m.month = 2026, 7
 	m.home = newHome()
 
-	// freccia sinistra -> mese precedente
+	// left arrow -> previous month
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	mm := updated.(Model)
 	if mm.month != 6 {
@@ -259,7 +259,7 @@ func TestRatesScreenOpensFromReport(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Cliente Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -268,8 +268,8 @@ func TestRatesScreenOpensFromReport(t *testing.T) {
 	if m.screen != screenRates {
 		t.Fatalf("p dalla vista report deve aprire screenRates, got %v", m.screen)
 	}
-	if len(m.ratesScreen.rows) != 1 || m.ratesScreen.rows[0].name != "Cliente Z" {
-		t.Fatalf("righe tariffe errate: %+v", m.ratesScreen.rows)
+	if len(m.ratesScreen.rows) != 1 || m.ratesScreen.rows[0].name != "Client Z" {
+		t.Fatalf("wrong rate rows: %+v", m.ratesScreen.rows)
 	}
 }
 
@@ -288,31 +288,31 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	m = u.(Model)
-	// Enter -> editing riga 0
+	// Enter -> editing row 0
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
 	if !m.ratesScreen.editing {
-		t.Fatal("dovrebbe essere in editing")
+		t.Fatal("should be editing")
 	}
-	// digita "50"
+	// type "50"
 	for _, r := range "50" {
 		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
 	}
-	// Enter conferma il valore
+	// Enter confirms the value
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
-	// 's' salva e ricalcola
+	// 's' saves and recalculates
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	m = u.(Model)
 	if m.screen != screenReport {
-		t.Fatalf("salvataggio deve tornare al report, got %v", m.screen)
+		t.Fatalf("saving should return to the report, got %v", m.screen)
 	}
 	if m.cfg.Rates["55"] != 50 {
-		t.Fatalf("override non salvato: %+v", m.cfg.Rates)
+		t.Fatalf("override not saved: %+v", m.cfg.Rates)
 	}
 	if m.report.TotalAmount != 100 { // 2h * 50
-		t.Fatalf("report non ricalcolato: TotalAmount %v, want 100", m.report.TotalAmount)
+		t.Fatalf("report not recalculated: TotalAmount %v, want 100", m.report.TotalAmount)
 	}
 }
 
@@ -326,19 +326,19 @@ func TestRatesScreenEscCancelsEdit(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	m = u.(Model)
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // apre editing
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // opens editing
 	m = u.(Model)
 	for _, r := range "99" {
 		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
 	}
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // annulla
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // cancel
 	m = u.(Model)
 	if m.ratesScreen.editing {
-		t.Fatal("Esc deve uscire dall'editing")
+		t.Fatal("Esc should exit editing")
 	}
 	if _, ok := m.ratesScreen.rates["55"]; ok {
-		t.Fatalf("Esc non deve aver impostato un override: %+v", m.ratesScreen.rates)
+		t.Fatalf("Esc should not have set an override: %+v", m.ratesScreen.rates)
 	}
 }
 
@@ -354,19 +354,19 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
-	// "." è numerico (passa il filtro) ma non è un float valido
+	// "." is numeric (passes the filter) but isn't a valid float
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
 	if !m.ratesScreen.editing {
-		t.Fatal("tariffa non valida deve mantenere l'editing aperto")
+		t.Fatal("invalid rate should keep editing open")
 	}
 	if m.ratesScreen.msg == "" {
-		t.Fatal("atteso un messaggio d'errore per tariffa non valida")
+		t.Fatal("expected an error message for invalid rate")
 	}
 	if _, ok := m.ratesScreen.rates["55"]; ok {
-		t.Fatal("tariffa non valida non deve creare un override")
+		t.Fatal("invalid rate should not create an override")
 	}
 }
 
@@ -382,10 +382,10 @@ func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // editing
 	m = u.(Model)
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}) // non numerico
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}) // non-numeric
 	m = u.(Model)
 	if m.ratesScreen.input.Value() != "" {
-		t.Fatalf("il carattere non numerico non deve essere accettato, value=%q", m.ratesScreen.input.Value())
+		t.Fatalf("non-numeric character should not be accepted, value=%q", m.ratesScreen.input.Value())
 	}
 }
 
@@ -405,15 +405,15 @@ func TestRatesScreenEscDiscardsAndReturns(t *testing.T) {
 		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
 	}
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // conferma valore nel working copy
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // confirm value in the working copy
 	m = u.(Model)
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // Esc fuori editing = scarta
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // Esc outside editing = discard
 	m = u.(Model)
 	if m.screen != screenReport {
-		t.Fatalf("Esc deve tornare al report, got %v", m.screen)
+		t.Fatalf("Esc should return to the report, got %v", m.screen)
 	}
 	if _, ok := m.cfg.Rates["55"]; ok {
-		t.Fatalf("Esc non deve persistere override: %+v", m.cfg.Rates)
+		t.Fatalf("Esc should not persist override: %+v", m.cfg.Rates)
 	}
 }
 
@@ -434,16 +434,16 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // editing
 	m = u.(Model)
-	for _, r := range "30" { // uguale al default
+	for _, r := range "30" { // equal to the default
 		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
 	}
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // conferma 30
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // confirm 30
 	m = u.(Model)
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // salva
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // save
 	m = u.(Model)
 	if _, ok := m.cfg.Rates["55"]; ok {
-		t.Fatalf("un override uguale al default non deve essere salvato: %+v", m.cfg.Rates)
+		t.Fatalf("an override equal to the default should not be saved: %+v", m.cfg.Rates)
 	}
 }
 
@@ -452,8 +452,8 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", f)            // os.UserConfigDir() deriva da qui (macOS)
-	t.Setenv("XDG_CONFIG_HOME", f) // ...o da qui (Linux); un file => MkdirAll fallisce
+	t.Setenv("HOME", f)            // os.UserConfigDir() derives from here (macOS)
+	t.Setenv("XDG_CONFIG_HOME", f) // ...or from here (Linux); a file => MkdirAll fails
 	t.Setenv("CLICKUP_TOKEN", "")
 
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
@@ -465,12 +465,12 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	m = u.(Model)
-	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // salva (fallisce)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // save (fails)
 	m = u.(Model)
 	if m.screen != screenRates {
-		t.Fatalf("salvataggio fallito deve restare su screenRates, got %v", m.screen)
+		t.Fatalf("failed save should stay on screenRates, got %v", m.screen)
 	}
 	if m.ratesScreen.msg == "" {
-		t.Fatal("atteso un messaggio d'errore di salvataggio")
+		t.Fatal("expected a save error message")
 	}
 }

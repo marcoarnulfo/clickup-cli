@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Modalità di raggruppamento supportate.
+// Supported grouping modes.
 const (
 	GroupByTask  = "task"
 	GroupByList  = "list"
@@ -15,19 +15,19 @@ const (
 	GroupByTotal = "total"
 )
 
-// round2 arrotonda a 2 decimali.
+// round2 rounds to 2 decimal places.
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-// MonthRange ritorna l'intervallo half-open [start, end) del mese in UTC.
+// MonthRange returns the half-open interval [start, end) of the month in UTC.
 func MonthRange(year int, month time.Month) (start, end time.Time) {
 	start = time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
 	end = start.AddDate(0, 1, 0)
 	return start, end
 }
 
-// keyFor determina l'etichetta del bucket per una entry, dato il groupBy.
+// keyFor determines the bucket label for an entry, given groupBy.
 func keyFor(e TimeEntry, groupBy string) string {
 	switch groupBy {
 	case GroupByTask:
@@ -37,13 +37,13 @@ func keyFor(e TimeEntry, groupBy string) string {
 	case GroupByDay:
 		return e.Start.Format("2006-01-02")
 	default:
-		return "Totale"
+		return "Total"
 	}
 }
 
-// Build aggrega le entry in un Report secondo groupBy. L'importo di ogni bucket
-// è la somma, sulle entry del bucket, di ore_reali × tariffa_della_lista (Rates.For),
-// arrotondata a 2 decimali. Report.Rate riporta la tariffa di default (per l'export).
+// Build aggregates the entries into a Report according to groupBy. Each bucket's amount
+// is the sum, over the bucket's entries, of actual_hours × list_rate (Rates.For),
+// rounded to 2 decimal places. Report.Rate carries the default rate (for export).
 func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, year int, month time.Month) Report {
 	r := Report{
 		Year:     year,
@@ -74,12 +74,12 @@ func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, ye
 		})
 	}
 
-	// Ordinamento: per giorno cronologico (label asc); altrimenti ore desc, tie label asc.
+	// Sorting: chronological by day (label asc); otherwise hours desc, tie label asc.
 	slices.SortStableFunc(r.Buckets, func(a, b Bucket) int {
 		if groupBy == GroupByDay {
 			return cmp.Compare(a.Label, b.Label)
 		}
-		if c := cmp.Compare(b.Hours, a.Hours); c != 0 { // ore desc
+		if c := cmp.Compare(b.Hours, a.Hours); c != 0 { // hours desc
 			return c
 		}
 		return cmp.Compare(a.Label, b.Label)

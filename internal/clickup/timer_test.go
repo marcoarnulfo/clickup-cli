@@ -21,8 +21,8 @@ func TestStartTimer(t *testing.T) {
 	defer srv.Close()
 	c := New("tok")
 	c.BaseURL = srv.URL
-	if err := c.StartTimer(context.Background(), "team1", "task5", "nota"); err != nil {
-		t.Fatalf("StartTimer errore: %v", err)
+	if err := c.StartTimer(context.Background(), "team1", "task5", "note"); err != nil {
+		t.Fatalf("StartTimer error: %v", err)
 	}
 	if gotPath != "/team/team1/time_entries/start" {
 		t.Errorf("path = %q", gotPath)
@@ -44,7 +44,7 @@ func TestStopTimer(t *testing.T) {
 	c.BaseURL = srv.URL
 	e, err := c.StopTimer(context.Background(), "team1")
 	if err != nil {
-		t.Fatalf("StopTimer errore: %v", err)
+		t.Fatalf("StopTimer error: %v", err)
 	}
 	if e.TaskID != "task5" || e.Duration.Minutes() != 10 {
 		t.Errorf("entry = %+v", e)
@@ -60,7 +60,7 @@ func TestCurrentTimerRunning(t *testing.T) {
 	c.BaseURL = srv.URL
 	rt, err := c.CurrentTimer(context.Background(), "team1")
 	if err != nil {
-		t.Fatalf("CurrentTimer errore: %v", err)
+		t.Fatalf("CurrentTimer error: %v", err)
 	}
 	if rt == nil || rt.TaskID != "task5" || rt.TaskName != "T5" {
 		t.Errorf("timer = %+v", rt)
@@ -76,9 +76,9 @@ func TestCurrentTimerNone(t *testing.T) {
 	c.BaseURL = srv.URL
 	rt, err := c.CurrentTimer(context.Background(), "team1")
 	if err != nil {
-		t.Fatalf("CurrentTimer errore: %v", err)
+		t.Fatalf("CurrentTimer error: %v", err)
 	}
 	if rt != nil {
-		t.Errorf("atteso nil (nessun timer), ricevuto %+v", rt)
+		t.Errorf("expected nil (no timer), got %+v", rt)
 	}
 }

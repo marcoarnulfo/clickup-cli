@@ -95,7 +95,7 @@ func TestUnauthorizedIsTyped(t *testing.T) {
 
 func TestRetryOn429ThenSuccess(t *testing.T) {
 	old := retryDelay
-	retryDelay = 5 * time.Millisecond // test veloce
+	retryDelay = 5 * time.Millisecond // fast test
 	defer func() { retryDelay = old }()
 
 	var calls atomic.Int32
@@ -122,7 +122,7 @@ func TestRetryOn429ThenSuccess(t *testing.T) {
 
 func TestTimeEntriesSkipsRunningTimer(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
-		// una entry consuntivata + un timer in corso (duration negativa)
+		// one booked entry + one running timer (negative duration)
 		w.Write([]byte(`{"data":[
 			{"id":"e1","task":{"id":"t1","name":"Done"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"},
 			{"id":"e2","task":{"id":"t2","name":"Running"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"-1751360400000"}
@@ -142,7 +142,7 @@ func TestTimeEntriesSkipsRunningTimer(t *testing.T) {
 
 func TestTimeEntriesNumericListID(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
-		// list_id come NUMERO (non stringa): flexString deve gestirlo
+		// list_id as a NUMBER (not a string): flexString must handle it
 		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":901},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
 	})
 	defer srv.Close()
@@ -159,7 +159,7 @@ func TestTimeEntriesNumericListID(t *testing.T) {
 
 func TestTimeEntriesNullListID(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
-		// list_id null (tempo tracciato senza task/lista) -> stringa vuota, non "null"
+		// list_id null (time tracked without task/list) -> empty string, not "null"
 		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":null},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
 	})
 	defer srv.Close()
@@ -176,7 +176,7 @@ func TestTimeEntriesNullListID(t *testing.T) {
 
 func TestTimeEntriesEscapedStringListID(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
-		// list_id stringa con carattere escaped: deve essere de-escaped correttamente
+		// list_id string with an escaped character: must be de-escaped correctly
 		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":"a\"b"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
 	})
 	defer srv.Close()
@@ -193,7 +193,7 @@ func TestTimeEntriesEscapedStringListID(t *testing.T) {
 
 func TestTimeEntriesMalformedDurationErrors(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
-		// durata non numerica: deve produrre un errore, non una entry a zero
+		// non-numeric duration: must produce an error, not a zero-value entry
 		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"abc"}]}`))
 	})
 	defer srv.Close()
@@ -208,17 +208,17 @@ func TestListNameResolvesAndCaches(t *testing.T) {
 	var calls atomic.Int32
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		w.Write([]byte(`{"id":"l1","name":"Cliente A"}`))
+		w.Write([]byte(`{"id":"l1","name":"Client A"}`))
 	})
 	defer srv.Close()
 
 	n, err := c.ListName(context.Background(), "l1")
-	if err != nil || n != "Cliente A" {
+	if err != nil || n != "Client A" {
 		t.Fatalf("got %q err %v", n, err)
 	}
-	// seconda chiamata: servita dalla cache, nessuna HTTP aggiuntiva
+	// second call: served from cache, no additional HTTP
 	n2, _ := c.ListName(context.Background(), "l1")
-	if n2 != "Cliente A" {
+	if n2 != "Client A" {
 		t.Fatalf("cached name wrong: %q", n2)
 	}
 	if calls.Load() != 1 {

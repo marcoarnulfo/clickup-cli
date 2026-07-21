@@ -35,7 +35,7 @@ const (
 	modeTimer
 )
 
-// taskListChoice è una lista nota (report ∪ config) mostrata nel picker guidato.
+// taskListChoice is a known list (report ∪ config) shown in the guided picker.
 type taskListChoice struct {
 	id   string
 	name string
@@ -57,8 +57,8 @@ type logModel struct {
 
 	input textinput.Model
 
-	// form (campi compilati in sequenza)
-	formField int // 0=durata 1=data 2=nota
+	// form (fields filled in sequence)
+	formField int // 0=duration 1=date 2=note
 	durStr    string
 	dateStr   string
 
@@ -68,8 +68,8 @@ type logModel struct {
 	msg string
 }
 
-// newLog costruisce la schermata dalle liste note (entries ∪ config.Rates),
-// in ordine deterministico per una vista stabile.
+// newLog builds the screen from the known lists (entries ∪ config.Rates),
+// in deterministic order for a stable view.
 func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	names := map[string]string{}
 	var order []string
@@ -88,7 +88,7 @@ func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	for _, e := range entries {
 		remember(e.ListID, e.ListName)
 	}
-	// liste presenti solo in config: ordine deterministico (id crescente)
+	// lists present only in config: deterministic order (ascending id)
 	var cfgIDs []string
 	for id := range cfg.Rates {
 		if _, ok := names[id]; !ok {
@@ -112,8 +112,8 @@ type taskListMsg struct{ tasks []clickup.Task }
 
 type timerMsg struct{ timer *clickup.RunningTimer }
 
-// startTimerCmd avvia il timer e poi legge lo stato corrente per avere lo start
-// autoritativo restituito da ClickUp.
+// startTimerCmd starts the timer and then reads the current state to get the
+// authoritative start returned by ClickUp.
 func startTimerCmd(c *clickup.Client, teamID, tid, desc string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -132,7 +132,7 @@ func startTimerCmd(c *clickup.Client, teamID, tid, desc string) tea.Cmd {
 	}
 }
 
-// stopTimerCmd ferma il timer; l'entry è creata da ClickUp.
+// stopTimerCmd stops the timer; the entry is created by ClickUp.
 func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -145,7 +145,7 @@ func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 	}
 }
 
-// currentTimerCmd legge il timer in corso (nil se nessuno).
+// currentTimerCmd reads the running timer (nil if none).
 func currentTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -158,7 +158,7 @@ func currentTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 	}
 }
 
-// listTasksCmd carica i task di una lista in background.
+// listTasksCmd loads the tasks of a list in the background.
 func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -171,7 +171,7 @@ func listTasksCmd(c *clickup.Client, listID string) tea.Cmd {
 	}
 }
 
-// createEntryCmd crea la time entry in background.
+// createEntryCmd creates the time entry in the background.
 func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur time.Duration, desc string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -183,7 +183,7 @@ func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur 
 	}
 }
 
-// enterForm inizializza il form: campo durata, data default = oggi.
+// enterForm initializes the form: duration field, date default = today.
 func enterForm(lg logModel) logModel {
 	lg.step = logForm
 	lg.formField = 0
@@ -197,8 +197,8 @@ func enterForm(lg logModel) logModel {
 func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	lg := m.logScreen
 
-	// Esc torna al report da qualunque passo non-input (gli input gestiscono
-	// Esc localmente nei task successivi).
+	// Esc returns to the report from any non-input step (inputs handle
+	// Esc locally in later steps).
 	if msg.Type == tea.KeyEsc && lg.step != logIDInput && lg.step != logForm {
 		m.screen = screenReport
 		return m, nil
@@ -286,7 +286,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyEnter {
 			val := lg.input.Value()
 			switch lg.formField {
-			case 0: // durata
+			case 0: // duration
 				if _, err := duration.Parse(val); err != nil {
 					lg.msg = "Invalid duration (e.g. 2h30, 1.5h, 90m)"
 					m.logScreen = lg
@@ -299,7 +299,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.input.SetValue(lg.dateStr)
 				m.logScreen = lg
 				return m, nil
-			case 1: // data
+			case 1: // date
 				if val == "" {
 					val = lg.dateStr
 				}
@@ -314,7 +314,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.input = newTextInput("Note (optional)")
 				m.logScreen = lg
 				return m, nil
-			case 2: // nota -> submit
+			case 2: // note -> submit
 				dur, _ := duration.Parse(lg.durStr)
 				day, _ := time.Parse("2006-01-02", lg.dateStr)
 				start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, time.Local)

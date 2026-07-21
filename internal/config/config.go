@@ -1,4 +1,4 @@
-// Package config gestisce la lettura/scrittura della configurazione utente.
+// Package config manages reading/writing the user configuration.
 package config
 
 import (
@@ -10,21 +10,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config è la configurazione persistita della CLI.
+// Config is the persisted CLI configuration.
 type Config struct {
 	Token       string             `yaml:"token"`
 	WorkspaceID string             `yaml:"workspace_id"`
 	Currency    string             `yaml:"currency"`
 	Rate        float64            `yaml:"rate"`
-	Rates       map[string]float64 `yaml:"rates,omitempty"` // list_id -> tariffa override
+	Rates       map[string]float64 `yaml:"rates,omitempty"` // list_id -> rate override
 }
 
-// Valid indica se la config è utilizzabile per interrogare l'API.
+// Valid reports whether the config can be used to query the API.
 func (c Config) Valid() bool {
 	return c.Token != "" && c.WorkspaceID != ""
 }
 
-// Path ritorna il percorso del file di config, es. ~/.config/clickup-cli/config.yml.
+// Path returns the config file path, e.g. ~/.config/clickup-cli/config.yml.
 func Path() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -33,8 +33,8 @@ func Path() (string, error) {
 	return filepath.Join(dir, "clickup-cli", "config.yml"), nil
 }
 
-// Load legge la config dal disco. File mancante -> Config{} senza errore.
-// L'env CLICKUP_TOKEN, se valorizzato, sovrascrive il token del file.
+// Load reads the config from disk. Missing file -> Config{} with no error.
+// The CLICKUP_TOKEN env var, if set, overrides the token from the file.
 func Load() (Config, error) {
 	var c Config
 	p, err := Path()
@@ -44,7 +44,7 @@ func Load() (Config, error) {
 	data, err := os.ReadFile(p)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		// nessun file: config vuota
+		// no file: empty config
 	case err != nil:
 		return c, err
 	default:
@@ -58,7 +58,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// Save scrive la config su disco creando le directory necessarie.
+// Save writes the config to disk, creating the necessary directories.
 func Save(c Config) error {
 	p, err := Path()
 	if err != nil {

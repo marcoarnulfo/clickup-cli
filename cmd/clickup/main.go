@@ -17,7 +17,7 @@ func main() {
 	}
 	p := tea.NewProgram(tui.New(cfg), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "errore:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
