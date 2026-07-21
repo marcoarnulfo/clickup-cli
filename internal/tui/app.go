@@ -26,6 +26,7 @@ const (
 	screenMembers
 	screenRange
 	screenFilters
+	screenListBrowser
 )
 
 // Async messages.
@@ -35,6 +36,13 @@ type (
 	membersMsg  struct{ members []clickup.Member }
 	statusesMsg struct{ byTask map[string]string }
 	errMsg      struct{ err error }
+
+	spacesMsg        struct{ spaces []clickup.Space }
+	spaceContentsMsg struct {
+		spaceID    string
+		folders    []clickup.Folder
+		folderless []clickup.List
+	}
 )
 
 // Model is the root model of the TUI.
@@ -77,6 +85,11 @@ type Model struct {
 	membersScreen membersModel
 	rangeScreen   rangeModel
 	filtersScreen filtersModel
+
+	// shared Space→Folder→List browser (log/rates entry points)
+	browserScreen   listBrowserModel
+	browserSpaces   []clickup.Space
+	browserContents map[string]browserSpaceContents
 }
 
 // New builds the root model from the config.
@@ -319,6 +332,60 @@ func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
 	}
 }
 
+// spacesCmd / spaceContentsCmd pick the demo or real source.
+func (m Model) spacesCmd() tea.Cmd {
+	if m.demo {
+		return demoSpacesCmd()
+	}
+	return loadSpacesCmd(m.client, m.cfg.WorkspaceID)
+}
+
+func (m Model) spaceContentsCmd(spaceID string) tea.Cmd {
+	if m.demo {
+		return demoSpaceContentsCmd(spaceID)
+	}
+	return loadSpaceContentsCmd(m.client, spaceID)
+}
+
+// openListBrowser opens the shared list browser on behalf of `origin`.
+func (m Model) openListBrowser(origin screen) (Model, tea.Cmd) {
+	bs := listBrowserModel{origin: origin}
+	m.screen = screenListBrowser
+	if len(m.browserSpaces) > 0 {
+		bs.spaces = m.browserSpaces
+		m.browserScreen = bs
+		return m, nil
+	}
+	bs.loading = true
+	m.browserScreen = bs
+	return m, m.spacesCmd()
+}
+
+// loadSpacesCmd / loadSpaceContentsCmd fetch in the background.
+func loadSpacesCmd(c *clickup.Client, teamID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		spaces, err := c.Spaces(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return spacesMsg{spaces: spaces}
+	}
+}
+
+func loadSpaceContentsCmd(c *clickup.Client, spaceID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		folders, folderless, err := c.SpaceContents(ctx, spaceID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return spaceContentsMsg{spaceID: spaceID, folders: folders, folderless: folderless}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -326,7 +393,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -425,6 +492,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
 		m.screen = screenFilters
 		return m, nil
+
+	case spacesMsg:
+		m.browserSpaces = msg.spaces
+		bs := m.browserScreen
+		bs.spaces = msg.spaces
+		bs.loading = false
+		bs.level = browseSpaces
+		bs.idx = 0
+		m.browserScreen = bs
+		m.screen = screenListBrowser
+		return m, nil
+
+	case spaceContentsMsg:
+		if m.browserContents == nil {
+			m.browserContents = map[string]browserSpaceContents{}
+		}
+		m.browserContents[msg.spaceID] = browserSpaceContents{folders: msg.folders, folderless: msg.folderless}
+		bs := m.browserScreen
+		if bs.spaceID == msg.spaceID {
+			bs.folders = msg.folders
+			bs.folderless = msg.folderless
+			bs.loading = false
+			bs.level = browseSpaceContents
+			bs.idx = 0
+			m.browserScreen = bs
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -450,6 +544,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateRange(msg)
 	case screenFilters:
 		return m.updateFilters(msg)
+	case screenListBrowser:
+		return m.updateListBrowser(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -484,6 +580,8 @@ func (m Model) View() string {
 		return m.rangeScreen.view()
 	case screenFilters:
 		return m.filtersScreen.view()
+	case screenListBrowser:
+		return m.browserScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}
