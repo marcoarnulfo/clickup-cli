@@ -315,6 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entriesMsg:
 		m.entries = msg.entries
+		m.assignStatuses() // re-stamp session-cached statuses onto the freshly loaded entries
 		groupBy := m.report.GroupBy
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // first load: summary of the month

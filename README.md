@@ -84,7 +84,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `Enter` | Home | Generate the report for the selected month/scope |
 | `g` | Report | Cycle grouping: total → task → list → day → member (team) → total |
 | `e` | Report | Open the export menu (CSV/JSON/Markdown) |
-| `m` / `s` | Report | Go back home to change month/scope |
+| `m` / `s` | Report | Go back home to change range/scope |
 | `r` | Report | Reload the time entries from the API for the same month/scope |
 | `p` | Report | Open the **Per-list rates** screen |
 | `f` | Report | Open the **Filters** screen (list/tag/status) |

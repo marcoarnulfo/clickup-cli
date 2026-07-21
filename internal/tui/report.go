@@ -119,7 +119,7 @@ func (rm reportModel) view() string {
 		"TOTAL", r.TotalHours, r.TotalAmount, r.Currency))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change month/scope · r: reload · q: quit")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("No hours tracked this month.")

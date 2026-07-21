@@ -107,6 +107,7 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rs.fromInput = newTextInput("From (YYYY-MM-DD)")
 			rs.toInput = newTextInput("To (YYYY-MM-DD)")
 			rs.fromInput.Focus()
+			rs.toInput.Blur()
 			m.rangeScreen = rs
 			return m, nil
 		}

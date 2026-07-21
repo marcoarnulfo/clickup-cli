@@ -638,6 +638,21 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 	}
 }
 
+func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
+	m := Model{
+		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		taskStatus:     map[string]string{"t1": "done"},
+		filterStatuses: map[string]bool{"done": true},
+	}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.report.TotalHours != 1 {
+		t.Fatalf("cached status should be re-applied on reload; total = %v, want 1", m.report.TotalHours)
+	}
+}
+
 func TestStatusesMsgAssignsAndOpens(t *testing.T) {
 	m := Model{
 		screen:  screenFilters,

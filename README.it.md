@@ -86,7 +86,7 @@ di setup.
 | `Enter` | Home | Genera il report per mese/scope selezionati |
 | `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → membro (team) → totale |
 | `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
-| `m` / `s` | Report | Torna alla home per cambiare mese/scope |
+| `m` / `s` | Report | Torna alla home per cambiare range/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
 | `p` | Report | Apre la schermata **Tariffe per lista** |
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status) |
