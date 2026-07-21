@@ -4,28 +4,21 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-type setupModel struct{}
 type homeModel struct{}
 type reportModel struct{}
 type exportModel struct{}
 
-func newSetup() setupModel                         { return setupModel{} }
 func newHome(year int, month time.Month) homeModel { return homeModel{} }
 func newReport(r report.Report) reportModel        { return reportModel{} }
 func newExport(r report.Report) exportModel        { return exportModel{} }
 
-func (s setupModel) view() string   { return "setup" }
 func (h homeModel) view() string    { return "home" }
 func (rm reportModel) view() string { return "report" }
 func (e exportModel) view() string  { return "export" }
 
-func (s setupModel) withTeams(teams []clickup.Team) (setupModel, tea.Cmd) { return s, nil }
-
-func (m Model) updateSetup(tea.KeyMsg) (tea.Model, tea.Cmd)  { return m, nil }
 func (m Model) updateHome(tea.KeyMsg) (tea.Model, tea.Cmd)   { return m, nil }
 func (m Model) updateReport(tea.KeyMsg) (tea.Model, tea.Cmd) { return m, nil }
 func (m Model) updateExport(tea.KeyMsg) (tea.Model, tea.Cmd) { return m, nil }

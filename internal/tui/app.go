@@ -162,8 +162,12 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case screenExport:
 		return m.updateExport(msg)
 	case screenError:
-		// qualsiasi tasto torna alla home
-		m.screen = screenHome
+		if !m.cfg.Valid() {
+			m.screen = screenSetup
+			m.setup = newSetup()
+		} else {
+			m.screen = screenHome
+		}
 		return m, nil
 	}
 	return m, nil

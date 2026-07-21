@@ -49,6 +49,16 @@ func TestQuitKey(t *testing.T) {
 	}
 }
 
+func TestSetupTokenStepAcceptsInput(t *testing.T) {
+	m := New(config.Config{})
+	// digita un carattere nel campo token
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	mm := updated.(Model)
+	if mm.setup.token() == "" {
+		t.Fatal("token input should capture typed characters")
+	}
+}
+
 var errTest = &testErr{}
 
 type testErr struct{}
