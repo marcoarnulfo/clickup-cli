@@ -45,9 +45,9 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (homeModel) view(year int, month time.Month, scope string) string {
-	title := styleTitle.Render("ClickUp Hours — Report mensile")
-	sel := styleBox.Render(fmt.Sprintf("Mese: %s  ◂ %04d-%02d ▸    Scope: %s",
+	title := styleTitle.Render("ClickUp Hours — Monthly report")
+	sel := styleBox.Render(fmt.Sprintf("Month: %s  ◂ %04d-%02d ▸    Scope: %s",
 		styleAccent.Render(month.String()), year, int(month), styleAccent.Render(scope)))
-	help := styleHelp.Render("◂/▸ cambia mese · t: me/team · Enter: genera report · n: log ore · q: esci")
+	help := styleHelp.Render("◂/▸ change month · t: me/team · Enter: generate report · n: log hours · q: quit")
 	return title + "\n\n" + sel + "\n\n" + help
 }

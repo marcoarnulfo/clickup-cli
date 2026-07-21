@@ -60,7 +60,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyEnter && s.input.Value() != "" {
 			s.tmpCfg.Token = s.input.Value()
 			s.loading = true
-			s.msg = "Validazione token…"
+			s.msg = "Validating token…"
 			m.setup = s
 			m.client = clickup.New(s.tmpCfg.Token)
 			return m, validateAndLoadTeamsCmd(m.client)
@@ -85,7 +85,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(s.teams) > 0 {
 				s.tmpCfg.WorkspaceID = s.teams[s.teamIdx].ID
 				s.step = stepRate
-				s.input = newNumberInput("Tariffa oraria (es. 45) — vuoto per saltare")
+				s.input = newNumberInput("Hourly rate (e.g. 45) — empty to skip")
 			}
 		}
 		m.setup = s
@@ -96,7 +96,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if v := s.input.Value(); v != "" {
 				rate, err := strconv.ParseFloat(v, 64)
 				if err != nil {
-					s.msg = "Tariffa non valida: inserisci un numero (es. 45)"
+					s.msg = "Invalid rate: enter a number (e.g. 45)"
 					m.setup = s
 					return m, nil
 				}
@@ -104,7 +104,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			s.msg = ""
 			s.step = stepCurrency
-			s.input = newTextInput("Valuta (es. EUR) — vuoto per EUR")
+			s.input = newTextInput("Currency (e.g. EUR) — empty for EUR")
 			m.setup = s
 			return m, nil
 		}
@@ -135,15 +135,15 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (s setupModel) view() string {
-	b := styleTitle.Render("Setup ClickUp Hours CLI") + "\n\n"
+	b := styleTitle.Render("ClickUp Hours CLI — Setup") + "\n\n"
 	switch s.step {
 	case stepToken:
-		b += "Incolla il tuo token API personale:\n\n" + s.input.View()
+		b += "Paste your personal API token:\n\n" + s.input.View()
 		if s.msg != "" {
 			b += "\n\n" + styleHelp.Render(s.msg)
 		}
 	case stepWorkspace:
-		b += "Scegli il workspace:\n\n"
+		b += "Choose the workspace:\n\n"
 		for i, t := range s.teams {
 			cursor := "  "
 			line := t.Name + " (" + t.ID + ")"
@@ -161,7 +161,7 @@ func (s setupModel) view() string {
 	case stepCurrency:
 		b += s.input.View()
 	}
-	b += "\n\n" + styleHelp.Render("Enter: conferma · Ctrl+C: esci")
+	b += "\n\n" + styleHelp.Render("Enter: confirm · Ctrl+C: quit")
 	return b
 }
 
