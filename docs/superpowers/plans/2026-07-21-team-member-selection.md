@@ -429,8 +429,8 @@ git commit -m "feat(tui): thread selected member assignees through entry loading
 
 **Files:**
 - Modify: `internal/tui/demo.go`
-- Modify: `internal/tui/app.go` (introduce the `membersMsg` type; make the demo branch of `reloadEntriesCmd` selection-aware)
-- Test: `internal/tui/demo_test.go`
+- Modify: `internal/tui/app.go` (introduce the `membersMsg` type; make `reloadEntriesCmd` selection-aware and scope-guarded)
+- Test: `internal/tui/demo_test.go`, `internal/tui/app_test.go` (me-scope guard regression test)
 
 **Interfaces:**
 - Consumes: `clickup.Member`, `Model.selectedAssignees` (Task 3).
@@ -464,8 +464,8 @@ func TestDemoEntriesMultipleUsers(t *testing.T) {
 }
 
 func TestReloadDemoFiltersMembers(t *testing.T) {
-	// Only alice (id 1) selected: the demo report must exclude bob/carol.
-	m := Model{demo: true, year: 2026, month: time.July, selectedMembers: map[int]bool{1: true}}
+	// Team scope, only alice (id 1) selected: the demo report must exclude bob/carol.
+	m := Model{demo: true, year: 2026, month: time.July, scope: "team", selectedMembers: map[int]bool{1: true}}
 	em, ok := m.reloadEntriesCmd()().(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg")
@@ -477,6 +477,38 @@ func TestReloadDemoFiltersMembers(t *testing.T) {
 		if e.UserID != 1 {
 			t.Errorf("demo filter leaked user %d (%s)", e.UserID, e.UserName)
 		}
+	}
+}
+```
+
+Also add a regression test to `internal/tui/app_test.go` for the scope guard (a stale team selection must NOT filter a "me" load):
+
+```go
+func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			if got := r.URL.Query().Get("assignee"); got != "" {
+				t.Errorf("me scope must not filter by assignee, got %q", got)
+			}
+			w.Write([]byte(`{"data":[]}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	m := Model{
+		client:          c,
+		cfg:             config.Config{WorkspaceID: "900"},
+		year:            2026,
+		month:           time.July,
+		scope:           "me",
+		selectedMembers: map[int]bool{5: true}, // stale from a prior team selection
+	}
+	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
 ```
@@ -494,14 +526,20 @@ Expected: FAIL — `undefined: demoMembers` / `undefined: demoMembersCmd`.
 	membersMsg struct{ members []clickup.Member }
 ```
 
-And make the demo branch of `reloadEntriesCmd` selection-aware (only this branch changes):
+And make `reloadEntriesCmd` selection-aware, guarding the assignees by scope so a stale team selection can never filter a "me" load (the member filter is a team-scope concept):
 
 ```go
 func (m Model) reloadEntriesCmd() tea.Cmd {
-	if m.demo {
-		return demoEntriesCmd(m.year, m.month, m.selectedAssignees())
+	// The member filter is a team-scope concept; never carry a stale
+	// selection into a "me" load.
+	var assignees []int
+	if m.scope == "team" {
+		assignees = m.selectedAssignees()
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, m.selectedAssignees())
+	if m.demo {
+		return demoEntriesCmd(m.year, m.month, assignees)
+	}
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
 }
 ```
 
@@ -583,7 +621,7 @@ Run: `go test ./internal/tui/ -race` → PASS. (`TestDemoEntriesBuildReport` sti
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/tui/demo.go internal/tui/demo_test.go internal/tui/app.go
+git add internal/tui/demo.go internal/tui/demo_test.go internal/tui/app.go internal/tui/app_test.go
 git commit -m "feat(tui): multi-user demo data, demo members, selection-aware demo"
 ```
 
