@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
@@ -64,6 +65,24 @@ var errTest = &testErr{}
 type testErr struct{}
 
 func (*testErr) Error() string { return "boom" }
+
+func TestReportCycleGroupBy(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}})
+	mm := updated.(Model)
+	if mm.report.GroupBy != report.GroupByTotal {
+		t.Fatalf("initial groupBy should be total, got %q", mm.report.GroupBy)
+	}
+	// 'g' -> task
+	updated2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	mm2 := updated2.(Model)
+	if mm2.report.GroupBy != report.GroupByTask {
+		t.Fatalf("after g groupBy should be task, got %q", mm2.report.GroupBy)
+	}
+}
 
 func TestHomeChangesMonthAndScope(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})

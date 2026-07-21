@@ -44,7 +44,8 @@ type Model struct {
 	scope string // "me" | "team"
 
 	// dati
-	report report.Report
+	report  report.Report
+	entries []report.TimeEntry
 
 	// sotto-modelli
 	setup  setupModel
@@ -135,7 +136,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case entriesMsg:
-		m.report = report.Build(msg.entries, report.GroupByTotal, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		m.entries = msg.entries
+		groupBy := m.report.GroupBy
+		if groupBy == "" {
+			groupBy = report.GroupByTotal // primo caricamento: sintesi del mese
+		}
+		m.report = report.Build(msg.entries, groupBy, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 		m.screen = screenReport
