@@ -191,16 +191,26 @@ Create `internal/config/config_test.go`:
 package config
 
 import (
-	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestSaveThenLoadRoundTrip(t *testing.T) {
+// isolateConfig reindirizza la config in una dir temporanea su TUTTE le
+// piattaforme. Su macOS os.UserConfigDir usa $HOME/Library/Application Support
+// (ignora XDG_CONFIG_HOME); su Linux usa XDG_CONFIG_HOME. Settiamo entrambe,
+// così i test non toccano MAI la config reale dell'utente.
+func isolateConfig(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir) // os.UserConfigDir usa XDG_CONFIG_HOME su Linux; su macOS no
-	t.Setenv("CLICKUP_TOKEN", "")    // evita override durante il test
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_TOKEN", "") // evita override durante i test
+	return dir
+}
 
+func TestSaveThenLoadRoundTrip(t *testing.T) {
+	isolateConfig(t)
 	want := Config{Token: "tok_123", WorkspaceID: "900", Currency: "EUR", Rate: 45}
 	if err := Save(want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -215,8 +225,7 @@ func TestSaveThenLoadRoundTrip(t *testing.T) {
 }
 
 func TestLoadMissingFileReturnsEmpty(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("CLICKUP_TOKEN", "")
+	isolateConfig(t)
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load on missing file should not error, got %v", err)
@@ -227,8 +236,7 @@ func TestLoadMissingFileReturnsEmpty(t *testing.T) {
 }
 
 func TestEnvOverridesToken(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("CLICKUP_TOKEN", "")
+	isolateConfig(t)
 	if err := Save(Config{Token: "file_tok", WorkspaceID: "1"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -249,7 +257,7 @@ func TestValid(t *testing.T) {
 }
 
 func TestPathUnderConfigDir(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := isolateConfig(t)
 	p, err := Path()
 	if err != nil {
 		t.Fatalf("Path: %v", err)
@@ -257,8 +265,8 @@ func TestPathUnderConfigDir(t *testing.T) {
 	if filepath.Base(p) != "config.yml" {
 		t.Fatalf("expected config.yml, got %s", p)
 	}
-	if _, err := os.Stat(filepath.Dir(filepath.Dir(p))); err != nil {
-		t.Fatalf("config dir root should exist: %v", err)
+	if !strings.HasPrefix(p, dir) {
+		t.Fatalf("path %s should be under temp dir %s", p, dir)
 	}
 }
 ```
@@ -354,7 +362,7 @@ func Save(c Config) error {
 Run: `go test ./internal/config/ -v`
 Expected: PASS (tutti i test).
 
-Nota: su macOS `os.UserConfigDir()` ritorna `~/Library/Application Support` e **ignora** `XDG_CONFIG_HOME`. I test usano `t.TempDir()` + `XDG_CONFIG_HOME`; se giri su macOS e un test fallisse per questo, non è un bug del codice — in CI (Linux) passano. Per robustezza locale puoi anche settare `t.Setenv("HOME", t.TempDir())`.
+Nota: `isolateConfig` setta **sia** `HOME` (macOS) **sia** `XDG_CONFIG_HOME` (Linux), quindi i test sono deterministici su entrambe le piattaforme e **non toccano mai** la config reale dell'utente.
 
 - [ ] **Step 6: Commit**
 
@@ -511,11 +519,12 @@ type TimeEntry struct {
 	Duration time.Duration
 }
 
-// Bucket è una riga aggregata del report.
+// Bucket è una riga aggregata del report. I tag JSON servono all'export
+// (il package resta puro: i tag non introducono dipendenze).
 type Bucket struct {
-	Label  string
-	Hours  float64
-	Amount float64
+	Label  string  `json:"label"`
+	Hours  float64 `json:"hours"`
+	Amount float64 `json:"amount"`
 }
 
 // Report è il risultato aggregato pronto per la presentazione/export.
@@ -822,22 +831,26 @@ func Markdown(w io.Writer, r report.Report) error {
 }
 
 // ToFile scrive il report nel formato dato sul path indicato.
+// Valida il formato PRIMA di creare il file, così un formato ignoto
+// non lascia un file vuoto sul disco.
 func ToFile(format string, r report.Report, path string) error {
+	var fn func(io.Writer, report.Report) error
+	switch format {
+	case "csv":
+		fn = CSV
+	case "json":
+		fn = JSON
+	case "markdown":
+		fn = Markdown
+	default:
+		return fmt.Errorf("formato non supportato: %q", format)
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	switch format {
-	case "csv":
-		return CSV(f, r)
-	case "json":
-		return JSON(f, r)
-	case "markdown":
-		return Markdown(f, r)
-	default:
-		return fmt.Errorf("formato non supportato: %q", format)
-	}
+	return fn(f, r)
 }
 ```
 
@@ -867,6 +880,7 @@ git commit -m "feat: export report to CSV/JSON/Markdown"
   - `type User struct { ID int; Username string }` — `func (c *Client) CurrentUser(ctx context.Context) (User, error)` (GET `/user`).
   - `type Member struct { ID int; Username string }`, `type Team struct { ID, Name string; Members []Member }` — `func (c *Client) Teams(ctx context.Context) ([]Team, error)` (GET `/team`).
   - `func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time.Time, assignees []int) ([]report.TimeEntry, error)` (GET `/team/{id}/time_entries`).
+  - `var ErrUnauthorized error` — sentinella wrappata sul 401 (i chiamanti la testano con `errors.Is` per rilanciare il setup).
 
 - [ ] **Step 1: Scrivi i test (falliscono)**
 
@@ -877,8 +891,10 @@ package clickup
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -951,7 +967,7 @@ func TestTimeEntriesParsesDurationAndTask(t *testing.T) {
 	}
 }
 
-func TestAPIErrorStatus(t *testing.T) {
+func TestUnauthorizedIsTyped(t *testing.T) {
 	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_017"}`))
@@ -960,6 +976,73 @@ func TestAPIErrorStatus(t *testing.T) {
 	_, err := c.CurrentUser(context.Background())
 	if err == nil {
 		t.Fatal("expected error on 401")
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("401 should wrap ErrUnauthorized, got %v", err)
+	}
+}
+
+func TestRetryOn429ThenSuccess(t *testing.T) {
+	old := retryDelay
+	retryDelay = 5 * time.Millisecond // test veloce
+	defer func() { retryDelay = old }()
+
+	var calls atomic.Int32
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`{"user":{"id":1,"username":"x"}}`))
+	})
+	defer srv.Close()
+
+	u, err := c.CurrentUser(context.Background())
+	if err != nil {
+		t.Fatalf("should succeed after one retry, got %v", err)
+	}
+	if u.ID != 1 {
+		t.Fatalf("got %+v", u)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("expected 2 calls (429 then 200), got %d", calls.Load())
+	}
+}
+
+func TestTimeEntriesSkipsRunningTimer(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		// una entry consuntivata + un timer in corso (duration negativa)
+		w.Write([]byte(`{"data":[
+			{"id":"e1","task":{"id":"t1","name":"Done"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"},
+			{"id":"e2","task":{"id":"t2","name":"Running"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"-1751360400000"}
+		]}`))
+	})
+	defer srv.Close()
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	entries, err := c.TimeEntries(context.Background(), "900", start, end, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].TaskName != "Done" {
+		t.Fatalf("running timer should be skipped, got %+v", entries)
+	}
+}
+
+func TestTimeEntriesNumericListID(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		// list_id come NUMERO (non stringa): flexString deve gestirlo
+		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":901},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+	})
+	defer srv.Close()
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	entries, err := c.TimeEntries(context.Background(), "900", start, end, nil)
+	if err != nil {
+		t.Fatalf("numeric list_id should parse, got %v", err)
+	}
+	if len(entries) != 1 || entries[0].ListID != "901" {
+		t.Fatalf("expected list_id 901, got %+v", entries)
 	}
 }
 ```
@@ -980,11 +1063,22 @@ package clickup
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
+
+// ErrUnauthorized indica un token mancante/invalido/revocato (HTTP 401).
+// I chiamanti la usano con errors.Is per rilanciare il setup wizard.
+var ErrUnauthorized = errors.New("token non autorizzato")
+
+// retryDelay è il backoff tra i tentativi in caso di 429 (override nei test).
+var retryDelay = 2 * time.Second
+
+// maxRetries è il numero massimo di ritentativi su 429.
+const maxRetries = 2
 
 // Client interroga la ClickUp API v2.
 type Client struct {
@@ -1009,8 +1103,12 @@ type apiError struct {
 }
 
 // get esegue una GET autenticata e decodifica il JSON in out.
-// Gestisce il 429 con un retry dopo backoff.
 func (c *Client) get(ctx context.Context, path string, query map[string]string, out any) error {
+	return c.getRetry(ctx, path, query, out, 0)
+}
+
+// getRetry implementa la GET con backoff limitato sul 429 (attempt = tentativi già fatti).
+func (c *Client) getRetry(ctx context.Context, path string, query map[string]string, out any, attempt int) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+path, nil)
 	if err != nil {
 		return err
@@ -1034,13 +1132,20 @@ func (c *Client) get(ctx context.Context, path string, query map[string]string, 
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// backoff semplice e singolo retry
+		if attempt >= maxRetries {
+			return fmt.Errorf("clickup API 429: rate limit superato dopo %d tentativi", attempt)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(retryDelay):
 		}
-		return c.get(ctx, path, query, out)
+		return c.getRetry(ctx, path, query, out, attempt+1)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		var ae apiError
+		_ = json.Unmarshal(body, &ae)
+		return fmt.Errorf("%w: %s", ErrUnauthorized, ae.Err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var ae apiError
@@ -1149,6 +1254,15 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
+// flexString decodifica un campo JSON che può arrivare come stringa OPPURE
+// come numero (gli id ClickUp variano tra endpoint). Normalizza sempre a stringa.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	*f = flexString(strings.Trim(string(b), `"`))
+	return nil
+}
+
 // rawEntry rispecchia una voce dell'array "data" di /team/{id}/time_entries.
 type rawEntry struct {
 	ID   string `json:"id"`
@@ -1157,18 +1271,19 @@ type rawEntry struct {
 		Name string `json:"name"`
 	} `json:"task"`
 	TaskLocation struct {
-		ListID string `json:"list_id"`
+		ListID flexString `json:"list_id"`
 	} `json:"task_location"`
 	User struct {
 		ID       int    `json:"id"`
 		Username string `json:"username"`
 	} `json:"user"`
 	Start    string `json:"start"`    // epoch ms come stringa
-	Duration string `json:"duration"` // ms come stringa
+	Duration string `json:"duration"` // ms come stringa (negativa se timer in corso)
 }
 
 // TimeEntries ritorna le voci di tempo del workspace nel range [start, end).
 // Se assignees è non vuoto, filtra su quegli utenti (scope team).
+// Le voci con durata negativa (timer in esecuzione) vengono scartate.
 func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time.Time, assignees []int) ([]report.TimeEntry, error) {
 	q := map[string]string{
 		"start_date": strconv.FormatInt(start.UnixMilli(), 10),
@@ -1192,13 +1307,17 @@ func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time
 	out := make([]report.TimeEntry, 0, len(resp.Data))
 	for _, r := range resp.Data {
 		ms, _ := strconv.ParseInt(r.Duration, 10, 64)
+		if ms < 0 {
+			continue // timer in corso: durata negativa, non è tempo consuntivato
+		}
 		startMs, _ := strconv.ParseInt(r.Start, 10, 64)
+		listID := string(r.TaskLocation.ListID)
 		out = append(out, report.TimeEntry{
 			ID:       r.ID,
 			TaskID:   r.Task.ID,
 			TaskName: r.Task.Name,
-			ListID:   r.TaskLocation.ListID,
-			ListName: r.TaskLocation.ListID, // nome lista risolto in v1.1; per ora l'ID
+			ListID:   listID,
+			ListName: listID, // nome lista risolto in v1.1; per ora l'ID
 			UserID:   r.User.ID,
 			UserName: r.User.Username,
 			Start:    time.UnixMilli(startMs).UTC(),
@@ -1209,7 +1328,7 @@ func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time
 }
 ```
 
-Nota: l'endpoint `time_entries` non restituisce il **nome** della lista, solo `list_id`. In v1.0 usiamo l'ID come `ListName` (il raggruppamento "per progetto" funziona comunque). Il nome leggibile della lista arriverà in v1.1 con una cache `list_id -> name` via `GET /list/{id}`.
+Nota: l'endpoint `time_entries` non restituisce il **nome** della lista, solo `list_id`. In v1.0 usiamo l'ID come `ListName` (il raggruppamento "per progetto" funziona comunque). Il nome leggibile della lista arriverà in v1.1 con una cache `list_id -> name` via `GET /list/{id}`. `flexString` protegge dal fatto che `list_id` reale possa essere numerico anziché stringa.
 
 - [ ] **Step 6: Esegui i test (devono passare)**
 
@@ -1351,6 +1470,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -1387,10 +1507,9 @@ type Model struct {
 	width, height int
 
 	// selezione corrente
-	year      int
-	month     time.Month
-	scope     string // "me" | "team"
-	assignees []int
+	year  int
+	month time.Month
+	scope string // "me" | "team"
 
 	// dati
 	report report.Report
@@ -1425,10 +1544,29 @@ func New(cfg config.Config) Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 // loadEntriesCmd chiama l'API in background e ritorna entriesMsg o errMsg.
-func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, assignees []int) tea.Cmd {
+// Per lo scope "team" ricava gli id di tutti i membri del workspace (via Teams)
+// e li passa come assignees, così il report copre l'intero team; per "me" nessun
+// assignee (l'API torna le voci dell'utente autenticato).
+func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+
+		var assignees []int
+		if scope == "team" {
+			teams, err := c.Teams(ctx)
+			if err != nil {
+				return errMsg{err: err}
+			}
+			for _, t := range teams {
+				if t.ID == teamID {
+					for _, mem := range t.Members {
+						assignees = append(assignees, mem.ID)
+					}
+				}
+			}
+		}
+
 		start, end := report.MonthRange(year, month)
 		entries, err := c.TimeEntries(ctx, teamID, start, end, assignees)
 		if err != nil {
@@ -1455,7 +1593,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		m.err = msg.err
-		m.screen = screenError
+		// Token invalido/revocato: rilancia il setup wizard (spec §8).
+		if errors.Is(msg.err, clickup.ErrUnauthorized) {
+			m.screen = screenSetup
+			m.setup = newSetup()
+		} else {
+			m.screen = screenError
+		}
 		return m, nil
 
 	case entriesMsg:
@@ -1516,27 +1660,35 @@ Nota: i metodi `updateSetup/updateHome/updateReport/updateExport`, `newSetup`, `
 
 - [ ] **Step 6: Crea gli stub temporanei per compilare**
 
-Create `internal/tui/stubs.go` (verrà svuotato nei task successivi):
+Create `internal/tui/stubs.go`. **Importante:** le firme qui sono **identiche** a quelle reali dei Task 7–10 (nessuna firma "provvisoria"): così, quando un task sostituisce il proprio stub con l'implementazione vera, non c'è alcuna `redeclared`/mismatch. Ogni task 7–10 rimuoverà i propri simboli da questo file; il Task 10 lo elimina.
 
 ```go
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
+)
 
 type setupModel struct{}
 type homeModel struct{}
 type reportModel struct{}
 type exportModel struct{}
 
-func newSetup() setupModel                 { return setupModel{} }
-func newHome(int, interface{ String() string }) homeModel { return homeModel{} }
+func newSetup() setupModel                         { return setupModel{} }
+func newHome(year int, month time.Month) homeModel { return homeModel{} }
+func newReport(r report.Report) reportModel        { return reportModel{} }
+func newExport(r report.Report) exportModel        { return exportModel{} }
 
-func (s setupModel) view() string { return "setup" }
-func (h homeModel) view() string  { return "home" }
-func (r reportModel) view() string { return "report" }
-func (e exportModel) view() string { return "export" }
+func (s setupModel) view() string   { return "setup" }
+func (h homeModel) view() string    { return "home" }
+func (rm reportModel) view() string { return "report" }
+func (e exportModel) view() string  { return "export" }
 
-func (s setupModel) withTeams(any) (setupModel, tea.Cmd) { return s, nil }
+func (s setupModel) withTeams(teams []clickup.Team) (setupModel, tea.Cmd) { return s, nil }
 
 func (m Model) updateSetup(tea.KeyMsg) (tea.Model, tea.Cmd)  { return m, nil }
 func (m Model) updateHome(tea.KeyMsg) (tea.Model, tea.Cmd)   { return m, nil }
@@ -1544,13 +1696,7 @@ func (m Model) updateReport(tea.KeyMsg) (tea.Model, tea.Cmd) { return m, nil }
 func (m Model) updateExport(tea.KeyMsg) (tea.Model, tea.Cmd) { return m, nil }
 ```
 
-⚠️ Gli stub sopra hanno firme *provvisorie*. Nei task 7–10 sostituirai un file stub alla volta con l'implementazione reale, adeguando le firme a quelle indicate nei rispettivi task. Il `newHome` reale ha firma `newHome(year int, month time.Month) homeModel` — qui è volutamente sbagliato solo per compilare gli stub isolati; **quando implementi il Task 8, aggiorna sia `stubs.go` sia `app.go` alla firma reale.** Per semplicità, in questo task modifica `app.go` per chiamare `newHome(m.year, m.month)` e definisci lo stub con la stessa firma:
-
-```go
-func newHome(year int, month time.Month) homeModel { return homeModel{} }
-```
-
-(usa `time` nell'import di stubs.go). Mantieni una sola definizione di ciascun simbolo.
+Nota: in Go i parametri non usati (`year`, `month`, `r`, `teams`) sono legali; gli import `time`, `clickup`, `report`, `tea` sono tutti usati dalle firme. Mantieni **una sola** definizione di ciascun simbolo (stub *oppure* reale, mai entrambe).
 
 - [ ] **Step 7: Cabla `main.go`**
 
@@ -1950,16 +2096,9 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		m.home.year, m.home.month, m.home.scope = m.year, m.month, m.scope
-		var assignees []int
-		if m.scope == "team" {
-			// tutti i membri del workspace selezionato
-			for _, t := range teamMembersFor(m) {
-				assignees = append(assignees, t)
-			}
-		}
-		m.assignees = assignees
 		m.screen = screenLoading
-		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, assignees)
+		// loadEntriesCmd ricava da solo gli assignees del team quando scope=="team".
+		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
 	}
 	m.home.year, m.home.month, m.home.scope = m.year, m.month, m.scope
 	return m, nil
@@ -1972,17 +2111,9 @@ func (h homeModel) view() string {
 	help := styleHelp.Render("◂/▸ cambia mese · t: me/team · Enter: genera report · q: esci")
 	return title + "\n\n" + sel + "\n\n" + help
 }
-
-// teamMembersFor ritorna gli id dei membri del workspace corrente (per lo scope team).
-// In v1.0 i teams sono caricati nel setup; qui li ricarichiamo pigramente se assenti.
-func teamMembersFor(m Model) []int {
-	// La lista membri completa vive in setupModel dopo il setup; per robustezza,
-	// in v1.0 se non disponibile ritorniamo nil (l'API senza assignee = solo utente).
-	return nil
-}
 ```
 
-Nota v1.0: lo scope "team" richiede la lista dei membri. Per non complicare il flusso, in v1.0 `teamMembersFor` ritorna `nil` → l'API senza `assignee` restituisce comunque le voci visibili al token (che per un admin includono il team). Il filtro puntuale per-membro (con selezione multipla) è previsto come raffinamento in v1.3. Documenta questo comportamento nel README.
+Nota v1.0 sullo scope "team": `loadEntriesCmd` (Task 6) chiama `Teams()`, prende **tutti** i membri del workspace configurato e li passa come `assignees` → il report copre l'intero team. Serve un token con permessi Owner/Admin sul workspace: senza permessi l'API risponde con errore, che finisce sullo schermo d'errore con messaggio esplicito (spec §8). La **selezione puntuale** di singoli membri (checkbox multiselezione) è rimandata a v1.3. Documenta il requisito dei permessi nel README.
 
 - [ ] **Step 4: Esegui i test (devono passare)**
 
@@ -2021,12 +2152,16 @@ In `app.go`, aggiungi al `Model` il campo:
 	entries []report.TimeEntry
 ```
 
-e nel case `entriesMsg`:
+e sostituisci il case `entriesMsg` con questa versione, che **conserva** il raggruppamento scelto quando si ricarica (`r`) e usa `GroupByTotal` solo al primo caricamento:
 
 ```go
 	case entriesMsg:
 		m.entries = msg.entries
-		m.report = report.Build(msg.entries, report.GroupByTotal, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		groupBy := m.report.GroupBy
+		if groupBy == "" {
+			groupBy = report.GroupByTotal // primo caricamento: sintesi del mese
+		}
+		m.report = report.Build(msg.entries, groupBy, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 		m.screen = screenReport
@@ -2110,7 +2245,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenHome
 	case "r":
 		m.screen = screenLoading
-		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.assignees)
+		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
 	case "e":
 		m.export = newExport(m.report)
 		m.screen = screenExport
@@ -2143,11 +2278,14 @@ func (rm reportModel) view() string {
 	return title + "\n\n" + body + "\n\n" + help
 }
 
+// truncate accorcia a n rune (non byte), per non spezzare caratteri UTF-8
+// nei nomi di task con accenti o emoji.
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n-1] + "…"
+	return string(r[:n-1]) + "…"
 }
 ```
 
@@ -2231,9 +2369,9 @@ import (
 )
 
 type exportFormat struct {
-	label  string
-	key    string
-	ext    string
+	label string
+	key   string
+	ext   string
 }
 
 var exportFormats = []exportFormat{
@@ -2385,7 +2523,7 @@ git tag v0.1.0
 ## Self-Review (svolto in fase di scrittura del piano)
 
 **1. Copertura spec:**
-- Scope self+team → Task 8 (toggle) + Task 5 (assignee). *Nota:* selezione puntuale membri rimandata a v1.3 (documentato in Task 8).
+- Scope self+team → Task 8 (toggle) + Task 6 (`loadEntriesCmd` ricava gli `assignees` del team da `Teams()`) + Task 5 (parametro `assignee`). *Nota:* selezione puntuale membri rimandata a v1.3.
 - Report mensile, default sintesi mese → Task 6 (`GroupByTotal` iniziale) + Task 9.
 - Raggruppamenti task/lista/giorno/totale → Task 3 + ciclo in Task 9.
 - Tariffa unica → importo → Task 3 (billing) + config Task 2.
@@ -2397,6 +2535,17 @@ git tag v0.1.0
 
 **2. Placeholder scan:** nessun "TBD/TODO". Le note su v1.1/v1.3 (nome lista, selezione membri) sono scelte di scope esplicite e documentate, non lacune.
 
-**3. Type consistency:** `report.TimeEntry`, `report.Report`, `report.Bucket`, `GroupBy*`, `Build`, `MonthRange` usati coerentemente tra `report`, `clickup`, `export`, `tui`. Firme `newHome(year int, month time.Month)`, `newReport(report.Report)`, `newExport(report.Report)`, `loadEntriesCmd(...)`, `config.Config` coerenti.
+**3. Type consistency:** `report.TimeEntry`, `report.Report`, `report.Bucket`, `GroupBy*`, `Build`, `MonthRange` usati coerentemente tra `report`, `clickup`, `export`, `tui`. Le firme in `stubs.go` sono **identiche** a quelle reali dei Task 7–10: `newSetup()`, `newHome(year int, month time.Month)`, `newReport(report.Report)`, `newExport(report.Report)`, `setupModel.withTeams([]clickup.Team)`, `loadEntriesCmd(client, teamID, year, month, scope string)`. Nessuna firma provvisoria → nessun rischio di `redeclared`.
 
-**Rischio noto:** l'ordine di implementazione TUI usa `stubs.go` per tenere il package compilabile tra Task 6 e Task 10. Ogni task 7–10 rimuove i propri stub; il Task 10 elimina il file. Segui l'ordine dei task per evitare simboli duplicati.
+**Rischio noto (mitigato):** l'ordine di implementazione TUI usa `stubs.go` per tenere il package compilabile tra Task 6 e Task 10. Poiché gli stub hanno già le firme definitive, ogni task 7–10 si limita a **rimuovere** i propri simboli e aggiungere il file reale; il Task 10 elimina `stubs.go`. Segui l'ordine dei task e non lasciare mai doppie definizioni.
+
+## Deviazioni note dalla spec (v1.0, intenzionali)
+
+- **`?` schermata di aiuto dedicata** (spec §5): in v1.0 l'aiuto è la riga di keybinding inline in fondo a ogni schermata; nessuna schermata `?` separata. Rinviata.
+- **Spinner di caricamento**: `screenLoading` mostra testo statico; `bubbles/spinner` (e `list`/`table`/`filepicker`/`help`) non sono usati in v1.0. Deviazione accettata per semplicità.
+- **Nome leggibile della lista**: usato l'`list_id` come etichetta "progetto" (vedi Task 5); nome via `GET /list/{id}` in v1.1.
+- **Selezione puntuale membri team**: v1.0 aggrega **tutti** i membri del workspace; multiselezione in v1.3.
+
+## Hardening applicato dopo review indipendente (modello Fable)
+
+Il piano è stato rivisto da un revisore indipendente e corretto per: tag JSON su `Bucket` (B3); isolamento config cross-piattaforma via `HOME`+`XDG_CONFIG_HOME` (B4); stub con firme reali incl. `newReport`/`newExport` (B1/B2/I5); scope team reale con `assignees` da `Teams()` (I1); `flexString` per `list_id` numerico (I2); scarto timer in corso a durata negativa (I3); retry 429 con contatore max + test (I4); `ErrUnauthorized` tipizzato che rilancia il setup (I6); `truncate` rune-safe e `ToFile` che valida prima di creare il file.
