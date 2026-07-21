@@ -156,3 +156,50 @@ func TestTimeEntriesNumericListID(t *testing.T) {
 		t.Fatalf("expected list_id 901, got %+v", entries)
 	}
 }
+
+func TestTimeEntriesNullListID(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		// list_id null (tempo tracciato senza task/lista) -> stringa vuota, non "null"
+		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":null},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+	})
+	defer srv.Close()
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	entries, err := c.TimeEntries(context.Background(), "900", start, end, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].ListID != "" {
+		t.Fatalf("null list_id should become empty string, got %q", entries[0].ListID)
+	}
+}
+
+func TestTimeEntriesEscapedStringListID(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		// list_id stringa con carattere escaped: deve essere de-escaped correttamente
+		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":"a\"b"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+	})
+	defer srv.Close()
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	entries, err := c.TimeEntries(context.Background(), "900", start, end, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].ListID != `a"b` {
+		t.Fatalf("escaped string list_id mis-parsed, got %q", entries[0].ListID)
+	}
+}
+
+func TestTimeEntriesMalformedDurationErrors(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		// durata non numerica: deve produrre un errore, non una entry a zero
+		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t1","name":"X"},"task_location":{"list_id":"l1"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"abc"}]}`))
+	})
+	defer srv.Close()
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := c.TimeEntries(context.Background(), "900", start, end, nil); err == nil {
+		t.Fatal("expected error on malformed duration, got nil")
+	}
+}

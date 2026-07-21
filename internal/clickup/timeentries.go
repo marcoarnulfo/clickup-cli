@@ -2,6 +2,8 @@ package clickup
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -9,13 +11,27 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// flexString decodifica un campo JSON che può arrivare come stringa OPPURE
-// come numero (gli id ClickUp variano tra endpoint). Normalizza sempre a stringa.
+// flexString decodifica un campo JSON che può arrivare come stringa, come numero
+// o come null (gli id ClickUp variano tra endpoint). Normalizza sempre a stringa;
+// null diventa stringa vuota. Le stringhe sono de-escaped correttamente.
 type flexString string
 
 func (f *flexString) UnmarshalJSON(b []byte) error {
-	*f = flexString(strings.Trim(string(b), `"`))
-	return nil
+	if string(b) == "null" {
+		*f = ""
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*f = flexString(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = flexString(n.String())
+		return nil
+	}
+	return fmt.Errorf("flexString: valore non gestibile: %s", b)
 }
 
 // rawEntry rispecchia una voce dell'array "data" di /team/{id}/time_entries.
@@ -61,11 +77,17 @@ func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time
 
 	out := make([]report.TimeEntry, 0, len(resp.Data))
 	for _, r := range resp.Data {
-		ms, _ := strconv.ParseInt(r.Duration, 10, 64)
+		ms, err := strconv.ParseInt(r.Duration, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("durata non valida per la voce %s: %q", r.ID, r.Duration)
+		}
 		if ms < 0 {
 			continue // timer in corso: durata negativa, non è tempo consuntivato
 		}
-		startMs, _ := strconv.ParseInt(r.Start, 10, 64)
+		startMs, err := strconv.ParseInt(r.Start, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("inizio non valido per la voce %s: %q", r.ID, r.Start)
+		}
 		listID := string(r.TaskLocation.ListID)
 		out = append(out, report.TimeEntry{
 			ID:       r.ID,
