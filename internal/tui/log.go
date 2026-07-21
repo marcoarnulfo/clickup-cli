@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -86,6 +87,17 @@ func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	}
 	for _, e := range entries {
 		remember(e.ListID, e.ListName)
+	}
+	// liste presenti solo in config: ordine deterministico (id crescente)
+	var cfgIDs []string
+	for id := range cfg.Rates {
+		if _, ok := names[id]; !ok {
+			cfgIDs = append(cfgIDs, id)
+		}
+	}
+	sort.Strings(cfgIDs)
+	for _, id := range cfgIDs {
+		remember(id, "")
 	}
 	lists := make([]taskListChoice, len(order))
 	for i, id := range order {
@@ -406,6 +418,9 @@ func (lg logModel) view() string {
 		}
 		b += "\n" + styleHelp.Render("s: ferma e registra · Esc: annulla")
 	case logListPick:
+		if lg.loading {
+			b += styleHelp.Render("Caricamento task…") + "\n\n"
+		}
 		b += "Scegli la lista:\n\n"
 		for i, l := range lg.lists {
 			cursor := "  "
@@ -421,10 +436,6 @@ func (lg logModel) view() string {
 		}
 		b += "\n" + styleHelp.Render("↑/↓ scegli · Enter: apri i task")
 	case logTaskPick:
-		if lg.loading {
-			b += styleHelp.Render("Caricamento task…")
-			break
-		}
 		b += "Scegli il task:\n\n"
 		for i, tk := range lg.tasks {
 			cursor := "  "

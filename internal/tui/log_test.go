@@ -268,6 +268,27 @@ func TestTimerMsgNilNoRunning(t *testing.T) {
 	}
 }
 
+func TestNewLogIncludesConfigLists(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40, Rates: map[string]float64{"111": 60, "222": 30}}
+	lg := newLog(nil, cfg)
+	got := map[string]bool{}
+	for _, l := range lg.lists {
+		got[l.id] = true
+	}
+	if !got["111"] || !got["222"] {
+		t.Errorf("liste config mancanti nel picker: %+v", lg.lists)
+	}
+}
+
+func TestTimerMsgIgnoredWhenAway(t *testing.T) {
+	m := newTestModelOnReport()
+	m.screen = screenReport
+	next, _ := m.Update(timerMsg{timer: &clickup.RunningTimer{TaskID: "x1"}})
+	if s := next.(Model).screen; s != screenReport {
+		t.Errorf("timerMsg obsoleto ha cambiato screen a %v, atteso restare screenReport", s)
+	}
+}
+
 func TestTimerRunningStopIssuesCmd(t *testing.T) {
 	m := newTestModelOnReport()
 	m.logScreen = newLog(m.entries, m.cfg)

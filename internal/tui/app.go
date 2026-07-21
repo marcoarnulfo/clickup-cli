@@ -203,6 +203,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case timerMsg:
+		if m.screen != screenLog && m.screen != screenLoading {
+			return m, nil // messaggio timer obsoleto: l'utente ha lasciato la schermata
+		}
 		m.logScreen.timer = msg.timer
 		if msg.timer != nil {
 			m.logScreen.step = logTimerRunning
