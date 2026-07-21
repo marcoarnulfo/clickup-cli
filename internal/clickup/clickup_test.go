@@ -240,3 +240,25 @@ func TestListNameFallbackOnError(t *testing.T) {
 		t.Fatalf("fallback should be the id, got %q", n)
 	}
 }
+
+func TestTimeEntriesParsesTaskTags(t *testing.T) {
+	var gotInclude string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotInclude = r.URL.Query().Get("include_task_tags")
+		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_tags":[{"name":"urgent"},{"name":"frontend"}],"task_location":{"list_id":"5"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+	}))
+	defer srv.Close()
+	c := New("tok")
+	c.BaseURL = srv.URL
+	start := time.UnixMilli(1751360400000).UTC()
+	entries, err := c.TimeEntries(context.Background(), "900", start, start.Add(24*time.Hour), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotInclude != "true" {
+		t.Errorf("include_task_tags = %q, want true", gotInclude)
+	}
+	if len(entries) != 1 || len(entries[0].Tags) != 2 || entries[0].Tags[0] != "urgent" {
+		t.Errorf("tags = %+v", entries[0].Tags)
+	}
+}
