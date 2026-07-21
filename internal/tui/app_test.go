@@ -605,6 +605,39 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	}
 }
 
+func TestVisibleEntriesAppliesFilter(t *testing.T) {
+	m := Model{
+		entries: []report.TimeEntry{
+			{ListName: "A", Duration: time.Hour},
+			{ListName: "B", Duration: time.Hour},
+		},
+		filterLists: map[string]bool{"A": true},
+	}
+	got := m.visibleEntries()
+	if len(got) != 1 || got[0].ListName != "A" {
+		t.Fatalf("visibleEntries = %+v", got)
+	}
+	if m.filteredNote() != " · filtered" {
+		t.Errorf("filteredNote = %q", m.filteredNote())
+	}
+	m.filterLists = nil
+	if m.filteredNote() != "" {
+		t.Errorf("no filter -> empty note, got %q", m.filteredNote())
+	}
+}
+
+func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
+	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth, filterLists: map[string]bool{"A": true}}
+	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+	}})
+	m = u.(Model)
+	if m.report.TotalHours != 1 {
+		t.Errorf("filtered report total = %v, want 1", m.report.TotalHours)
+	}
+}
+
 func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "not-a-dir")
 	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {

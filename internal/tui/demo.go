@@ -34,21 +34,22 @@ const demoSelfID = 1
 // users so the member selection and per-member grouping are meaningful in demo.
 func demoEntries(year int, month time.Month) []report.TimeEntry {
 	at := func(d, h, m int) time.Time { return time.Date(year, month, d, h, m, 0, 0, time.UTC) }
-	mk := func(id, taskID, task, listID, list string, uid int, user string, start time.Time, dur time.Duration) report.TimeEntry {
+	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration) report.TimeEntry {
 		return report.TimeEntry{
 			ID: id, TaskID: taskID, TaskName: task,
 			ListID: listID, ListName: list,
 			UserID: uid, UserName: user,
+			Tags: tags, Status: status,
 			Start: start, Duration: dur,
 		}
 	}
 	return []report.TimeEntry{
-		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", at(3, 9, 0), 3*time.Hour+30*time.Minute),
-		mk("2", "t2", "API integration", "web", "Website", 2, "bob", at(3, 14, 0), 2*time.Hour),
-		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", at(5, 10, 0), 1*time.Hour+15*time.Minute),
-		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", at(6, 9, 30), 4*time.Hour),
-		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", at(7, 11, 0), 2*time.Hour+45*time.Minute),
-		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", at(10, 15, 0), 1*time.Hour+30*time.Minute),
+		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute),
+		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour),
+		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute),
+		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour),
+		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute),
+		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute),
 	}
 }
 

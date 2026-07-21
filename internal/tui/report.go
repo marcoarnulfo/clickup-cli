@@ -54,9 +54,9 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		start, end := m.currentRange()
-		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 	case "m", "s":
 		m.screen = screenHome
 	case "r":

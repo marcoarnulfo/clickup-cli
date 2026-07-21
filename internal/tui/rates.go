@@ -171,9 +171,9 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			g = report.GroupByTotal
 		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
 		m.ratesScreen = rt
 		return m, nil

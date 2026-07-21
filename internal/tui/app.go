@@ -59,6 +59,11 @@ type Model struct {
 	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
 	teamMembers     []clickup.Member // workspace members (session cache)
 
+	// client-side report filter (list/tag/status); empty = no filter
+	filterLists    map[string]bool
+	filterTags     map[string]bool
+	filterStatuses map[string]bool
+
 	// sub-models
 	setup         setupModel
 	home          homeModel
@@ -144,6 +149,24 @@ func (m Model) selectedAssignees() []int {
 // ratesFromConfig builds the report rates from config (default + overrides).
 func ratesFromConfig(cfg config.Config) report.Rates {
 	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+}
+
+// filterCriteria assembles the active client-side filter from session state.
+func (m Model) filterCriteria() report.FilterCriteria {
+	return report.FilterCriteria{Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses}
+}
+
+// visibleEntries applies the active filter to the loaded entries.
+func (m Model) visibleEntries() []report.TimeEntry {
+	return report.Filter(m.entries, m.filterCriteria())
+}
+
+// filteredNote returns " · filtered" when any client-side filter is active.
+func (m Model) filteredNote() string {
+	if m.filterCriteria().Empty() {
+		return ""
+	}
+	return " · filtered"
 }
 
 // loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
@@ -253,9 +276,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			groupBy = report.GroupByTotal
 		}
 		start, end := m.currentRange()
-		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		m.report = report.Build(m.visibleEntries(), groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
 		return m, nil
 
