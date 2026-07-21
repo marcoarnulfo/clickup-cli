@@ -1,5 +1,12 @@
 # Backlog — post v1.0
 
+> **Da ora il tracking avviene su GitHub Issues:**
+> https://github.com/marcoarnulfo/clickup-cli/issues
+> (roadmap con milestone `v1.2`/`v1.3`/`v2.0`; residui e papercut con label
+> `tech-debt`/`enhancement`/`good first issue`).
+> Questo documento resta come panoramica storica; per lo stato aggiornato e per
+> contribuire, fai riferimento alle Issue.
+
 Raccolta dei miglioramenti emersi dalla review finale di v1.0 (review indipendente
 con modello Opus) e dalla roadmap del piano. Nessuno di questi è bloccante per v1.0;
 sono rimandati ai rilasci successivi.
