@@ -55,3 +55,21 @@ func Parse(s string) (time.Duration, error) {
 	}
 	return d, nil
 }
+
+// Format renders a duration in compact human form: "2h", "1h 30m", "45m".
+// Sub-minute remainders are dropped (logged durations are minute-grained).
+func Format(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	h := int(d / time.Hour)
+	m := int((d % time.Hour) / time.Minute)
+	switch {
+	case h > 0 && m > 0:
+		return fmt.Sprintf("%dh %dm", h, m)
+	case h > 0:
+		return fmt.Sprintf("%dh", h)
+	default:
+		return fmt.Sprintf("%dm", m)
+	}
+}

@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -302,5 +304,50 @@ func TestTimerRunningStopIssuesCmd(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Errorf("expected stopTimerCmd")
+	}
+}
+
+func TestLogErrKeepsFormOnLogScreen(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logForm
+	m.logScreen.taskID = "task123"
+	m.logScreen.loading = true
+	m.screen = screenLoading
+	next, _ := m.Update(logErrMsg{err: errors.New("boom")})
+	nm := next.(Model)
+	if nm.screen != screenLog {
+		t.Errorf("screen = %v, want screenLog (form preserved)", nm.screen)
+	}
+	if nm.logScreen.taskID != "task123" {
+		t.Errorf("taskID lost on error: %q", nm.logScreen.taskID)
+	}
+	if nm.logScreen.loading {
+		t.Error("loading should be cleared on error")
+	}
+	if nm.logScreen.msg == "" {
+		t.Error("expected an error message on the log screen")
+	}
+}
+
+func TestLogErrClassification(t *testing.T) {
+	if _, ok := logErr(errors.New("x")).(logErrMsg); !ok {
+		t.Error("a non-auth error should become logErrMsg (stay on log screen)")
+	}
+	authErr := fmt.Errorf("wrap: %w", clickup.ErrUnauthorized)
+	if _, ok := logErr(authErr).(errMsg); !ok {
+		t.Error("an auth error should become errMsg (global re-setup)")
+	}
+}
+
+func TestListPickDebounceWhileLoading(t *testing.T) {
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logListPick
+	m.logScreen.loading = true // a listTasksCmd is already in flight
+	m.screen = screenLog
+	_, cmd := m.Update(key("enter"))
+	if cmd != nil {
+		t.Error("Enter while loading must not dispatch a second listTasksCmd")
 	}
 }
