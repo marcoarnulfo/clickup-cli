@@ -56,7 +56,7 @@ go build -o clickup ./cmd/clickup
 
 1. **Installa** (vedi sopra) e lancia `clickup`.
 2. Al primo avvio, il **wizard di setup** chiede token API, workspace, tariffa oraria opzionale e valuta — salvati in `~/.config/clickup-cli/config.yml`.
-3. Scegli **mese** e **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
+3. Scegli un **periodo** (`d`) e lo **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
 
 ## Uso
 
@@ -66,7 +66,11 @@ API Token), il workspace da usare (scelto tra quelli visibili al token),
 una tariffa oraria opzionale e la valuta (default `EUR`). Il risultato viene
 salvato in `~/.config/clickup-cli/config.yml` e riusato ai lanci successivi.
 
-Dalla home scegli mese e scope, poi `Enter` genera il report. Nel report puoi
+Dalla home scegli un periodo e lo scope, poi `Enter` genera il report. Il report non
+è più limitato a un mese di calendario: premi `d` nella home per aprire il
+**selettore del periodo**, che offre preset (questo mese, mese scorso, ultimi 7
+giorni, ultimi 30 giorni, questa settimana) più un periodo **personalizzato**
+`From`/`To` (date in formato `YYYY-MM-DD`). Nel report puoi
 cambiare raggruppamento, riesportare o tornare alla home. Se il token risulta
 invalido o revocato durante l'uso, la TUI ripropone automaticamente il wizard
 di setup.
@@ -75,7 +79,8 @@ di setup.
 
 | Tasto | Schermata | Azione |
 |---|---|---|
-| `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese |
+| `d` | Home | Apre il **selettore del periodo** (preset + personalizzato from/to) |
+| `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese (solo mentre il periodo `this month` è attivo) |
 | `t` | Home | Alterna scope `me` / `team` |
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
 | `Enter` | Home | Genera il report per mese/scope selezionati |

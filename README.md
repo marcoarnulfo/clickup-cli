@@ -56,7 +56,7 @@ go build -o clickup ./cmd/clickup
 
 1. **Install** (see above) and run `clickup`.
 2. On first launch, the **setup wizard** asks for your API token, workspace, an optional hourly rate, and currency — saved to `~/.config/clickup-cli/config.yml`.
-3. Pick a **month** and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
+3. Pick a **range** (`d`) and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
 
 ## Usage
 
@@ -66,7 +66,10 @@ token (find it in ClickUp → Settings → Apps → API Token), the workspace to
 (default `EUR`). The result is saved to `~/.config/clickup-cli/config.yml` and reused
 on subsequent launches.
 
-From the home screen pick a month and scope, then `Enter` generates the report. In the
+From the home screen pick a range and scope, then `Enter` generates the report. The
+report is no longer limited to a calendar month: press `d` on the home screen to open
+the **range picker**, which offers presets (this month, last month, last 7 days, last
+30 days, this week) plus a **custom** `From`/`To` range (dates as `YYYY-MM-DD`). In the
 report you can change the grouping, re-export, or go back home. If the token becomes
 invalid or is revoked while in use, the TUI automatically re-runs the setup wizard.
 
@@ -74,7 +77,8 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 
 | Key | Screen | Action |
 |---|---|---|
-| `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month |
+| `d` | Home | Open the **report range** picker (presets + custom from/to) |
+| `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month (only while the `this month` range is active) |
 | `t` | Home | Toggle scope `me` / `team` |
 | `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
 | `Enter` | Home | Generate the report for the selected month/scope |

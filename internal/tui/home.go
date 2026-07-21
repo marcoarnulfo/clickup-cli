@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
 // homeModel is stateless: month/year/scope live on the root Model (single source
@@ -16,17 +17,27 @@ func newHome() homeModel { return homeModel{} }
 func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "left", "h":
+		if m.preset != report.PresetThisMonth {
+			break
+		}
 		m.month--
 		if m.month < time.January {
 			m.month = time.December
 			m.year--
 		}
 	case "right", "l":
+		if m.preset != report.PresetThisMonth {
+			break
+		}
 		m.month++
 		if m.month > time.December {
 			m.month = time.January
 			m.year++
 		}
+	case "d":
+		m.rangeScreen = newRange(m.preset)
+		m.screen = screenRange
+		return m, nil
 	case "t":
 		if m.scope == "me" {
 			m.scope = "team"
@@ -72,15 +83,21 @@ func (m Model) homeMembersNote() string {
 	return fmt.Sprintf("Members: %d/%d", k, len(m.teamMembers))
 }
 
-func (homeModel) view(year int, month time.Month, scope, membersNote string) string {
-	title := styleTitle.Render("ClickUp Hours — Monthly report")
+// rangeLabel returns a short label for the active range shown on Home.
+func (m Model) rangeLabel() string {
+	start, end := m.currentRange()
+	return report.PeriodLabel(start, end)
+}
+
+func (homeModel) view(rangeLabel, scope, membersNote string) string {
+	title := styleTitle.Render("ClickUp Hours — Report")
 	scopeStr := styleAccent.Render(scope)
 	if membersNote != "" {
 		scopeStr += " · " + membersNote
 	}
-	sel := styleBox.Render(fmt.Sprintf("Month: %s  ◂ %04d-%02d ▸    Scope: %s",
-		styleAccent.Render(month.String()), year, int(month), scopeStr))
-	help := "◂/▸ change month · t: me/team · "
+	sel := styleBox.Render(fmt.Sprintf("Range: %s    Scope: %s",
+		styleAccent.Render(rangeLabel), scopeStr))
+	help := "d: range · ◂/▸ change month (this_month only) · t: me/team · "
 	if scope == "team" {
 		help += "f: select members · " // only active in team scope
 	}
