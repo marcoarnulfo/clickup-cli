@@ -86,9 +86,16 @@ func demoMembersCmd() tea.Cmd {
 }
 
 // demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
-// selected member ids (empty = all).
-func demoEntriesCmd(year int, month time.Month, assignees []int) tea.Cmd {
+// selected member ids and clipped to [start, end).
+func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
 	return func() tea.Msg {
-		return entriesMsg{entries: filterByUsers(demoEntries(year, month), assignees)}
+		entries := filterByUsers(demoEntries(start.Year(), start.Month()), assignees)
+		out := entries[:0]
+		for _, e := range entries {
+			if !e.Start.Before(start) && e.Start.Before(end) {
+				out = append(out, e)
+			}
+		}
+		return entriesMsg{entries: out}
 	}
 }

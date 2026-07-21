@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,49 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+func TestCurrentRangeDefaultsToMonth(t *testing.T) {
+	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth}
+	start, end := m.currentRange()
+	ws, we := report.MonthRange(2026, time.July)
+	if !start.Equal(ws) || !end.Equal(we) {
+		t.Errorf("currentRange = [%s,%s), want month", start, end)
+	}
+}
+
+func TestCurrentRangeCustomIsInclusive(t *testing.T) {
+	from := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, time.July, 15, 0, 0, 0, 0, time.UTC)
+	m := Model{preset: report.PresetCustom, customStart: from, customEnd: to}
+	start, end := m.currentRange()
+	if !start.Equal(from) || !end.Equal(to.AddDate(0, 0, 1)) {
+		t.Errorf("custom range = [%s,%s), want [%s, %s+1d)", start, end, from, to)
+	}
+}
+
+func TestLoadEntriesUsesGivenRange(t *testing.T) {
+	var gotStart, gotEnd string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/time_entries") {
+			gotStart = r.URL.Query().Get("start_date")
+			gotEnd = r.URL.Query().Get("end_date")
+			w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 10)
+	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil)().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg")
+	}
+	if gotStart != strconv.FormatInt(start.UnixMilli(), 10) || gotEnd != strconv.FormatInt(end.UnixMilli(), 10) {
+		t.Errorf("range not forwarded: start=%s end=%s", gotStart, gotEnd)
+	}
+}
 
 func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
 	m := New(config.Config{})
@@ -60,7 +104,9 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
 	if _, ok := msg.(errMsg); !ok {
 		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
 	}
@@ -88,7 +134,9 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
@@ -113,7 +161,9 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 	c := clickup.New("t")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "me", nil)()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
@@ -151,7 +201,9 @@ func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
 	c := clickup.New("tok")
 	c.BaseURL = srv.URL
 
-	msg := loadEntriesCmd(c, "900", 2026, time.July, "team", []int{7, 9})()
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	jEnd := jStart.AddDate(0, 1, 0)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9})()
 	if _, ok := msg.(entriesMsg); !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}

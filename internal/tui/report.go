@@ -53,7 +53,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
-		start, end := report.MonthRange(m.year, m.month)
+		start, end := m.currentRange()
 		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote())

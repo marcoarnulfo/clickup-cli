@@ -45,9 +45,12 @@ type Model struct {
 	width, height int
 
 	// current selection
-	year  int
-	month time.Month
-	scope string // "me" | "team"
+	year        int
+	month       time.Month
+	scope       string    // "me" | "team"
+	preset      string    // report.Preset* ; default report.PresetThisMonth
+	customStart time.Time // used when preset == report.PresetCustom
+	customEnd   time.Time
 
 	// data
 	report          report.Report
@@ -78,6 +81,7 @@ func New(cfg config.Config) Model {
 		year:   now.Year(),
 		month:  now.Month(),
 		scope:  "me",
+		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
 	}
 	if demo || cfg.Valid() {
@@ -92,6 +96,15 @@ func New(cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
+// currentRange returns the [start, end) period the report should cover, from the
+// active preset (custom uses the inclusive customStart..customEnd).
+func (m Model) currentRange() (start, end time.Time) {
+	if m.preset == report.PresetCustom {
+		return m.customStart, m.customEnd.AddDate(0, 0, 1)
+	}
+	return report.RangeForPreset(m.preset, m.year, m.month, time.Now())
+}
+
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
 // in demo mode, otherwise the real API call.
 func (m Model) reloadEntriesCmd() tea.Cmd {
@@ -101,15 +114,16 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 	if m.scope == "team" {
 		assignees = m.selectedAssignees()
 	}
+	start, end := m.currentRange()
 	if m.demo {
 		if m.scope != "team" {
 			// The real API filters "me" scope server-side to the authenticated
 			// caller; mirror that here instead of summing all demo users.
 			assignees = []int{demoSelfID}
 		}
-		return demoEntriesCmd(m.year, m.month, assignees)
+		return demoEntriesCmd(start, end, assignees)
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, assignees)
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees)
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -134,7 +148,7 @@ func ratesFromConfig(cfg config.Config) report.Rates {
 // For scope "team" with an empty assignees slice it derives ALL workspace members
 // (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
 // (skipping the members lookup). For scope "me" no assignee filter is applied.
-func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month, scope string, assignees []int) tea.Cmd {
+func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -149,7 +163,6 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 			}
 		}
 
-		start, end := report.MonthRange(year, month)
 		entries, err := c.TimeEntries(ctx, teamID, start, end, assignees)
 		if err != nil {
 			return errMsg{err: err}
@@ -237,7 +250,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
-		start, end := report.MonthRange(m.year, m.month)
+		start, end := m.currentRange()
 		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote())
