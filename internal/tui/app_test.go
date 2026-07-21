@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -101,6 +102,30 @@ func TestHomeChangesMonthAndScope(t *testing.T) {
 	mm2 := updated2.(Model)
 	if mm2.scope != "team" {
 		t.Fatalf("t should switch scope to team, got %q", mm2.scope)
+	}
+}
+
+func TestExportWritesFile(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	os.Chdir(dir)
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	m.report = report.Report{Year: 2026, Month: 7, Currency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
+	m.export = newExport(m.report)
+	m.screen = screenExport
+
+	// Enter sul primo formato (csv)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(Model)
+	if mm.export.err != nil {
+		t.Fatalf("export error: %v", mm.export.err)
+	}
+	if _, err := os.Stat("clickup-report-2026-07.csv"); err != nil {
+		t.Fatalf("expected csv file: %v", err)
 	}
 }
 
