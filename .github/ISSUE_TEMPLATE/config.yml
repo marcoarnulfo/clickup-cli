@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "Question / Domanda"
+    url: https://github.com/marcoarnulfo/clickup-cli/issues
+    about: "Ask a question / Fai una domanda"
