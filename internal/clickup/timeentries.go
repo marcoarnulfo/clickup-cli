@@ -11,9 +11,9 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// flexString decodifica un campo JSON che può arrivare come stringa, come numero
-// o come null (gli id ClickUp variano tra endpoint). Normalizza sempre a stringa;
-// null diventa stringa vuota. Le stringhe sono de-escaped correttamente.
+// flexString decodes a JSON field that can arrive as a string, a number,
+// or null (ClickUp ids vary between endpoints). It always normalizes to a string;
+// null becomes an empty string. Strings are properly de-escaped.
 type flexString string
 
 func (f *flexString) UnmarshalJSON(b []byte) error {
@@ -34,7 +34,7 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 	return fmt.Errorf("flexString: unhandled value: %s", b)
 }
 
-// rawEntry rispecchia una voce dell'array "data" di /team/{id}/time_entries.
+// rawEntry mirrors an entry of the "data" array from /team/{id}/time_entries.
 type rawEntry struct {
 	ID   string `json:"id"`
 	Task struct {
@@ -48,12 +48,12 @@ type rawEntry struct {
 		ID       int    `json:"id"`
 		Username string `json:"username"`
 	} `json:"user"`
-	Start    string `json:"start"`    // epoch ms come stringa
-	Duration string `json:"duration"` // ms come stringa (negativa se timer in corso)
+	Start    string `json:"start"`    // epoch ms as a string
+	Duration string `json:"duration"` // ms as a string (negative if a timer is running)
 }
 
-// toTimeEntry converte una rawEntry nel tipo dominio. Errore su start/duration
-// non parsabili. Nota: NON filtra le durate negative (compito del chiamante).
+// toTimeEntry converts a rawEntry into the domain type. Errors if start/duration
+// can't be parsed. Note: it does NOT filter out negative durations (caller's job).
 func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 	ms, err := strconv.ParseInt(r.Duration, 10, 64)
 	if err != nil {
@@ -77,9 +77,9 @@ func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 	}, nil
 }
 
-// TimeEntries ritorna le voci di tempo del workspace nel range [start, end).
-// Se assignees è non vuoto, filtra su quegli utenti (scope team).
-// Le voci con durata negativa (timer in esecuzione) vengono scartate.
+// TimeEntries returns the workspace's time entries in the range [start, end).
+// If assignees is non-empty, it filters on those users (team scope).
+// Entries with negative duration (a running timer) are discarded.
 func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time.Time, assignees []int) ([]report.TimeEntry, error) {
 	q := map[string]string{
 		"start_date": strconv.FormatInt(start.UnixMilli(), 10),
@@ -107,7 +107,7 @@ func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time
 			return nil, err
 		}
 		if e.Duration < 0 {
-			continue // timer in corso: durata negativa, non è tempo consuntivato
+			continue // timer running: negative duration, not booked time
 		}
 		out = append(out, e)
 	}

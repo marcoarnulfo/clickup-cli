@@ -2,8 +2,8 @@ package clickup
 
 import "context"
 
-// ListName risolve il nome di una lista (GET /list/{id}) con cache in-memory.
-// In caso d'errore ritorna il list_id come fallback (insieme all'errore).
+// ListName resolves a list's name (GET /list/{id}) with an in-memory cache.
+// On error it returns the list_id as a fallback (along with the error).
 func (c *Client) ListName(ctx context.Context, listID string) (string, error) {
 	c.mu.Lock()
 	name, ok := c.listNames[listID]

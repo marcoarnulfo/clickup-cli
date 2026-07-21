@@ -9,12 +9,12 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// demoEnabled indica se la modalità demo è attiva (env CLICKUP_DEMO non vuota).
-// In demo la TUI salta il setup e usa dati fittizi: nessuna chiamata all'API,
-// utile per provare l'app senza account e per generare il GIF del README.
+// demoEnabled reports whether demo mode is active (env CLICKUP_DEMO not empty).
+// In demo mode the TUI skips setup and uses fake data: no API calls,
+// useful for trying the app without an account and for generating the README GIF.
 func demoEnabled() bool { return os.Getenv("CLICKUP_DEMO") != "" }
 
-// demoConfig è una config fittizia per la modalità demo (nessun token reale).
+// demoConfig is a fake config for demo mode (no real token).
 func demoConfig() config.Config {
 	return config.Config{
 		Token:       "DEMO",
@@ -25,8 +25,8 @@ func demoConfig() config.Config {
 	}
 }
 
-// demoEntries ritorna time entry fittizie per il mese dato, così il report
-// mostra ore e importi realistici senza chiamare l'API.
+// demoEntries returns fake time entries for the given month, so the report
+// shows realistic hours and amounts without calling the API.
 func demoEntries(year int, month time.Month) []report.TimeEntry {
 	at := func(d, h, m int) time.Time { return time.Date(year, month, d, h, m, 0, 0, time.UTC) }
 	mk := func(id, taskID, task, listID, list string, start time.Time, dur time.Duration) report.TimeEntry {
@@ -47,7 +47,7 @@ func demoEntries(year int, month time.Month) []report.TimeEntry {
 	}
 }
 
-// demoEntriesCmd consegna le entry fittizie come entriesMsg (nessuna I/O).
+// demoEntriesCmd delivers the fake entries as entriesMsg (no I/O).
 func demoEntriesCmd(year int, month time.Month) tea.Cmd {
 	return func() tea.Msg {
 		return entriesMsg{entries: demoEntries(year, month)}

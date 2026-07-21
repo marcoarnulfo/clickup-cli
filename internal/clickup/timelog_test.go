@@ -29,13 +29,13 @@ func TestCreateTimeEntry(t *testing.T) {
 	start := time.UnixMilli(1_700_000_000_000).UTC()
 	err := c.CreateTimeEntry(context.Background(), "team1", "task9", start, 90*time.Minute, "note")
 	if err != nil {
-		t.Fatalf("CreateTimeEntry errore: %v", err)
+		t.Fatalf("CreateTimeEntry error: %v", err)
 	}
 	if gotPath != "/team/team1/time_entries" {
 		t.Errorf("path = %q", gotPath)
 	}
 	if gotAuth != "tok_x" {
-		t.Errorf("auth = %q (deve essere senza Bearer)", gotAuth)
+		t.Errorf("auth = %q (should be without Bearer)", gotAuth)
 	}
 	if gotCT != "application/json" {
 		t.Errorf("content-type = %q", gotCT)
@@ -64,7 +64,7 @@ func TestCreateTimeEntryUnauthorized(t *testing.T) {
 	c.BaseURL = srv.URL
 	err := c.CreateTimeEntry(context.Background(), "t", "x", time.Now(), time.Hour, "")
 	if err == nil {
-		t.Fatal("atteso errore 401")
+		t.Fatal("expected 401 error")
 	}
 }
 
@@ -79,7 +79,7 @@ func TestListTasks(t *testing.T) {
 	c.BaseURL = srv.URL
 	tasks, err := c.ListTasks(context.Background(), "list7")
 	if err != nil {
-		t.Fatalf("ListTasks errore: %v", err)
+		t.Fatalf("ListTasks error: %v", err)
 	}
 	if gotPath != "/list/list7/task" {
 		t.Errorf("path = %q", gotPath)
@@ -100,7 +100,7 @@ func TestExtractTaskID(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := ExtractTaskID(in); got != want {
-			t.Errorf("ExtractTaskID(%q) = %q, atteso %q", in, got, want)
+			t.Errorf("ExtractTaskID(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

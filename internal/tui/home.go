@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// homeModel è privo di stato: mese/anno/scope vivono sul root Model (unica fonte
-// di verità); la view li riceve come argomenti.
+// homeModel is stateless: month/year/scope live on the root Model (single source
+// of truth); the view receives them as arguments.
 type homeModel struct{}
 
 func newHome() homeModel { return homeModel{} }
@@ -38,7 +38,7 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenLog
 	case "enter":
 		m.screen = screenLoading
-		// loadEntriesCmd ricava da solo gli assignees del team quando scope=="team".
+		// loadEntriesCmd derives the team assignees on its own when scope=="team".
 		return m, m.reloadEntriesCmd()
 	}
 	return m, nil

@@ -78,8 +78,8 @@ func (rm reportModel) view() string {
 	return title + "\n\n" + body + "\n\n" + help
 }
 
-// truncate accorcia a n rune (non byte), per non spezzare caratteri UTF-8
-// nei nomi di task con accenti o emoji.
+// truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
+// in task names with accents or emoji.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {

@@ -8,20 +8,20 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// RunningTimer descrive un cronometro attualmente in corso.
+// RunningTimer describes a timer currently running.
 type RunningTimer struct {
 	TaskID   string
 	TaskName string
 	Start    time.Time
 }
 
-// StartTimer avvia un timer sul task tid. POST /team/{id}/time_entries/start.
+// StartTimer starts a timer on task tid. POST /team/{id}/time_entries/start.
 func (c *Client) StartTimer(ctx context.Context, teamID, tid, description string) error {
 	body := map[string]any{"tid": tid, "description": description}
 	return c.post(ctx, "/team/"+teamID+"/time_entries/start", body, nil)
 }
 
-// StopTimer ferma il timer in corso e ritorna la time entry creata da ClickUp.
+// StopTimer stops the running timer and returns the time entry created by ClickUp.
 // POST /team/{id}/time_entries/stop.
 func (c *Client) StopTimer(ctx context.Context, teamID string) (report.TimeEntry, error) {
 	var resp struct {
@@ -33,7 +33,7 @@ func (c *Client) StopTimer(ctx context.Context, teamID string) (report.TimeEntry
 	return resp.Data.toTimeEntry()
 }
 
-// CurrentTimer ritorna il timer in corso, o nil se non ce n'è.
+// CurrentTimer returns the running timer, or nil if there isn't one.
 // GET /team/{id}/time_entries/current.
 func (c *Client) CurrentTimer(ctx context.Context, teamID string) (*RunningTimer, error) {
 	var resp struct {
@@ -49,7 +49,7 @@ func (c *Client) CurrentTimer(ctx context.Context, teamID string) (*RunningTimer
 		return nil, err
 	}
 	if resp.Data.Task.ID == "" {
-		return nil, nil // nessun timer in corso
+		return nil, nil // no timer running
 	}
 	var start time.Time
 	if ms, err := strconv.ParseInt(string(resp.Data.Start), 10, 64); err == nil {

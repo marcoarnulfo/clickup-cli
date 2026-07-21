@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// CreateTimeEntry crea una time entry per l'utente autenticato.
-// POST /team/{team_id}/time_entries con {tid, start(ms), duration(ms), description}.
+// CreateTimeEntry creates a time entry for the authenticated user.
+// POST /team/{team_id}/time_entries with {tid, start(ms), duration(ms), description}.
 func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start time.Time, dur time.Duration, description string) error {
 	body := map[string]any{
 		"tid":         tid,
@@ -18,13 +18,13 @@ func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start 
 	return c.post(ctx, "/team/"+teamID+"/time_entries", body, nil)
 }
 
-// Task è un task ClickUp minimale (id + nome) per il picker della TUI.
+// Task is a minimal ClickUp task (id + name) for the TUI picker.
 type Task struct {
 	ID   string
 	Name string
 }
 
-// ListTasks ritorna i task di una lista. GET /list/{list_id}/task.
+// ListTasks returns the tasks of a list. GET /list/{list_id}/task.
 func (c *Client) ListTasks(ctx context.Context, listID string) ([]Task, error) {
 	var resp struct {
 		Tasks []struct {
@@ -42,18 +42,18 @@ func (c *Client) ListTasks(ctx context.Context, listID string) ([]Task, error) {
 	return out, nil
 }
 
-// ExtractTaskID estrae l'id task da un id nudo o da un URL ClickUp
-// (.../t/<id> o .../<id>). Ritorna "" se non trova nulla di plausibile.
+// ExtractTaskID extracts the task id from a bare id or a ClickUp URL
+// (.../t/<id> or .../<id>). Returns "" if it finds nothing plausible.
 func ExtractTaskID(input string) string {
 	s := strings.TrimSpace(input)
 	if s == "" {
 		return ""
 	}
 	if !strings.Contains(s, "/") {
-		return s // id nudo
+		return s // bare id
 	}
 	if i := strings.IndexAny(s, "?#"); i >= 0 {
-		s = s[:i] // rimuovi query/fragment
+		s = s[:i] // remove query/fragment
 	}
 	s = strings.TrimRight(s, "/")
 	if idx := strings.LastIndex(s, "/"); idx >= 0 {

@@ -2,13 +2,13 @@ package clickup
 
 import "context"
 
-// User è l'utente autenticato.
+// User is the authenticated user.
 type User struct {
 	ID       int
 	Username string
 }
 
-// CurrentUser ritorna l'utente proprietario del token.
+// CurrentUser returns the user who owns the token.
 func (c *Client) CurrentUser(ctx context.Context) (User, error) {
 	var resp struct {
 		User struct {

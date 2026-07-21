@@ -10,9 +10,9 @@ func d(h float64) time.Duration { return time.Duration(h * float64(time.Hour)) }
 func sampleEntries() []TimeEntry {
 	base := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
 	return []TimeEntry{
-		{TaskName: "Bug fix", ListName: "Cliente A", UserName: "me", Start: base, Duration: d(2)},
-		{TaskName: "Bug fix", ListName: "Cliente A", UserName: "me", Start: base.AddDate(0, 0, 1), Duration: d(1)},
-		{TaskName: "Feature X", ListName: "Cliente B", UserName: "me", Start: base, Duration: d(3)},
+		{TaskName: "Bug fix", ListName: "Client A", UserName: "me", Start: base, Duration: d(2)},
+		{TaskName: "Bug fix", ListName: "Client A", UserName: "me", Start: base.AddDate(0, 0, 1), Duration: d(1)},
+		{TaskName: "Feature X", ListName: "Client B", UserName: "me", Start: base, Duration: d(3)},
 	}
 }
 
@@ -24,8 +24,8 @@ func TestBuildTotal(t *testing.T) {
 	if r.TotalAmount != 300 {
 		t.Fatalf("total amount = %v, want 300", r.TotalAmount)
 	}
-	if len(r.Buckets) != 1 || r.Buckets[0].Label != "Totale" {
-		t.Fatalf("total should have one bucket labelled Totale, got %+v", r.Buckets)
+	if len(r.Buckets) != 1 || r.Buckets[0].Label != "Total" {
+		t.Fatalf("total should have one bucket labelled Total, got %+v", r.Buckets)
 	}
 }
 
@@ -34,7 +34,7 @@ func TestBuildByTaskSortedByHoursDesc(t *testing.T) {
 	if len(r.Buckets) != 2 {
 		t.Fatalf("want 2 task buckets, got %d", len(r.Buckets))
 	}
-	// "Bug fix" = 3h, "Feature X" = 3h -> pari merito, ordine per label asc
+	// "Bug fix" = 3h, "Feature X" = 3h -> tie, ordered by label asc
 	if r.Buckets[0].Label != "Bug fix" || r.Buckets[0].Hours != 3 {
 		t.Fatalf("bucket[0] = %+v", r.Buckets[0])
 	}
@@ -52,7 +52,7 @@ func TestBuildByList(t *testing.T) {
 	for _, b := range r.Buckets {
 		m[b.Label] = b.Hours
 	}
-	if m["Cliente A"] != 3 || m["Cliente B"] != 3 {
+	if m["Client A"] != 3 || m["Client B"] != 3 {
 		t.Fatalf("list hours wrong: %+v", m)
 	}
 }
@@ -83,7 +83,7 @@ func TestRoundingTwoDecimals(t *testing.T) {
 	if r.Buckets[0].Hours != 0.33 {
 		t.Fatalf("hours should round to 0.33, got %v", r.Buckets[0].Hours)
 	}
-	if r.TotalAmount != 10 { // 1/3 h * 30 = 10.00 esatto (importo per-entry da ore reali)
+	if r.TotalAmount != 10 { // 1/3 h * 30 = 10.00 exact (per-entry amount from actual hours)
 		t.Fatalf("amount should be 10, got %v", r.TotalAmount)
 	}
 }
@@ -91,18 +91,18 @@ func TestRoundingTwoDecimals(t *testing.T) {
 func TestRatesFor(t *testing.T) {
 	r := Rates{Default: 30, ByList: map[string]float64{"1": 50}}
 	if r.For("1") != 50 {
-		t.Fatalf("override lista 1 dovrebbe essere 50, got %v", r.For("1"))
+		t.Fatalf("override for list 1 should be 50, got %v", r.For("1"))
 	}
 	if r.For("999") != 30 {
-		t.Fatalf("lista senza override dovrebbe usare default 30, got %v", r.For("999"))
+		t.Fatalf("list without override should use default 30, got %v", r.For("999"))
 	}
 }
 
 func TestBuildPerListRates(t *testing.T) {
 	base := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
 	entries := []TimeEntry{
-		{TaskName: "A", ListID: "1", ListName: "Cliente A", Start: base, Duration: d(2)},
-		{TaskName: "B", ListID: "2", ListName: "Cliente B", Start: base, Duration: d(1)},
+		{TaskName: "A", ListID: "1", ListName: "Client A", Start: base, Duration: d(2)},
+		{TaskName: "B", ListID: "2", ListName: "Client B", Start: base, Duration: d(1)},
 	}
 	rates := Rates{Default: 30, ByList: map[string]float64{"1": 50}}
 	r := Build(entries, GroupByList, rates, "EUR", 2026, time.July)
@@ -110,11 +110,11 @@ func TestBuildPerListRates(t *testing.T) {
 	for _, b := range r.Buckets {
 		amt[b.Label] = b.Amount
 	}
-	if amt["Cliente A"] != 100 { // 2h * 50
-		t.Fatalf("Cliente A amount = %v, want 100", amt["Cliente A"])
+	if amt["Client A"] != 100 { // 2h * 50
+		t.Fatalf("Client A amount = %v, want 100", amt["Client A"])
 	}
-	if amt["Cliente B"] != 30 { // 1h * 30 (default)
-		t.Fatalf("Cliente B amount = %v, want 30", amt["Cliente B"])
+	if amt["Client B"] != 30 { // 1h * 30 (default)
+		t.Fatalf("Client B amount = %v, want 30", amt["Client B"])
 	}
 	if r.TotalAmount != 130 {
 		t.Fatalf("total amount = %v, want 130", r.TotalAmount)
@@ -126,7 +126,7 @@ func TestBuildPerListRates(t *testing.T) {
 
 func TestBuildMixedRatePerTask(t *testing.T) {
 	base := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
-	// stessa task, due liste con tariffe diverse
+	// same task, two lists with different rates
 	entries := []TimeEntry{
 		{TaskName: "X", ListID: "1", Start: base, Duration: d(2)},
 		{TaskName: "X", ListID: "2", Start: base, Duration: d(1)},

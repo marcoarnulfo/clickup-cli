@@ -13,7 +13,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// rateRow è una lista mostrata nella schermata tariffe.
+// rateRow is a list shown in the rates screen.
 type rateRow struct {
 	listID string
 	name   string
@@ -24,15 +24,15 @@ type ratesModel struct {
 	idx     int
 	editing bool
 	input   textinput.Model
-	rates   map[string]float64 // override correnti (list_id -> tariffa)
-	def     float64            // tariffa di default
-	cur     string             // valuta
-	msg     string             // messaggio d'errore (tariffa non valida)
+	rates   map[string]float64 // current overrides (list_id -> rate)
+	def     float64            // default rate
+	cur     string             // currency
+	msg     string             // error message (invalid rate)
 }
 
-// newRates costruisce la schermata dalle liste del report corrente unite a quelle
-// già presenti in config (cfg.Rates). Le liste "solo config" sono aggiunte in
-// ordine deterministico (id crescente) per una vista stabile.
+// newRates builds the screen from the lists in the current report merged with
+// those already present in config (cfg.Rates). Lists "only in config" are added
+// in deterministic order (ascending id) for a stable view.
 func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	names := map[string]string{}
 	var order []string
@@ -42,7 +42,7 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 		}
 		if _, ok := names[id]; !ok {
 			order = append(order, id)
-			names[id] = id // etichetta di default = id
+			names[id] = id // default label = id
 		}
 		if name != "" {
 			names[id] = name
@@ -51,7 +51,7 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	for _, e := range entries {
 		remember(e.ListID, e.ListName)
 	}
-	// liste presenti solo in config: ordine deterministico
+	// lists present only in config: deterministic order
 	var cfgIDs []string
 	for id := range cfg.Rates {
 		if _, ok := names[id]; !ok {
@@ -74,8 +74,8 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	return ratesModel{rows: rows, rates: rates, def: cfg.Rate, cur: cfg.Currency}
 }
 
-// validRate accetta solo un numero finito ≥ 0. La virgola decimale è accettata
-// come il punto (comodo per la tastiera italiana).
+// validRate accepts only a finite number ≥ 0. The decimal comma is accepted
+// as well as the dot (handy for the Italian keyboard).
 func validRate(s string) (float64, bool) {
 	s = strings.ReplaceAll(s, ",", ".")
 	f, err := strconv.ParseFloat(s, 64)
@@ -85,7 +85,7 @@ func validRate(s string) (float64, bool) {
 	return f, true
 }
 
-// numericRune indica se un rune è ammesso nel campo tariffa (cifre e separatore).
+// numericRune reports whether a rune is allowed in the rate field (digits and separator).
 func numericRune(r rune) bool {
 	return (r >= '0' && r <= '9') || r == '.' || r == ','
 }
@@ -98,7 +98,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			v := rt.input.Value()
 			if v == "" {
-				rt.editing = false // vuoto = nessuna modifica (per azzerare un override usa 'd')
+				rt.editing = false // empty = no change (to clear an override, use 'd')
 				rt.msg = ""
 			} else if f, ok := validRate(v); ok {
 				rt.rates[rt.rows[rt.idx].listID] = f
@@ -115,7 +115,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ratesScreen = rt
 			return m, nil
 		}
-		// Campo numerico-only: ignora i caratteri non ammessi (cifre e separatore).
+		// Numeric-only field: ignore characters that aren't allowed (digits and separator).
 		if msg.Type == tea.KeyRunes {
 			for _, r := range msg.Runes {
 				if !numericRune(r) {
@@ -147,12 +147,12 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		if len(rt.rows) > 0 {
-			delete(rt.rates, rt.rows[rt.idx].listID) // torna alla tariffa di default
+			delete(rt.rates, rt.rows[rt.idx].listID) // revert to the default rate
 		}
 	case "s":
-		// Costruisci la mappa da salvare escludendo gli override ridondanti
-		// (uguali al default). Usa una copia: se il salvataggio fallisce il
-		// working-copy resta intatto.
+		// Build the map to save, excluding redundant overrides
+		// (equal to the default). Use a copy: if saving fails the
+		// working copy stays intact.
 		toSave := map[string]float64{}
 		for id, v := range rt.rates {
 			if v != rt.def {
@@ -165,7 +165,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ratesScreen = rt
 			return m, nil
 		}
-		rt.rates = toSave // aggiorna il working-copy solo dopo il salvataggio riuscito
+		rt.rates = toSave // update the working copy only after a successful save
 		g := m.report.GroupBy
 		if g == "" {
 			g = report.GroupByTotal
@@ -177,7 +177,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ratesScreen = rt
 		return m, nil
 	case "esc":
-		// Scarta le modifiche non salvate e torna al report.
+		// Discard unsaved changes and return to the report.
 		m.screen = screenReport
 		return m, nil
 	}

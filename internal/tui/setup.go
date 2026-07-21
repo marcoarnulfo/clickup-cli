@@ -55,7 +55,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch s.step {
 	case stepToken:
 		if s.loading {
-			return m, nil // validazione in corso: ignora ulteriori input
+			return m, nil // validation in progress: ignore further input
 		}
 		if msg.Type == tea.KeyEnter && s.input.Value() != "" {
 			s.tmpCfg.Token = s.input.Value()
@@ -165,7 +165,7 @@ func (s setupModel) view() string {
 	return b
 }
 
-// validateAndLoadTeamsCmd valida il token (CurrentUser) e carica i teams.
+// validateAndLoadTeamsCmd validates the token (CurrentUser) and loads the teams.
 func validateAndLoadTeamsCmd(c *clickup.Client) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
