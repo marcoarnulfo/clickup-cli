@@ -64,3 +64,36 @@ var errTest = &testErr{}
 type testErr struct{}
 
 func (*testErr) Error() string { return "boom" }
+
+func TestHomeChangesMonthAndScope(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.year, m.month = 2026, 7
+	m.home = newHome(2026, 7)
+
+	// freccia sinistra -> mese precedente
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	mm := updated.(Model)
+	if mm.month != 6 {
+		t.Fatalf("left should go to June, got %v", mm.month)
+	}
+
+	// 't' alterna scope
+	updated2, _ := mm.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	mm2 := updated2.(Model)
+	if mm2.scope != "team" {
+		t.Fatalf("t should switch scope to team, got %q", mm2.scope)
+	}
+}
+
+func TestHomeEnterStartsLoading(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.home = newHome(m.year, m.month)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(Model)
+	if mm.screen != screenLoading {
+		t.Fatalf("enter should switch to loading, got %v", mm.screen)
+	}
+	if cmd == nil {
+		t.Fatal("enter should return a load command")
+	}
+}
