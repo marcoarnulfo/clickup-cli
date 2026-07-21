@@ -153,3 +153,21 @@ func TestMonthRange(t *testing.T) {
 		t.Fatalf("end = %v", end)
 	}
 }
+
+func TestBuildGroupByMember(t *testing.T) {
+	entries := []TimeEntry{
+		{UserName: "alice", ListID: "l1", Duration: 2 * time.Hour},
+		{UserName: "bob", ListID: "l1", Duration: 1 * time.Hour},
+		{UserName: "alice", ListID: "l1", Duration: 30 * time.Minute},
+	}
+	r := Build(entries, GroupByMember, Rates{Default: 10}, "EUR", 2026, time.July)
+	if len(r.Buckets) != 2 {
+		t.Fatalf("buckets = %d, want 2", len(r.Buckets))
+	}
+	if r.Buckets[0].Label != "alice" || r.Buckets[0].Hours != 2.5 {
+		t.Errorf("bucket[0] = %+v, want alice 2.5", r.Buckets[0])
+	}
+	if r.Buckets[1].Label != "bob" || r.Buckets[1].Hours != 1 {
+		t.Errorf("bucket[1] = %+v, want bob 1", r.Buckets[1])
+	}
+}
