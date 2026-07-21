@@ -196,22 +196,14 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 		if err != nil {
 			return errMsg{err: err}
 		}
-		// Resolve human-readable list names ONCE per unique list_id
-		// (avoids repeated calls, including failed ones, for the same list).
-		resolved := map[string]string{}
+		// Resolve human-readable list names ONCE per unique list_id, fetched
+		// concurrently (bounded) to avoid the 30s timeout when a report spans
+		// many distinct lists.
+		ids := make([]string, 0, len(entries))
 		for _, e := range entries {
-			if e.ListID == "" {
-				continue
-			}
-			if _, done := resolved[e.ListID]; done {
-				continue
-			}
-			if name, err := c.ListName(ctx, e.ListID); err == nil {
-				resolved[e.ListID] = name
-			} else {
-				resolved[e.ListID] = "" // attempted: don't retry within this load
-			}
+			ids = append(ids, e.ListID)
 		}
+		resolved := c.ListNames(ctx, ids)
 		for i := range entries {
 			if name := resolved[entries[i].ListID]; name != "" {
 				entries[i].ListName = name
