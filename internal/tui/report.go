@@ -39,7 +39,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenHome
 	case "r":
 		m.screen = screenLoading
-		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+		return m, m.reloadEntriesCmd()
 	case "e":
 		m.export = newExport(m.report)
 		m.screen = screenExport

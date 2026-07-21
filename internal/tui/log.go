@@ -383,7 +383,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "r":
 			m.screen = screenLoading
-			return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+			return m, m.reloadEntriesCmd()
 		case "esc", "enter":
 			m.screen = screenReport
 			return m, nil

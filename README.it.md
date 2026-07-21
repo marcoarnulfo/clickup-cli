@@ -21,7 +21,11 @@
 
 ## Demo
 
-> 🎬 _GIF demo in arrivo._ È scriptata con [vhs](https://github.com/charmbracelet/vhs) in [`docs/demo.tape`](docs/demo.tape) — lancia `vhs docs/demo.tape` per (ri)generare `docs/demo.gif`.
+![clickup demo](docs/demo.gif)
+
+Provala senza account ClickUp: **`CLICKUP_DEMO=1 clickup`** avvia una modalità demo con dati
+fittizi. Il GIF è registrato con [vhs](https://github.com/charmbracelet/vhs) da
+[`docs/demo.tape`](docs/demo.tape) (lancia `vhs docs/demo.tape` per rigenerarlo).
 
 ## Requisiti
 

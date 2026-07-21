@@ -36,6 +36,7 @@ type (
 type Model struct {
 	cfg    config.Config
 	client *clickup.Client
+	demo   bool // modalità demo (dati fittizi, nessuna API)
 	screen screen
 	err    error
 
@@ -62,14 +63,19 @@ type Model struct {
 // New costruisce il modello radice a partire dalla config.
 func New(cfg config.Config) Model {
 	now := time.Now()
+	demo := demoEnabled()
+	if demo {
+		cfg = demoConfig()
+	}
 	m := Model{
 		cfg:    cfg,
+		demo:   demo,
 		year:   now.Year(),
 		month:  now.Month(),
 		scope:  "me",
 		client: clickup.New(cfg.Token),
 	}
-	if cfg.Valid() {
+	if demo || cfg.Valid() {
 		m.screen = screenHome
 		m.home = newHome()
 	} else {
@@ -80,6 +86,15 @@ func New(cfg config.Config) Model {
 }
 
 func (m Model) Init() tea.Cmd { return nil }
+
+// reloadEntriesCmd sceglie la sorgente delle voci ore: dati demo (nessuna I/O)
+// in modalità demo, altrimenti la chiamata reale all'API.
+func (m Model) reloadEntriesCmd() tea.Cmd {
+	if m.demo {
+		return demoEntriesCmd(m.year, m.month)
+	}
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+}
 
 // ratesFromConfig costruisce le tariffe per il report dalla config (default + override).
 func ratesFromConfig(cfg config.Config) report.Rates {

@@ -39,7 +39,7 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		m.screen = screenLoading
 		// loadEntriesCmd ricava da solo gli assignees del team quando scope=="team".
-		return m, loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope)
+		return m, m.reloadEntriesCmd()
 	}
 	return m, nil
 }
