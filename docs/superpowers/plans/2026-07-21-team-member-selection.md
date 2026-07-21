@@ -218,8 +218,7 @@ git commit -m "feat(clickup): add TeamMembers for a single workspace"
 - Consumes: `clickup.TeamMembers` (Task 2), `clickup.Member`.
 - Produces:
   - `screenMembers` (new `screen` const, appended to the iota).
-  - `membersMsg struct{ members []clickup.Member }`.
-  - `Model.teamMembers []clickup.Member`, `Model.selectedMembers map[int]bool`.
+  - `Model.selectedMembers map[int]bool` (the `teamMembers` cache and the `membersMsg` type are introduced later — Tasks 5 and 4 — so staticcheck stays clean at this commit; a lone const in a used iota group is not flagged).
   - `func (m Model) selectedAssignees() []int` (sorted; empty = all).
   - `loadEntriesCmd(c, teamID, year, month, scope string, assignees []int) tea.Cmd`.
 
@@ -264,6 +263,34 @@ func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
 		t.Error("explicit assignees: /team must not be called")
 	}
 }
+
+func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			if got := r.URL.Query().Get("assignee"); got != "5" {
+				t.Errorf("assignee = %q, want 5", got)
+			}
+			w.Write([]byte(`{"data":[]}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+	m := Model{
+		client:          c,
+		cfg:             config.Config{WorkspaceID: "900"},
+		year:            2026,
+		month:           time.July,
+		scope:           "team",
+		selectedMembers: map[int]bool{5: true},
+	}
+	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+		t.Fatal("expected entriesMsg from reloadEntriesCmd")
+	}
+}
 ```
 
 Also update the three existing calls in `app_test.go` to pass the new argument:
@@ -295,22 +322,15 @@ const (
 )
 ```
 
-(b) Add the message type to the `type (...)` block:
+(b) Add the root field to `Model` (near `entries`). Do NOT add `teamMembers` or a `membersMsg` type yet — those arrive in Tasks 5 and 4 respectively, so staticcheck (U1000) stays clean at this commit:
 
 ```go
-	membersMsg struct{ members []clickup.Member }
+	selectedMembers map[int]bool // selected member ids; empty = all (no filter)
 ```
 
-(c) Add root fields to `Model` (near `entries`):
+(c) Replace the imports: remove `"fmt"` (now unused here — the not-found error moved to `clickup.TeamMembers`) and add `"slices"`.
 
-```go
-	teamMembers     []clickup.Member // workspace members (session cache)
-	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
-```
-
-(d) Replace the imports: remove `"fmt"` (now unused here — the not-found error moved to `clickup.TeamMembers`) and add `"slices"`.
-
-(e) Add the helper:
+(d) Add the helper:
 
 ```go
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -327,7 +347,7 @@ func (m Model) selectedAssignees() []int {
 }
 ```
 
-(f) Update `reloadEntriesCmd` to pass the assignees:
+(e) Update `reloadEntriesCmd` to pass the assignees (the demo branch keeps the current 2-arg `demoEntriesCmd(m.year, m.month)` for now — Task 4 makes it selection-aware):
 
 ```go
 func (m Model) reloadEntriesCmd() tea.Cmd {
@@ -338,7 +358,7 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 }
 ```
 
-(g) Replace `loadEntriesCmd` with the assignee-aware version (list-name resolution unchanged):
+(f) Replace `loadEntriesCmd` with the assignee-aware version (list-name resolution unchanged):
 
 ```go
 // loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
@@ -405,15 +425,19 @@ git commit -m "feat(tui): thread selected member assignees through entry loading
 
 ---
 
-### Task 4: demo mode — multiple users + demo members
+### Task 4: demo mode — multiple users, demo members, selection-aware demo
 
 **Files:**
 - Modify: `internal/tui/demo.go`
+- Modify: `internal/tui/app.go` (introduce the `membersMsg` type; make the demo branch of `reloadEntriesCmd` selection-aware)
 - Test: `internal/tui/demo_test.go`
 
 **Interfaces:**
-- Consumes: `membersMsg` (Task 3), `clickup.Member`.
-- Produces: multi-user `demoEntries`; `demoMembers() []clickup.Member`; `demoMembersCmd() tea.Cmd`.
+- Consumes: `clickup.Member`, `Model.selectedAssignees` (Task 3).
+- Produces:
+  - `membersMsg struct{ members []clickup.Member }` (introduced here so it has a real producer — `demoMembersCmd` — and stays U1000-clean).
+  - multi-user `demoEntries`; `demoMembers() []clickup.Member`; `demoMembersCmd() tea.Cmd`.
+  - `demoEntriesCmd(year int, month time.Month, assignees []int) tea.Cmd` (new signature) + `filterByUsers`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -438,18 +462,50 @@ func TestDemoEntriesMultipleUsers(t *testing.T) {
 		t.Errorf("expected multiple demo users, got %v", users)
 	}
 }
-```
 
-(Add `"github.com/marcoarnulfo/clickup-cli/internal/clickup"` to the test imports only if a test references it — these two don't, so no change.)
+func TestReloadDemoFiltersMembers(t *testing.T) {
+	// Only alice (id 1) selected: the demo report must exclude bob/carol.
+	m := Model{demo: true, year: 2026, month: time.July, selectedMembers: map[int]bool{1: true}}
+	em, ok := m.reloadEntriesCmd()().(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg")
+	}
+	if len(em.entries) == 0 {
+		t.Fatal("expected alice's demo entries, got 0")
+	}
+	for _, e := range em.entries {
+		if e.UserID != 1 {
+			t.Errorf("demo filter leaked user %d (%s)", e.UserID, e.UserName)
+		}
+	}
+}
+```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `go test ./internal/tui/ -run 'TestDemoMembers|TestDemoEntriesMultipleUsers' -v`
+Run: `go test ./internal/tui/ -run 'TestDemoMembers|TestDemoEntriesMultipleUsers|TestReloadDemoFiltersMembers' -v`
 Expected: FAIL — `undefined: demoMembers` / `undefined: demoMembersCmd`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `internal/tui/demo.go`, add `"github.com/marcoarnulfo/clickup-cli/internal/clickup"` to imports, then replace `demoEntries` and append the two helpers:
+(a) In `internal/tui/app.go`, add the message type to the `type (...)` block:
+
+```go
+	membersMsg struct{ members []clickup.Member }
+```
+
+And make the demo branch of `reloadEntriesCmd` selection-aware (only this branch changes):
+
+```go
+func (m Model) reloadEntriesCmd() tea.Cmd {
+	if m.demo {
+		return demoEntriesCmd(m.year, m.month, m.selectedAssignees())
+	}
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, m.year, m.month, m.scope, m.selectedAssignees())
+}
+```
+
+(b) In `internal/tui/demo.go`, add `"github.com/marcoarnulfo/clickup-cli/internal/clickup"` to imports, replace `demoEntries` and `demoEntriesCmd`, and append the helpers:
 
 ```go
 // demoEntries returns fake time entries for the given month, spread across a few
@@ -474,6 +530,25 @@ func demoEntries(year int, month time.Month) []report.TimeEntry {
 	}
 }
 
+// filterByUsers keeps only entries whose UserID is in ids. An empty ids slice
+// means "no filter" (all users) — matching the "empty selection = all" rule.
+func filterByUsers(entries []report.TimeEntry, ids []int) []report.TimeEntry {
+	if len(ids) == 0 {
+		return entries
+	}
+	want := make(map[int]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := make([]report.TimeEntry, 0, len(entries))
+	for _, e := range entries {
+		if want[e.UserID] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // demoMembers returns the fake workspace members for demo mode.
 func demoMembers() []clickup.Member {
 	return []clickup.Member{
@@ -489,15 +564,27 @@ func demoMembersCmd() tea.Cmd {
 }
 ```
 
+And update `demoEntriesCmd` to filter by the selected members (no I/O):
+
+```go
+// demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
+// selected member ids (empty = all).
+func demoEntriesCmd(year int, month time.Month, assignees []int) tea.Cmd {
+	return func() tea.Msg {
+		return entriesMsg{entries: filterByUsers(demoEntries(year, month), assignees)}
+	}
+}
+```
+
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go test ./internal/tui/ -race` → PASS. (`TestDemoEntriesBuildReport` still sees 2 lists → 2 buckets.)
+Run: `go test ./internal/tui/ -race` → PASS. (`TestDemoEntriesBuildReport` still sees 2 lists → 2 buckets; `TestReloadEntriesCmdUsesDemo` still gets non-empty entries with an empty selection.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/tui/demo.go internal/tui/demo_test.go
-git commit -m "feat(tui): multi-user demo data and demo members"
+git add internal/tui/demo.go internal/tui/demo_test.go internal/tui/app.go
+git commit -m "feat(tui): multi-user demo data, demo members, selection-aware demo"
 ```
 
 ---
@@ -510,12 +597,12 @@ git commit -m "feat(tui): multi-user demo data and demo members"
 - Test: `internal/tui/members_test.go` (new)
 
 **Interfaces:**
-- Consumes: `clickup.Member`, `Model.teamMembers`, `Model.selectedMembers`, `screenMembers`, `membersMsg`.
+- Consumes: `clickup.Member`, `Model.selectedMembers`, `screenMembers` (Task 3), `membersMsg` (Task 4).
 - Produces:
   - `membersModel struct{ members []clickup.Member; selected map[int]bool; idx int; loading bool }`.
   - `newMembers(members []clickup.Member, selected map[int]bool) membersModel`.
   - `func (m Model) updateMembers(msg tea.KeyMsg) (tea.Model, tea.Cmd)`.
-  - `Model.membersScreen membersModel`.
+  - `Model.membersScreen membersModel`, `Model.teamMembers []clickup.Member` (the session cache, first written by the `membersMsg` handler here).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -721,10 +808,11 @@ func (mm membersModel) view() string {
 
 In `internal/tui/app.go`:
 
-(a) Add the root field next to the other sub-models:
+(a) Add the root fields — the sub-model and the members cache (both first used here, so they stay U1000-clean):
 
 ```go
 	membersScreen membersModel
+	teamMembers   []clickup.Member // workspace members (session cache)
 ```
 
 (b) Add the `membersMsg` handler in the `Update` type-switch:
@@ -923,8 +1011,12 @@ func (homeModel) view(year int, month time.Month, scope, membersNote string) str
 	}
 	sel := styleBox.Render(fmt.Sprintf("Month: %s  ◂ %04d-%02d ▸    Scope: %s",
 		styleAccent.Render(month.String()), year, int(month), scopeStr))
-	help := styleHelp.Render("◂/▸ change month · t: me/team · f: select members · Enter: generate report · n: log hours · q: quit")
-	return title + "\n\n" + sel + "\n\n" + help
+	help := "◂/▸ change month · t: me/team · "
+	if scope == "team" {
+		help += "f: select members · " // only active in team scope
+	}
+	help += "Enter: generate report · n: log hours · q: quit"
+	return title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
 }
 ```
 
@@ -964,6 +1056,7 @@ package tui
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -980,6 +1073,19 @@ func TestNextGroupByTeamIncludesMember(t *testing.T) {
 func TestNextGroupByMeSkipsMember(t *testing.T) {
 	if got := nextGroupBy(report.GroupByDay, "me"); got != report.GroupByTotal {
 		t.Errorf("me: day -> %q, want total", got)
+	}
+}
+
+// TestReportCycleGroupByTeamViaUpdate drives the 'g' key through Update() to
+// verify the team cycle reaches the member grouping.
+func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
+	m := Model{scope: "team", screen: screenReport}
+	m.report = report.Report{GroupBy: report.GroupByDay}
+	m.rep = newReport(m.report, "")
+	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	m = u.(Model)
+	if m.report.GroupBy != report.GroupByMember {
+		t.Errorf("team g from day -> %q, want member", m.report.GroupBy)
 	}
 }
 
@@ -1110,4 +1216,4 @@ git commit -m "feat(tui): scope-aware grouping with per-member view and docs"
 - **Spec coverage:** dedicated screen from Home (Tasks 5/6) ✓; group-by member (Tasks 1/7) ✓; default all + empty=all (Tasks 3/5/6) ✓; session-only state (Task 3) ✓; demo multi-user (Task 4) ✓; `TeamMembers` extraction (Task 2) ✓; report title note (Task 7) ✓.
 - **Empty=all consistency:** `selectedAssignees` empty → `loadEntriesCmd` team fallback derives all; `homeMembersNote` shows k=n; `memberFilterNote` returns "" (no partial note). Consistent.
 - **Type consistency:** `nextGroupBy(g, scope)`, `newReport(r, note)`, `membersMsg{members}`, `TeamMembers(ctx, teamID)` used identically across producers/consumers.
-- **Build-green ordering:** `screenMembers`/`membersMsg` declared in Task 3 (unused is legal); `demoMembersCmd` (Task 4) and `membersScreen` field/handler (Task 5) fill in before Home wires `f` (Task 6). `fmt` removed from app.go in Task 3, not reintroduced there (helpers using `fmt` live in home.go/report.go).
+- **Build-green ordering (with the staticcheck gate):** the pre-commit gate runs `staticcheck` (U1000 flags unused symbols), so a symbol must have a real reference at the commit that introduces it — the compiler's "unused is legal for types/consts/fields" is not enough. Therefore: `screenMembers` in Task 3 (a lone const in a used iota group is NOT flagged — verified empirically); `selectedMembers` in Task 3 (read by `selectedAssignees`); `membersMsg` in Task 4 (real producer `demoMembersCmd`); `teamMembers` field in Task 5 (written by the `membersMsg` handler — a written-but-not-yet-read field is NOT flagged, verified empirically); `membersScreen` in Task 5 (used by routeKey/View). Home wires `f` in Task 6, report/docs in Task 7. `fmt` is removed from app.go in Task 3 and never reintroduced there (helpers using `fmt` live in home.go/report.go, which already import it).
