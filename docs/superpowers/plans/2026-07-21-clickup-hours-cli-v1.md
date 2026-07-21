@@ -13,7 +13,7 @@
 Ogni task eredita implicitamente questi vincoli:
 
 - **Go 1.26+** (toolchain locale: go1.26.5).
-- **Module path:** `github.com/marcoarnulfo/clickup-cli` (da adeguare al vero org GitHub prima della pubblicazione; usare questo valore in tutti gli import fino ad allora).
+- **Module path:** `github.com/marcoarnulfo/clickup-cli` (username GitHub verificato via `gh`; usare questo valore in tutti gli import).
 - **Binario:** `clickup` (da `cmd/clickup`).
 - **Licenza:** MIT.
 - **Dipendenze esterne consentite:** solo `github.com/charmbracelet/bubbletea`, `github.com/charmbracelet/bubbles`, `github.com/charmbracelet/lipgloss`, `gopkg.in/yaml.v3`. Tutto il resto è stdlib. **Nessun SDK ClickUp esterno** — l'API si usa via `net/http`.
