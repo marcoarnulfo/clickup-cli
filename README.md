@@ -34,6 +34,7 @@ di setup.
 | `m` / `s` | Report | Torna alla home per cambiare mese/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso mese/scope |
 | `p` | Report | Apre la schermata **Tariffe per lista** |
+| `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-YYYY-MM.<ext>` nella cwd |
 | `Esc` | Export | Torna al report senza esportare |
@@ -59,6 +60,24 @@ Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato p
 tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di
 qualche centesimo dal prodotto `ore_mostrate × tariffa_lista`; tuttavia, il totale della
 fatturazione resta sempre la somma esatta degli importi mostrati.
+
+#### Schermata Log ore
+
+Premendo `n` (dalla Home o dal Report) si apre **Log ore**, per registrare tempo
+sui propri task ClickUp. Tre modalità:
+
+1. **Guidato** — scegli una lista tra quelle note (report corrente ∪ config), poi
+   un task della lista, poi compili il form.
+2. **Task ID/URL** — incolli l'ID del task o un URL ClickUp (es. `.../t/86abc`) e
+   vai diretto al form.
+3. **Timer** — avvii un cronometro sul task scelto (guidato o ID); premendo `s` lo
+   fermi e ClickUp registra la time entry. Se all'apertura c'è già un timer in
+   corso, viene mostrato e puoi fermarlo subito.
+
+Nel form la **durata** accetta formati flessibili: `2h30`, `2h30m`, `1.5h`, `1,5h`,
+`90m`, `45` (numero nudo = ore). La **data** default è oggi (`YYYY-MM-DD`, editabile)
+e la **nota** è opzionale. Dopo il salvataggio puoi premere `r` per ricaricare il
+report e vedere subito le nuove ore. Si registrano sempre **le proprie** ore.
 
 ### Scope team
 
