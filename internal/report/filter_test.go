@@ -24,6 +24,14 @@ func TestFilterEmptyReturnsAll(t *testing.T) {
 	}
 }
 
+func TestFilterAllFalseIsNoConstraint(t *testing.T) {
+	in := []TimeEntry{fe("A", "open"), fe("B", "done")}
+	c := FilterCriteria{Lists: map[string]bool{"A": false}}
+	if got := Filter(in, c); len(got) != 2 {
+		t.Fatalf("a map with only false entries should impose no constraint, got %v", names(got))
+	}
+}
+
 func TestFilterListOR(t *testing.T) {
 	in := []TimeEntry{fe("A", "open"), fe("B", "open"), fe("C", "open")}
 	c := FilterCriteria{Lists: map[string]bool{"A": true, "C": true}}

@@ -78,6 +78,19 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rs.msg = ""
 			m.rangeScreen = rs
 			return m, nil
+		case tea.KeyTab, tea.KeyShiftTab:
+			// Only two fields, so Tab and Shift+Tab both just swap focus between them.
+			if rs.field == 0 {
+				rs.field = 1
+				rs.fromInput.Blur()
+				rs.toInput.Focus()
+			} else {
+				rs.field = 0
+				rs.toInput.Blur()
+				rs.fromInput.Focus()
+			}
+			m.rangeScreen = rs
+			return m, nil
 		}
 		var cmd tea.Cmd
 		if rs.field == 0 {
@@ -106,6 +119,12 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			rs.msg = ""
 			rs.fromInput = newTextInput("From (YYYY-MM-DD)")
 			rs.toInput = newTextInput("To (YYYY-MM-DD)")
+			if m.preset == report.PresetCustom {
+				// Reopening an already-active custom range: prefill instead of
+				// losing it to a blank editor.
+				rs.fromInput.SetValue(m.customStart.Format("2006-01-02"))
+				rs.toInput.SetValue(m.customEnd.Format("2006-01-02"))
+			}
 			rs.fromInput.Focus()
 			rs.toInput.Blur()
 			m.rangeScreen = rs
@@ -139,6 +158,10 @@ func (rs rangeModel) view() string {
 	if rs.msg != "" {
 		b += "\n" + styleErr.Render(rs.msg)
 	}
-	b += "\n" + styleHelp.Render("↑/↓ select · Enter: choose/next · Esc: back")
+	help := "↑/↓ select · Enter: choose/next · Esc: back"
+	if rs.editing {
+		help = "Tab: from/to · Enter: confirm · Esc: cancel"
+	}
+	b += "\n" + styleHelp.Render(help)
 	return b
 }

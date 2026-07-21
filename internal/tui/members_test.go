@@ -68,6 +68,18 @@ func TestMembersEscDiscards(t *testing.T) {
 	}
 }
 
+func TestMembersAllNoneEmptyRosterNoPanic(t *testing.T) {
+	m := Model{
+		screen:        screenMembers,
+		membersScreen: newMembers(nil, map[int]bool{}),
+	}
+	u, _ := m.updateMembers(runeKey("a")) // no members: must be a no-op, not a panic
+	m = u.(Model)
+	if len(m.membersScreen.selected) != 0 {
+		t.Errorf("selected = %v, want empty on an empty roster", m.membersScreen.selected)
+	}
+}
+
 func TestMembersMsgDefaultsAll(t *testing.T) {
 	m := Model{}
 	u, _ := m.Update(membersMsg{members: []clickup.Member{{ID: 1, Username: "a"}, {ID: 2, Username: "b"}}})

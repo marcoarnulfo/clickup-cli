@@ -92,7 +92,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
 | `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (`<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
-| `q` | Everywhere except setup | Quit the application |
+| `q` | Everywhere except setup / rates / range | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
 
 The setup screen has no `q`-to-quit, to avoid pressing it by mistake while typing the
@@ -126,7 +126,10 @@ initial API load, so the first time you open Filters in a session the app fetche
 each loaded task's current status from ClickUp (shown as "Loading statuses…");
 after that it is cached for the rest of the session. Filters compose with the
 team member selection and the active date range — they only narrow what is
-already loaded. Available commands:
+already loaded. When the date range changes, filter selections automatically
+adjust to the new entries: any selected value that no longer occurs is dropped,
+so the report never gets stuck empty because of a stale filter. Available
+commands:
 
 - `Tab` / `Shift+Tab`: switch section
 - `↑` / `↓` (also `k` / `j`): move within the section
