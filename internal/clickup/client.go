@@ -2,6 +2,7 @@
 package clickup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -88,18 +89,53 @@ func (c *Client) getRetry(ctx context.Context, path string, query map[string]str
 		}
 		return c.getRetry(ctx, path, query, out, attempt+1)
 	}
-	if resp.StatusCode == http.StatusUnauthorized {
+	return finishJSON(resp.StatusCode, body, out)
+}
+
+// finishJSON gestisce status code e decodifica comuni a GET e POST.
+func finishJSON(status int, body []byte, out any) error {
+	if status == http.StatusUnauthorized {
 		var ae apiError
 		_ = json.Unmarshal(body, &ae)
 		return fmt.Errorf("%w: %s", ErrUnauthorized, ae.Err)
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if status < 200 || status >= 300 {
 		var ae apiError
 		_ = json.Unmarshal(body, &ae)
 		if ae.Err != "" {
-			return fmt.Errorf("clickup API %d: %s (%s)", resp.StatusCode, ae.Err, ae.ECODE)
+			return fmt.Errorf("clickup API %d: %s (%s)", status, ae.Err, ae.ECODE)
 		}
-		return fmt.Errorf("clickup API %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("clickup API %d: %s", status, string(body))
 	}
-	return json.Unmarshal(body, out)
+	if out != nil {
+		return json.Unmarshal(body, out)
+	}
+	return nil
+}
+
+// post esegue una POST autenticata con body JSON (body nil = nessun corpo) e,
+// se out != nil, decodifica la risposta.
+func (c *Client) post(ctx context.Context, path string, body any, out any) error {
+	var reader io.Reader
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	return finishJSON(resp.StatusCode, respBody, out)
 }

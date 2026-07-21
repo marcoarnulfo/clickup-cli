@@ -33,6 +33,9 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.scope = "me"
 		}
+	case "n":
+		m.logScreen = newLog(m.entries, m.cfg)
+		m.screen = screenLog
 	case "enter":
 		m.screen = screenLoading
 		// loadEntriesCmd ricava da solo gli assignees del team quando scope=="team".
@@ -45,6 +48,6 @@ func (homeModel) view(year int, month time.Month, scope string) string {
 	title := styleTitle.Render("ClickUp Hours — Report mensile")
 	sel := styleBox.Render(fmt.Sprintf("Mese: %s  ◂ %04d-%02d ▸    Scope: %s",
 		styleAccent.Render(month.String()), year, int(month), styleAccent.Render(scope)))
-	help := styleHelp.Render("◂/▸ cambia mese · t: me/team · Enter: genera report · q: esci")
+	help := styleHelp.Render("◂/▸ cambia mese · t: me/team · Enter: genera report · n: log ore · q: esci")
 	return title + "\n\n" + sel + "\n\n" + help
 }

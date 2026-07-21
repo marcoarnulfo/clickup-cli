@@ -21,6 +21,7 @@ const (
 	screenReport
 	screenExport
 	screenRates
+	screenLog
 	screenError
 )
 
@@ -55,6 +56,7 @@ type Model struct {
 	rep         reportModel
 	export      exportModel
 	ratesScreen ratesModel
+	logScreen   logModel
 }
 
 // New costruisce il modello radice a partire dalla config.
@@ -186,6 +188,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.setup, cmd = m.setup.withTeams(msg.teams)
 		return m, cmd
+
+	case logDoneMsg:
+		m.logScreen.step = logDone
+		m.logScreen.msg = msg.summary
+		m.screen = screenLog
+		return m, nil
+
+	case taskListMsg:
+		m.logScreen.tasks = msg.tasks
+		m.logScreen.taskIdx = 0
+		m.logScreen.loading = false
+		m.logScreen.step = logTaskPick
+		return m, nil
+
+	case timerMsg:
+		if m.screen != screenLog && m.screen != screenLoading {
+			return m, nil // messaggio timer obsoleto: l'utente ha lasciato la schermata
+		}
+		m.logScreen.timer = msg.timer
+		if msg.timer != nil {
+			m.logScreen.step = logTimerRunning
+		}
+		m.screen = screenLog
+		return m, nil
 	}
 	return m, nil
 }
@@ -203,6 +229,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateExport(msg)
 	case screenRates:
 		return m.updateRates(msg)
+	case screenLog:
+		return m.updateLog(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -229,6 +257,8 @@ func (m Model) View() string {
 		return m.export.view()
 	case screenRates:
 		return m.ratesScreen.view()
+	case screenLog:
+		return m.logScreen.view()
 	case screenError:
 		return styleErr.Render("Errore: ") + m.err.Error() + "\n\n" + styleHelp.Render("premi un tasto per tornare alla home")
 	}

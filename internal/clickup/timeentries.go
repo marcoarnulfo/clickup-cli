@@ -52,6 +52,31 @@ type rawEntry struct {
 	Duration string `json:"duration"` // ms come stringa (negativa se timer in corso)
 }
 
+// toTimeEntry converte una rawEntry nel tipo dominio. Errore su start/duration
+// non parsabili. Nota: NON filtra le durate negative (compito del chiamante).
+func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
+	ms, err := strconv.ParseInt(r.Duration, 10, 64)
+	if err != nil {
+		return report.TimeEntry{}, fmt.Errorf("durata non valida per la voce %s: %q", r.ID, r.Duration)
+	}
+	startMs, err := strconv.ParseInt(r.Start, 10, 64)
+	if err != nil {
+		return report.TimeEntry{}, fmt.Errorf("inizio non valido per la voce %s: %q", r.ID, r.Start)
+	}
+	listID := string(r.TaskLocation.ListID)
+	return report.TimeEntry{
+		ID:       r.ID,
+		TaskID:   r.Task.ID,
+		TaskName: r.Task.Name,
+		ListID:   listID,
+		ListName: listID,
+		UserID:   r.User.ID,
+		UserName: r.User.Username,
+		Start:    time.UnixMilli(startMs).UTC(),
+		Duration: time.Duration(ms) * time.Millisecond,
+	}, nil
+}
+
 // TimeEntries ritorna le voci di tempo del workspace nel range [start, end).
 // Se assignees è non vuoto, filtra su quegli utenti (scope team).
 // Le voci con durata negativa (timer in esecuzione) vengono scartate.
@@ -77,29 +102,14 @@ func (c *Client) TimeEntries(ctx context.Context, teamID string, start, end time
 
 	out := make([]report.TimeEntry, 0, len(resp.Data))
 	for _, r := range resp.Data {
-		ms, err := strconv.ParseInt(r.Duration, 10, 64)
+		e, err := r.toTimeEntry()
 		if err != nil {
-			return nil, fmt.Errorf("durata non valida per la voce %s: %q", r.ID, r.Duration)
+			return nil, err
 		}
-		if ms < 0 {
+		if e.Duration < 0 {
 			continue // timer in corso: durata negativa, non è tempo consuntivato
 		}
-		startMs, err := strconv.ParseInt(r.Start, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("inizio non valido per la voce %s: %q", r.ID, r.Start)
-		}
-		listID := string(r.TaskLocation.ListID)
-		out = append(out, report.TimeEntry{
-			ID:       r.ID,
-			TaskID:   r.Task.ID,
-			TaskName: r.Task.Name,
-			ListID:   listID,
-			ListName: listID, // nome lista risolto in v1.1; per ora l'ID
-			UserID:   r.User.ID,
-			UserName: r.User.Username,
-			Start:    time.UnixMilli(startMs).UTC(),
-			Duration: time.Duration(ms) * time.Millisecond,
-		})
+		out = append(out, e)
 	}
 	return out, nil
 }
