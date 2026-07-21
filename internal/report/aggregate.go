@@ -40,29 +40,37 @@ func keyFor(e TimeEntry, groupBy string) string {
 	}
 }
 
-// Build aggrega le entry in un Report secondo groupBy, applicando la tariffa.
-func Build(entries []TimeEntry, groupBy string, rate float64, currency string, year int, month time.Month) Report {
+// Build aggrega le entry in un Report secondo groupBy. L'importo di ogni bucket
+// è la somma, sulle entry del bucket, di ore_reali × tariffa_della_lista (Rates.For),
+// arrotondata a 2 decimali. Report.Rate riporta la tariffa di default (per l'export).
+func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, year int, month time.Month) Report {
 	r := Report{
 		Year:     year,
 		Month:    month,
 		GroupBy:  groupBy,
 		Currency: currency,
-		Rate:     rate,
+		Rate:     rates.Default,
 	}
 
-	sums := map[string]float64{}
+	sumsH := map[string]float64{}
+	sumsA := map[string]float64{}
 	var order []string
 	for _, e := range entries {
 		k := keyFor(e, groupBy)
-		if _, seen := sums[k]; !seen {
+		if _, seen := sumsH[k]; !seen {
 			order = append(order, k)
 		}
-		sums[k] += e.Duration.Hours()
+		h := e.Duration.Hours()
+		sumsH[k] += h
+		sumsA[k] += h * rates.For(e.ListID)
 	}
 
 	for _, k := range order {
-		h := round2(sums[k])
-		r.Buckets = append(r.Buckets, Bucket{Label: k, Hours: h, Amount: round2(h * rate)})
+		r.Buckets = append(r.Buckets, Bucket{
+			Label:  k,
+			Hours:  round2(sumsH[k]),
+			Amount: round2(sumsA[k]),
+		})
 	}
 
 	// Ordinamento: per giorno cronologico (label asc); altrimenti ore desc, tie label asc.
@@ -77,11 +85,12 @@ func Build(entries []TimeEntry, groupBy string, rate float64, currency string, y
 		return a.Label < b.Label
 	})
 
-	var total float64
+	var th, ta float64
 	for _, b := range r.Buckets {
-		total += b.Hours
+		th += b.Hours
+		ta += b.Amount
 	}
-	r.TotalHours = round2(total)
-	r.TotalAmount = round2(r.TotalHours * rate)
+	r.TotalHours = round2(th)
+	r.TotalAmount = round2(ta)
 	return r
 }

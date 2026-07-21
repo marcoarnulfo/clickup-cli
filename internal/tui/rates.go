@@ -1,0 +1,185 @@
+package tui
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strconv"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
+)
+
+// rateRow è una lista mostrata nella schermata tariffe.
+type rateRow struct {
+	listID string
+	name   string
+}
+
+type ratesModel struct {
+	rows    []rateRow
+	idx     int
+	editing bool
+	input   textinput.Model
+	rates   map[string]float64 // override correnti (list_id -> tariffa)
+	def     float64            // tariffa di default
+	cur     string             // valuta
+	msg     string             // messaggio d'errore (tariffa non valida)
+}
+
+// newRates costruisce la schermata dalle liste del report corrente unite a quelle
+// già presenti in config (cfg.Rates). Le liste "solo config" sono aggiunte in
+// ordine deterministico (id crescente) per una vista stabile.
+func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
+	names := map[string]string{}
+	var order []string
+	remember := func(id, name string) {
+		if id == "" {
+			return
+		}
+		if _, ok := names[id]; !ok {
+			order = append(order, id)
+			names[id] = id // etichetta di default = id
+		}
+		if name != "" {
+			names[id] = name
+		}
+	}
+	for _, e := range entries {
+		remember(e.ListID, e.ListName)
+	}
+	// liste presenti solo in config: ordine deterministico
+	var cfgIDs []string
+	for id := range cfg.Rates {
+		if _, ok := names[id]; !ok {
+			cfgIDs = append(cfgIDs, id)
+		}
+	}
+	sort.Strings(cfgIDs)
+	for _, id := range cfgIDs {
+		remember(id, "")
+	}
+
+	rows := make([]rateRow, len(order))
+	for i, id := range order {
+		rows[i] = rateRow{listID: id, name: names[id]}
+	}
+	rates := map[string]float64{}
+	for k, v := range cfg.Rates {
+		rates[k] = v
+	}
+	return ratesModel{rows: rows, rates: rates, def: cfg.Rate, cur: cfg.Currency}
+}
+
+// validRate accetta solo un numero finito ≥ 0.
+func validRate(s string) (float64, bool) {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
+}
+
+func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	rt := m.ratesScreen
+
+	if rt.editing {
+		switch msg.Type {
+		case tea.KeyEnter:
+			v := rt.input.Value()
+			if v == "" {
+				rt.editing = false // vuoto = nessuna modifica (per azzerare un override usa 'd')
+				rt.msg = ""
+			} else if f, ok := validRate(v); ok {
+				rt.rates[rt.rows[rt.idx].listID] = f
+				rt.editing = false
+				rt.msg = ""
+			} else {
+				rt.msg = "Tariffa non valida: inserisci un numero ≥ 0"
+			}
+			m.ratesScreen = rt
+			return m, nil
+		case tea.KeyEsc:
+			rt.editing = false
+			rt.msg = ""
+			m.ratesScreen = rt
+			return m, nil
+		}
+		var cmd tea.Cmd
+		rt.input, cmd = rt.input.Update(msg)
+		m.ratesScreen = rt
+		return m, cmd
+	}
+
+	switch msg.String() {
+	case "up", "k":
+		if rt.idx > 0 {
+			rt.idx--
+		}
+	case "down", "j":
+		if rt.idx < len(rt.rows)-1 {
+			rt.idx++
+		}
+	case "enter":
+		if len(rt.rows) > 0 {
+			rt.editing = true
+			rt.msg = ""
+			rt.input = newNumberInput("nuova tariffa (Esc annulla)")
+		}
+	case "d":
+		if len(rt.rows) > 0 {
+			delete(rt.rates, rt.rows[rt.idx].listID) // torna alla tariffa di default
+		}
+	case "s", "esc":
+		m.cfg.Rates = rt.rates
+		if err := config.Save(m.cfg); err != nil {
+			rt.msg = "Errore nel salvataggio della config: " + err.Error()
+			m.ratesScreen = rt
+			return m, nil
+		}
+		g := m.report.GroupBy
+		if g == "" {
+			g = report.GroupByTotal
+		}
+		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
+		m.report.Scope = m.scope
+		m.rep = newReport(m.report)
+		m.screen = screenReport
+		m.ratesScreen = rt
+		return m, nil
+	}
+	m.ratesScreen = rt
+	return m, nil
+}
+
+func (rt ratesModel) view() string {
+	b := styleTitle.Render("Tariffe per lista") + "\n\n"
+	if len(rt.rows) == 0 {
+		b += styleHelp.Render("Nessuna lista nel report corrente.") + "\n"
+	}
+	for i, row := range rt.rows {
+		rate := rt.def
+		tag := "(default)"
+		if v, ok := rt.rates[row.listID]; ok {
+			rate = v
+			tag = "(override)"
+		}
+		cursor := "  "
+		line := fmt.Sprintf("%-28s %8.2f %s %s", truncate(row.name, 28), rate, rt.cur, tag)
+		if i == rt.idx {
+			cursor = "▸ "
+			line = styleAccent.Render(line)
+		}
+		b += cursor + line + "\n"
+	}
+	if rt.editing {
+		b += "\n" + rt.input.View()
+	}
+	if rt.msg != "" {
+		b += "\n" + styleErr.Render(rt.msg)
+	}
+	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica · d: usa default · s/Esc: salva e torna")
+	return b
+}

@@ -37,3 +37,17 @@ type Report struct {
 	TotalHours  float64
 	TotalAmount float64
 }
+
+// Rates risolve la tariffa oraria per lista, con fallback sulla tariffa di default.
+type Rates struct {
+	Default float64
+	ByList  map[string]float64
+}
+
+// For ritorna la tariffa della lista se presente, altrimenti la tariffa di default.
+func (r Rates) For(listID string) float64 {
+	if v, ok := r.ByList[listID]; ok {
+		return v
+	}
+	return r.Default
+}

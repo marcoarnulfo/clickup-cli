@@ -203,3 +203,40 @@ func TestTimeEntriesMalformedDurationErrors(t *testing.T) {
 		t.Fatal("expected error on malformed duration, got nil")
 	}
 }
+
+func TestListNameResolvesAndCaches(t *testing.T) {
+	var calls atomic.Int32
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Write([]byte(`{"id":"l1","name":"Cliente A"}`))
+	})
+	defer srv.Close()
+
+	n, err := c.ListName(context.Background(), "l1")
+	if err != nil || n != "Cliente A" {
+		t.Fatalf("got %q err %v", n, err)
+	}
+	// seconda chiamata: servita dalla cache, nessuna HTTP aggiuntiva
+	n2, _ := c.ListName(context.Background(), "l1")
+	if n2 != "Cliente A" {
+		t.Fatalf("cached name wrong: %q", n2)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("expected 1 HTTP call (cached), got %d", calls.Load())
+	}
+}
+
+func TestListNameFallbackOnError(t *testing.T) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"err":"boom","ECODE":"X"}`))
+	})
+	defer srv.Close()
+	n, err := c.ListName(context.Background(), "l9")
+	if err == nil {
+		t.Fatal("expected error on 500")
+	}
+	if n != "l9" {
+		t.Fatalf("fallback should be the id, got %q", n)
+	}
+}

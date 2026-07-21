@@ -32,7 +32,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy)
-		m.report = report.Build(m.entries, g, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		m.report = report.Build(m.entries, g, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 	case "m", "s":
@@ -43,6 +43,9 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e":
 		m.export = newExport(m.report)
 		m.screen = screenExport
+	case "p":
+		m.ratesScreen = newRates(m.entries, m.cfg)
+		m.screen = screenRates
 	}
 	return m, nil
 }
@@ -64,7 +67,7 @@ func (rm reportModel) view() string {
 		"TOTALE", r.TotalHours, r.TotalAmount, r.Currency))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: raggruppamento · e: esporta · m/s: cambia mese/scope · r: ricarica · q: esci")
+	help := styleHelp.Render("g: raggruppamento · e: esporta · p: tariffe · m/s: cambia mese/scope · r: ricarica · q: esci")
 
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("Nessuna ora tracciata in questo mese.")

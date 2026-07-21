@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +63,31 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
 	if _, ok := msg.(errMsg); !ok {
 		t.Fatalf("scope team con workspace non trovato deve dare errMsg, got %T", msg)
+	}
+}
+
+func TestLoadEntriesResolvesListNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_location":{"list_id":"55"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+		case strings.Contains(r.URL.Path, "/list/"):
+			w.Write([]byte(`{"id":"55","name":"Cliente Z"}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("t")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "me")()
+	em, ok := msg.(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg, got %T", msg)
+	}
+	if len(em.entries) != 1 || em.entries[0].ListName != "Cliente Z" {
+		t.Fatalf("list name not resolved: %+v", em.entries)
 	}
 }
 
@@ -193,5 +220,149 @@ func TestHomeEnterStartsLoading(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("enter should return a load command")
+	}
+}
+
+func TestRatesScreenOpensFromReport(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Cliente Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("p dalla vista report deve aprire screenRates, got %v", m.screen)
+	}
+	if len(m.ratesScreen.rows) != 1 || m.ratesScreen.rows[0].name != "Cliente Z" {
+		t.Fatalf("righe tariffe errate: %+v", m.ratesScreen.rows)
+	}
+}
+
+func TestRatesScreenEditSaveRecomputes(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	// Enter -> editing riga 0
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if !m.ratesScreen.editing {
+		t.Fatal("dovrebbe essere in editing")
+	}
+	// digita "50"
+	for _, r := range "50" {
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	// Enter conferma il valore
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	// 's' salva e ricalcola
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = u.(Model)
+	if m.screen != screenReport {
+		t.Fatalf("salvataggio deve tornare al report, got %v", m.screen)
+	}
+	if m.cfg.Rates["55"] != 50 {
+		t.Fatalf("override non salvato: %+v", m.cfg.Rates)
+	}
+	if m.report.TotalAmount != 100 { // 2h * 50
+		t.Fatalf("report non ricalcolato: TotalAmount %v, want 100", m.report.TotalAmount)
+	}
+}
+
+func TestRatesScreenEscCancelsEdit(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // apre editing
+	m = u.(Model)
+	for _, r := range "99" {
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // annulla
+	m = u.(Model)
+	if m.ratesScreen.editing {
+		t.Fatal("Esc deve uscire dall'editing")
+	}
+	if _, ok := m.ratesScreen.rates["55"]; ok {
+		t.Fatalf("Esc non deve aver impostato un override: %+v", m.ratesScreen.rates)
+	}
+}
+
+func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	for _, r := range "-5" { // negativo: non valido
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if !m.ratesScreen.editing {
+		t.Fatal("tariffa non valida deve mantenere l'editing aperto")
+	}
+	if m.ratesScreen.msg == "" {
+		t.Fatal("atteso un messaggio d'errore per tariffa non valida")
+	}
+	if _, ok := m.ratesScreen.rates["55"]; ok {
+		t.Fatal("tariffa non valida non deve creare un override")
+	}
+}
+
+func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", f)            // os.UserConfigDir() deriva da qui (macOS)
+	t.Setenv("XDG_CONFIG_HOME", f) // ...o da qui (Linux); un file => MkdirAll fallisce
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // salva (fallisce)
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("salvataggio fallito deve restare su screenRates, got %v", m.screen)
+	}
+	if m.ratesScreen.msg == "" {
+		t.Fatal("atteso un messaggio d'errore di salvataggio")
 	}
 }

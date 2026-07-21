@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -26,14 +27,18 @@ type Client struct {
 	token   string
 	BaseURL string
 	http    *http.Client
+
+	mu        sync.Mutex        // protegge listNames (usata da comandi in goroutine)
+	listNames map[string]string // cache list_id -> nome
 }
 
 // New crea un client con il token personale.
 func New(token string) *Client {
 	return &Client{
-		token:   token,
-		BaseURL: "https://api.clickup.com/api/v2",
-		http:    &http.Client{Timeout: 30 * time.Second},
+		token:     token,
+		BaseURL:   "https://api.clickup.com/api/v2",
+		http:      &http.Client{Timeout: 30 * time.Second},
+		listNames: make(map[string]string),
 	}
 }
 

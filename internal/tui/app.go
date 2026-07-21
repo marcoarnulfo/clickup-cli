@@ -20,6 +20,7 @@ const (
 	screenLoading
 	screenReport
 	screenExport
+	screenRates
 	screenError
 )
 
@@ -49,10 +50,11 @@ type Model struct {
 	entries []report.TimeEntry
 
 	// sotto-modelli
-	setup  setupModel
-	home   homeModel
-	rep    reportModel
-	export exportModel
+	setup       setupModel
+	home        homeModel
+	rep         reportModel
+	export      exportModel
+	ratesScreen ratesModel
 }
 
 // New costruisce il modello radice a partire dalla config.
@@ -76,6 +78,11 @@ func New(cfg config.Config) Model {
 }
 
 func (m Model) Init() tea.Cmd { return nil }
+
+// ratesFromConfig costruisce le tariffe per il report dalla config (default + override).
+func ratesFromConfig(cfg config.Config) report.Rates {
+	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+}
 
 // loadEntriesCmd chiama l'API in background e ritorna entriesMsg o errMsg.
 // Per lo scope "team" ricava gli id di tutti i membri del workspace (via Teams)
@@ -111,6 +118,27 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 		if err != nil {
 			return errMsg{err: err}
 		}
+		// Risolvi i nomi leggibili delle liste UNA sola volta per list_id unico
+		// (evita chiamate ripetute, incluse quelle fallite, per la stessa lista).
+		resolved := map[string]string{}
+		for _, e := range entries {
+			if e.ListID == "" {
+				continue
+			}
+			if _, done := resolved[e.ListID]; done {
+				continue
+			}
+			if name, err := c.ListName(ctx, e.ListID); err == nil {
+				resolved[e.ListID] = name
+			} else {
+				resolved[e.ListID] = "" // tentato: non ritentare in questo caricamento
+			}
+		}
+		for i := range entries {
+			if name := resolved[entries[i].ListID]; name != "" {
+				entries[i].ListName = name
+			}
+		}
 		return entriesMsg{entries: entries}
 	}
 }
@@ -122,7 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -147,7 +175,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if groupBy == "" {
 			groupBy = report.GroupByTotal // primo caricamento: sintesi del mese
 		}
-		m.report = report.Build(msg.entries, groupBy, m.cfg.Rate, m.cfg.Currency, m.year, m.month)
+		m.report = report.Build(msg.entries, groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, m.year, m.month)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report)
 		m.screen = screenReport
@@ -173,6 +201,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateReport(msg)
 	case screenExport:
 		return m.updateExport(msg)
+	case screenRates:
+		return m.updateRates(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -197,6 +227,8 @@ func (m Model) View() string {
 		return m.rep.view()
 	case screenExport:
 		return m.export.view()
+	case screenRates:
+		return m.ratesScreen.view()
 	case screenError:
 		return styleErr.Render("Errore: ") + m.err.Error() + "\n\n" + styleHelp.Render("premi un tasto per tornare alla home")
 	}
