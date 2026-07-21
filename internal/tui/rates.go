@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -73,13 +74,20 @@ func newRates(entries []report.TimeEntry, cfg config.Config) ratesModel {
 	return ratesModel{rows: rows, rates: rates, def: cfg.Rate, cur: cfg.Currency}
 }
 
-// validRate accetta solo un numero finito ≥ 0.
+// validRate accetta solo un numero finito ≥ 0. La virgola decimale è accettata
+// come il punto (comodo per la tastiera italiana).
 func validRate(s string) (float64, bool) {
+	s = strings.ReplaceAll(s, ",", ".")
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, false
 	}
 	return f, true
+}
+
+// numericRune indica se un rune è ammesso nel campo tariffa (cifre e separatore).
+func numericRune(r rune) bool {
+	return (r >= '0' && r <= '9') || r == '.' || r == ','
 }
 
 func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -107,6 +115,15 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.ratesScreen = rt
 			return m, nil
 		}
+		// Campo numerico-only: ignora i caratteri non ammessi (cifre e separatore).
+		if msg.Type == tea.KeyRunes {
+			for _, r := range msg.Runes {
+				if !numericRune(r) {
+					m.ratesScreen = rt
+					return m, nil
+				}
+			}
+		}
 		var cmd tea.Cmd
 		rt.input, cmd = rt.input.Update(msg)
 		m.ratesScreen = rt
@@ -132,7 +149,13 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(rt.rows) > 0 {
 			delete(rt.rates, rt.rows[rt.idx].listID) // torna alla tariffa di default
 		}
-	case "s", "esc":
+	case "s":
+		// Non persistere override ridondanti (uguali alla tariffa di default).
+		for id, v := range rt.rates {
+			if v == rt.def {
+				delete(rt.rates, id)
+			}
+		}
 		m.cfg.Rates = rt.rates
 		if err := config.Save(m.cfg); err != nil {
 			rt.msg = "Errore nel salvataggio della config: " + err.Error()
@@ -148,6 +171,10 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.rep = newReport(m.report)
 		m.screen = screenReport
 		m.ratesScreen = rt
+		return m, nil
+	case "esc":
+		// Scarta le modifiche non salvate e torna al report.
+		m.screen = screenReport
 		return m, nil
 	}
 	m.ratesScreen = rt
@@ -180,6 +207,6 @@ func (rt ratesModel) view() string {
 	if rt.msg != "" {
 		b += "\n" + styleErr.Render(rt.msg)
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica · d: usa default · s/Esc: salva e torna")
+	b += "\n\n" + styleHelp.Render("↑/↓ scegli · Enter: modifica · d: usa default · s: salva · Esc: annulla")
 	return b
 }

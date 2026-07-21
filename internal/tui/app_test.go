@@ -66,6 +66,38 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	}
 }
 
+func TestLoadEntriesTeamHappyPath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/team") && strings.Contains(r.URL.Path, "/time_entries"):
+			// deve filtrare sui membri del team (assignee valorizzato)
+			if r.URL.Query().Get("assignee") == "" {
+				t.Errorf("scope team: atteso parametro assignee valorizzato")
+			}
+			w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_location":{"list_id":"55"},"user":{"id":7,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/team"):
+			// workspace 900 con due membri
+			w.Write([]byte(`{"teams":[{"id":"900","name":"WS","members":[{"user":{"id":7,"username":"a"}},{"user":{"id":8,"username":"b"}}]}]}`))
+		case strings.Contains(r.URL.Path, "/list/"):
+			w.Write([]byte(`{"id":"55","name":"Cliente Z"}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
+	em, ok := msg.(entriesMsg)
+	if !ok {
+		t.Fatalf("scope team con workspace trovato deve dare entriesMsg, got %T", msg)
+	}
+	if len(em.entries) != 1 || em.entries[0].ListName != "Cliente Z" {
+		t.Fatalf("entries team errate: %+v", em.entries)
+	}
+}
+
 func TestLoadEntriesResolvesListNames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -322,10 +354,9 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
-	for _, r := range "-5" { // negativo: non valido
-		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		m = u.(Model)
-	}
+	// "." è numerico (passa il filtro) ma non è un float valido
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'.'}})
+	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
 	if !m.ratesScreen.editing {
@@ -336,6 +367,83 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	}
 	if _, ok := m.ratesScreen.rates["55"]; ok {
 		t.Fatal("tariffa non valida non deve creare un override")
+	}
+}
+
+func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // editing
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}) // non numerico
+	m = u.(Model)
+	if m.ratesScreen.input.Value() != "" {
+		t.Fatalf("il carattere non numerico non deve essere accettato, value=%q", m.ratesScreen.input.Value())
+	}
+}
+
+func TestRatesScreenEscDiscardsAndReturns(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // editing
+	m = u.(Model)
+	for _, r := range "50" {
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // conferma valore nel working copy
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // Esc fuori editing = scarta
+	m = u.(Model)
+	if m.screen != screenReport {
+		t.Fatalf("Esc deve tornare al report, got %v", m.screen)
+	}
+	if _, ok := m.cfg.Rates["55"]; ok {
+		t.Fatalf("Esc non deve persistere override: %+v", m.cfg.Rates)
+	}
+}
+
+func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // editing
+	m = u.(Model)
+	for _, r := range "30" { // uguale al default
+		u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = u.(Model)
+	}
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // conferma 30
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // salva
+	m = u.(Model)
+	if _, ok := m.cfg.Rates["55"]; ok {
+		t.Fatalf("un override uguale al default non deve essere salvato: %+v", m.cfg.Rates)
 	}
 }
 
