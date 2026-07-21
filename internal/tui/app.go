@@ -174,6 +174,20 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 	}
 }
 
+// loadMembersCmd fetches the workspace members in the background and returns
+// membersMsg or errMsg.
+func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		members, err := c.TeamMembers(ctx, teamID)
+		if err != nil {
+			return errMsg{err: err}
+		}
+		return membersMsg{members: members}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -299,7 +313,7 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.year, m.month, m.scope)
+		return m.home.view(m.year, m.month, m.scope, m.homeMembersNote())
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
