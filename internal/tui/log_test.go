@@ -72,3 +72,70 @@ func TestLogEscReturnsToReport(t *testing.T) {
 		t.Errorf("esc -> screen = %v, atteso screenReport", s)
 	}
 }
+
+func reachForm(t *testing.T) Model {
+	t.Helper()
+	m := newTestModelOnReport()
+	next, _ := m.Update(key("n"))
+	m = next.(Model)
+	// modalità ID -> input -> form
+	next, _ = m.Update(key("2"))
+	m = next.(Model)
+	m.logScreen.input.SetValue("task123")
+	next, _ = m.Update(key("enter"))
+	return next.(Model)
+}
+
+func TestFormInvalidDurationStays(t *testing.T) {
+	m := reachForm(t)
+	if m.logScreen.step != logForm {
+		t.Fatalf("step = %v, atteso logForm", m.logScreen.step)
+	}
+	m.logScreen.input.SetValue("abc") // durata non valida
+	next, _ := m.Update(key("enter"))
+	nm := next.(Model)
+	if nm.logScreen.step != logForm {
+		t.Errorf("con durata invalida step = %v, atteso restare in logForm", nm.logScreen.step)
+	}
+	if nm.logScreen.msg == "" {
+		t.Errorf("atteso messaggio d'errore per durata invalida")
+	}
+}
+
+func TestFormValidFlowSubmits(t *testing.T) {
+	m := reachForm(t)
+	// durata
+	m.logScreen.input.SetValue("1h30")
+	next, _ := m.Update(key("enter"))
+	m = next.(Model)
+	if m.logScreen.formField != 1 {
+		t.Fatalf("dopo durata formField = %d, atteso 1 (data)", m.logScreen.formField)
+	}
+	// data (usa il default precompilato)
+	next, _ = m.Update(key("enter"))
+	m = next.(Model)
+	if m.logScreen.formField != 2 {
+		t.Fatalf("dopo data formField = %d, atteso 2 (nota)", m.logScreen.formField)
+	}
+	// nota -> submit
+	m.logScreen.input.SetValue("lavoro")
+	next, cmd := m.Update(key("enter"))
+	m = next.(Model)
+	if m.screen != screenLoading {
+		t.Errorf("dopo submit screen = %v, atteso screenLoading", m.screen)
+	}
+	if cmd == nil {
+		t.Errorf("atteso un comando (createEntryCmd) dopo il submit")
+	}
+}
+
+func TestLogDoneMsgShowsConfirm(t *testing.T) {
+	m := newTestModelOnReport()
+	m.screen = screenLoading
+	m.logScreen = newLog(m.entries, m.cfg)
+	next, _ := m.Update(logDoneMsg{summary: "1h30 su task123"})
+	nm := next.(Model)
+	if nm.screen != screenLog || nm.logScreen.step != logDone {
+		t.Errorf("screen=%v step=%v, atteso screenLog/logDone", nm.screen, nm.logScreen.step)
+	}
+}

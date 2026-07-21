@@ -188,6 +188,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.setup, cmd = m.setup.withTeams(msg.teams)
 		return m, cmd
+
+	case logDoneMsg:
+		m.logScreen.step = logDone
+		m.logScreen.msg = msg.summary
+		m.screen = screenLog
+		return m, nil
 	}
 	return m, nil
 }
