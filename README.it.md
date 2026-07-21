@@ -169,9 +169,10 @@ ore. Si registrano sempre **le proprie** ore.
 Il browser workspace liste (aperto dalla modalità **Log ore** guidata o dalla schermata
 **Tariffe per lista**) mostra tutti gli spazi, le cartelle e le liste del tuo workspace
 come navigazione gerarchica drill-down: parti dalla radice del workspace → seleziona uno
-spazio → naviga nelle cartelle di quello spazio → scegli una lista. Il browser carica i
-contenuti delle cartelle on-demand e li mette in cache per la sessione; tutti i dati delle
-liste sono già in cache, quindi la navigazione è istantanea. Comandi disponibili:
+spazio → naviga nelle cartelle di quello spazio → scegli una lista. I contenuti di ogni
+spazio (cartelle e liste) sono caricati al primo accesso e messi in cache per la sessione;
+l'apertura di una cartella non richiede altre richieste (le sue liste arrivano inline).
+Comandi disponibili:
 
 - `↑` / `↓` (anche `k` / `j`): naviga su/giù nel livello corrente
 - `Enter`: entra/espandi lo spazio o cartella evidenziata; seleziona la lista evidenziata

@@ -495,13 +495,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case spacesMsg:
 		m.browserSpaces = msg.spaces
+		if m.screen != screenListBrowser {
+			return m, nil // stale: the user navigated away while spaces loaded
+		}
 		bs := m.browserScreen
 		bs.spaces = msg.spaces
 		bs.loading = false
 		bs.level = browseSpaces
 		bs.idx = 0
 		m.browserScreen = bs
-		m.screen = screenListBrowser
 		return m, nil
 
 	case spaceContentsMsg:

@@ -824,3 +824,52 @@ func TestQuitKeyDoesNotQuitWhileEditingCustomRange(t *testing.T) {
 		t.Fatalf("'q' should have been typed into the From input, got %q", mm.rangeScreen.fromInput.Value())
 	}
 }
+
+// Fix 1 (staleness guard): spacesMsg arriving while on screenError must cache
+// the spaces but NOT teleport to screenListBrowser.
+func TestSpacesMsgStaleAfterNavigatingAway(t *testing.T) {
+	m := Model{screen: screenError, err: errTest}
+	spaces := []clickup.Space{{ID: "s1", Name: "Engineering"}}
+	updated, _ := m.Update(spacesMsg{spaces: spaces})
+	mm := updated.(Model)
+
+	// cache must be warmed
+	if len(mm.browserSpaces) != 1 || mm.browserSpaces[0].ID != "s1" {
+		t.Errorf("spacesMsg should warm cache: browserSpaces = %+v, want 1 space with id s1", mm.browserSpaces)
+	}
+
+	// but the user should NOT be teleported to screenListBrowser
+	if mm.screen != screenError {
+		t.Errorf("stale spacesMsg must not change screen: got %v, want error", mm.screen)
+	}
+
+	// and the browser screen itself should not be updated
+	if mm.browserScreen.loading || len(mm.browserScreen.spaces) != 0 {
+		t.Errorf("browser screen should not be touched: loading=%v spaces=%d, want false/0", mm.browserScreen.loading, len(mm.browserScreen.spaces))
+	}
+}
+
+// Fix 1 (normal path): spacesMsg arriving while on screenListBrowser must
+// populate and clear loading.
+func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
+	m := Model{screen: screenListBrowser}
+	m.browserScreen = listBrowserModel{origin: screenLog, loading: true}
+	spaces := []clickup.Space{{ID: "s1", Name: "Engineering"}}
+	updated, _ := m.Update(spacesMsg{spaces: spaces})
+	mm := updated.(Model)
+
+	// cache must be warmed
+	if len(mm.browserSpaces) != 1 || mm.browserSpaces[0].ID != "s1" {
+		t.Errorf("spacesMsg should warm cache: browserSpaces = %+v, want 1 space with id s1", mm.browserSpaces)
+	}
+
+	// screen must stay on browser
+	if mm.screen != screenListBrowser {
+		t.Errorf("spacesMsg on browser should stay on browser, got %v", mm.screen)
+	}
+
+	// browser screen must be updated
+	if mm.browserScreen.loading || len(mm.browserScreen.spaces) != 1 || mm.browserScreen.level != browseSpaces || mm.browserScreen.idx != 0 {
+		t.Errorf("browser not updated: loading=%v spaces=%d level=%v idx=%d", mm.browserScreen.loading, len(mm.browserScreen.spaces), mm.browserScreen.level, mm.browserScreen.idx)
+	}
+}

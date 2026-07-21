@@ -165,8 +165,8 @@ You always log **your own** hours.
 The workspace list browser (opened from **Log hours** guided mode or **Per-list rates** screen)
 shows all spaces, folders, and lists in your workspace as a hierarchical drill-down:
 start at the workspace root → select a space → drill down into folders within that space → pick a list.
-The browser lazy-loads folder contents on demand and caches them for the session; all list data is already
-cached, so navigation is instant. Available commands:
+Each space's folders and lists are fetched on first visit and cached for the session; opening a folder
+needs no extra request (its lists come inline). Available commands:
 
 - `↑` / `↓` (also `k` / `j`): move up/down in the current level
 - `Enter`: enter/expand the highlighted space or folder; select the highlighted list
