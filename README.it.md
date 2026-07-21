@@ -108,6 +108,7 @@ I comandi disponibili sono:
 
 - `↑` / `↓` (anche `k` / `j`): naviga tra le liste
 - `Enter`: modifica la tariffa della lista selezionata (solo cifre e separatore decimale)
+- `b`: apre il **browser workspace liste** per aggiungere una lista non ancora tracciata
 - `d`: ripristina la lista alla tariffa di default
 - `s`: salva le modifiche e torna al report
 - `Esc`: annulla (scarta le modifiche non salvate) e torna al report
@@ -147,7 +148,10 @@ Premendo `n` (dalla Home o dal Report) si apre **Log ore**, per registrare tempo
 sui propri task ClickUp. Tre modalità:
 
 1. **Guidato** — scegli una lista tra quelle note (report corrente ∪ config), poi
-   un task della lista, poi compili il form.
+   un task della lista, poi compili il form. Il selettore di lista comprende una voce
+   "**Esplora tutte le liste workspace…**" che apre il browser workspace liste,
+   permettendoti di navigare tutti gli spazi, cartelle e liste nel tuo workspace
+   (non solo quelli recenti o configurati).
 2. **Task ID/URL** — incolli l'ID del task o un URL ClickUp (es. `.../t/86abc`) e
    vai diretto al form.
 3. **Timer** — avvii un cronometro sul task scelto (guidato o ID); premendo `s` lo
@@ -159,6 +163,20 @@ Nel form la **durata** accetta formati flessibili: `2h30`, `2h30m`, `1.5h`, `1,5
 e la **nota** è opzionale. Infine scegli se la voce è **billable** (`Y`/`n`, default sì).
 Dopo il salvataggio puoi premere `r` per ricaricare il report e vedere subito le nuove
 ore. Si registrano sempre **le proprie** ore.
+
+#### Browser workspace liste
+
+Il browser workspace liste (aperto dalla modalità **Log ore** guidata o dalla schermata
+**Tariffe per lista**) mostra tutti gli spazi, le cartelle e le liste del tuo workspace
+come navigazione gerarchica drill-down: parti dalla radice del workspace → seleziona uno
+spazio → naviga nelle cartelle di quello spazio → scegli una lista. I contenuti di ogni
+spazio (cartelle e liste) sono caricati al primo accesso e messi in cache per la sessione;
+l'apertura di una cartella non richiede altre richieste (le sue liste arrivano inline).
+Comandi disponibili:
+
+- `↑` / `↓` (anche `k` / `j`): naviga su/giù nel livello corrente
+- `Enter`: entra/espandi lo spazio o cartella evidenziata; seleziona la lista evidenziata
+- `Esc`: torna indietro di un livello (o ritorna alla schermata di origine al livello radice)
 
 ### Scope team
 

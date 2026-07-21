@@ -111,3 +111,31 @@ func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
 		return entriesMsg{entries: out}
 	}
 }
+
+// demoSpaces / demoSpaceContents are fake workspace data for demo mode.
+func demoSpaces() []clickup.Space {
+	return []clickup.Space{{ID: "s-web", Name: "Web"}, {ID: "s-mobile", Name: "Mobile"}}
+}
+
+func demoSpaceContents(spaceID string) ([]clickup.Folder, []clickup.List) {
+	switch spaceID {
+	case "s-web":
+		return []clickup.Folder{{ID: "f-site", Name: "Website", Lists: []clickup.List{{ID: "web", Name: "Website"}}}},
+			[]clickup.List{{ID: "web-misc", Name: "Misc"}}
+	case "s-mobile":
+		return []clickup.Folder{{ID: "f-app", Name: "App", Lists: []clickup.List{{ID: "mobile", Name: "Mobile app"}}}}, nil
+	default:
+		return nil, nil
+	}
+}
+
+func demoSpacesCmd() tea.Cmd {
+	return func() tea.Msg { return spacesMsg{spaces: demoSpaces()} }
+}
+
+func demoSpaceContentsCmd(spaceID string) tea.Cmd {
+	return func() tea.Msg {
+		folders, folderless := demoSpaceContents(spaceID)
+		return spaceContentsMsg{spaceID: spaceID, folders: folders, folderless: folderless}
+	}
+}

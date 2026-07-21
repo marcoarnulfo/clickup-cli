@@ -373,6 +373,23 @@ func TestLogErrClassification(t *testing.T) {
 	}
 }
 
+func TestLogBrowseEntryOpensBrowser(t *testing.T) {
+	m := Model{screen: screenLog, demo: true}
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, config.Config{})
+	m.logScreen.step = logListPick
+	// move down onto the "Browse all…" row (index len(lists) == 1)
+	u, _ := m.updateLog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = u.(Model)
+	if m.logScreen.listIdx != 1 {
+		t.Fatalf("listIdx = %d, want 1 (browse row)", m.logScreen.listIdx)
+	}
+	u, _ = m.updateLog(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.screen != screenListBrowser || m.browserScreen.origin != screenLog {
+		t.Fatalf("browse row should open the browser for log; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	}
+}
+
 func TestListPickDebounceWhileLoading(t *testing.T) {
 	m := newTestModelOnReport()
 	m.logScreen = newLog(m.entries, m.cfg)
