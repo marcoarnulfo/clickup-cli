@@ -1,8 +1,9 @@
 package report
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -74,15 +75,14 @@ func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, ye
 	}
 
 	// Ordinamento: per giorno cronologico (label asc); altrimenti ore desc, tie label asc.
-	sort.SliceStable(r.Buckets, func(i, j int) bool {
-		a, b := r.Buckets[i], r.Buckets[j]
+	slices.SortStableFunc(r.Buckets, func(a, b Bucket) int {
 		if groupBy == GroupByDay {
-			return a.Label < b.Label
+			return cmp.Compare(a.Label, b.Label)
 		}
-		if a.Hours != b.Hours {
-			return a.Hours > b.Hours
+		if c := cmp.Compare(b.Hours, a.Hours); c != 0 { // ore desc
+			return c
 		}
-		return a.Label < b.Label
+		return cmp.Compare(a.Label, b.Label)
 	})
 
 	var th, ta float64

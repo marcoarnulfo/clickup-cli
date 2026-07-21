@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -95,7 +95,7 @@ func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 			cfgIDs = append(cfgIDs, id)
 		}
 	}
-	sort.Strings(cfgIDs)
+	slices.Sort(cfgIDs)
 	for _, id := range cfgIDs {
 		remember(id, "")
 	}
