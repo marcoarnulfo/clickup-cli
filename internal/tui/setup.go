@@ -36,6 +36,8 @@ func newSetup() setupModel {
 	ti.Focus()
 	ti.CharLimit = 128
 	ti.Width = 50
+	ti.EchoMode = textinput.EchoPassword
+	ti.EchoCharacter = '•'
 	return setupModel{step: stepToken, input: ti}
 }
 
