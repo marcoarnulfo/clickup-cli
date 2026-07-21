@@ -88,3 +88,19 @@ func TestListTasks(t *testing.T) {
 		t.Errorf("tasks = %+v", tasks)
 	}
 }
+
+func TestExtractTaskID(t *testing.T) {
+	cases := map[string]string{
+		"86abc":                               "86abc",
+		" 86abc ":                             "86abc",
+		"https://app.clickup.com/t/86abc":     "86abc",
+		"https://app.clickup.com/t/86abc?x=1": "86abc",
+		"https://app.clickup.com/2/t/86abc/":  "86abc",
+		"":                                    "",
+	}
+	for in, want := range cases {
+		if got := ExtractTaskID(in); got != want {
+			t.Errorf("ExtractTaskID(%q) = %q, atteso %q", in, got, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package clickup
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -39,4 +40,24 @@ func (c *Client) ListTasks(ctx context.Context, listID string) ([]Task, error) {
 		out[i] = Task{ID: t.ID, Name: t.Name}
 	}
 	return out, nil
+}
+
+// ExtractTaskID estrae l'id task da un id nudo o da un URL ClickUp
+// (.../t/<id> o .../<id>). Ritorna "" se non trova nulla di plausibile.
+func ExtractTaskID(input string) string {
+	s := strings.TrimSpace(input)
+	if s == "" {
+		return ""
+	}
+	if !strings.Contains(s, "/") {
+		return s // id nudo
+	}
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i] // rimuovi query/fragment
+	}
+	s = strings.TrimRight(s, "/")
+	if idx := strings.LastIndex(s, "/"); idx >= 0 {
+		s = s[idx+1:]
+	}
+	return s
 }
