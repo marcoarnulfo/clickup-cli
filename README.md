@@ -50,9 +50,10 @@ dove è possibile configurare una tariffa specifica per ogni lista (diverse dal 
 I comandi disponibili sono:
 
 - `↑` / `↓` (anche `k` / `j`): naviga tra le liste
-- `Enter`: modifica la tariffa della lista selezionata (edit mode)
+- `Enter`: modifica la tariffa della lista selezionata (solo cifre e separatore decimale)
 - `d`: ripristina la lista alla tariffa di default
-- `s` / `Esc`: salva le modifiche e torna al report
+- `s`: salva le modifiche e torna al report
+- `Esc`: annulla (scarta le modifiche non salvate) e torna al report
 
 Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato per la sua
 tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di

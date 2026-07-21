@@ -69,7 +69,7 @@ func New(cfg config.Config) Model {
 	}
 	if cfg.Valid() {
 		m.screen = screenHome
-		m.home = newHome(m.year, m.month)
+		m.home = newHome()
 	} else {
 		m.screen = screenSetup
 		m.setup = newSetup()
@@ -220,7 +220,7 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view()
+		return m.home.view(m.year, m.month, m.scope)
 	case screenLoading:
 		return styleTitle.Render("Caricamento ore…")
 	case screenReport:
