@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +62,31 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 	msg := loadEntriesCmd(c, "900", 2026, time.July, "team")()
 	if _, ok := msg.(errMsg); !ok {
 		t.Fatalf("scope team con workspace non trovato deve dare errMsg, got %T", msg)
+	}
+}
+
+func TestLoadEntriesResolvesListNames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/time_entries"):
+			w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_location":{"list_id":"55"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
+		case strings.Contains(r.URL.Path, "/list/"):
+			w.Write([]byte(`{"id":"55","name":"Cliente Z"}`))
+		default:
+			w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	c := clickup.New("t")
+	c.BaseURL = srv.URL
+
+	msg := loadEntriesCmd(c, "900", 2026, time.July, "me")()
+	em, ok := msg.(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg, got %T", msg)
+	}
+	if len(em.entries) != 1 || em.entries[0].ListName != "Cliente Z" {
+		t.Fatalf("list name not resolved: %+v", em.entries)
 	}
 }
 

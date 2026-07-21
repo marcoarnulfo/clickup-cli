@@ -116,6 +116,27 @@ func loadEntriesCmd(c *clickup.Client, teamID string, year int, month time.Month
 		if err != nil {
 			return errMsg{err: err}
 		}
+		// Risolvi i nomi leggibili delle liste UNA sola volta per list_id unico
+		// (evita chiamate ripetute, incluse quelle fallite, per la stessa lista).
+		resolved := map[string]string{}
+		for _, e := range entries {
+			if e.ListID == "" {
+				continue
+			}
+			if _, done := resolved[e.ListID]; done {
+				continue
+			}
+			if name, err := c.ListName(ctx, e.ListID); err == nil {
+				resolved[e.ListID] = name
+			} else {
+				resolved[e.ListID] = "" // tentato: non ritentare in questo caricamento
+			}
+		}
+		for i := range entries {
+			if name := resolved[entries[i].ListID]; name != "" {
+				entries[i].ListName = name
+			}
+		}
 		return entriesMsg{entries: entries}
 	}
 }
