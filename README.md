@@ -180,6 +180,33 @@ aggregates the hours of the workspace members; by default **all** members are in
 you can press `f` from Home to open the member selection screen and pick individual members
 (a partial selection shows a `(k/n members)` note in the report title).
 
+### Headless report
+
+`clup report` prints an hours report to stdout without starting the TUI — meant for
+scripts, cron jobs, and agents. It reuses the same range/scope/grouping/rates logic as
+the interactive report, but never touches the terminal UI.
+
+```sh
+clup report --month 2026-06 --scope me --format json
+```
+
+Flags:
+
+- `--month YYYY-MM` — report a calendar month (default: current month if no other range flag is given).
+- `--from YYYY-MM-DD --to YYYY-MM-DD` — custom range, inclusive (given together).
+- `--preset this_month|last_month|last_7d|last_30d|this_week` — same presets as the TUI's range picker.
+- `--scope me|team` (default `me`).
+- `--group total|task|list|day|member` (default `total`).
+- `--format json|csv|md` (default `json`).
+
+All formats write to stdout — use shell redirection to save (e.g. `clup report --format csv > report.csv`).
+
+Note: `CLICKUP_DEMO=1` is **ignored** by `report` — it always loads the real config and
+calls the real API; demo mode is TUI-only.
+
+The `--format json` output is a **stable scripting schema** (snake_case keys, RFC3339
+timestamps) — safe to parse with `jq` and pin in scripts.
+
 ## Configuration
 
 Configuration persists under `os.UserConfigDir()` (so it respects

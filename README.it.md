@@ -189,6 +189,34 @@ dalla Home per aprire la schermata di selezione membri e sceglierne alcuni
 in particolare (una selezione parziale mostra una nota `(k/n members)` nel
 titolo del report).
 
+### Report headless
+
+`clup report` stampa un report ore su stdout senza avviare la TUI — pensato per script,
+cron job e agent. Riusa la stessa logica di periodo/scope/raggruppamento/tariffe del
+report interattivo, ma non tocca mai l'interfaccia a terminale.
+
+```sh
+clup report --month 2026-06 --scope me --format json
+```
+
+Flag:
+
+- `--month YYYY-MM` — report su un mese di calendario (default: mese corrente se non viene dato nessun altro flag di periodo).
+- `--from YYYY-MM-DD --to YYYY-MM-DD` — periodo personalizzato, inclusivo (da usare insieme).
+- `--preset this_month|last_month|last_7d|last_30d|this_week` — gli stessi preset del selettore periodo della TUI.
+- `--scope me|team` (default `me`).
+- `--group total|task|list|day|member` (default `total`).
+- `--format json|csv|md` (default `json`).
+
+Tutti i formati scrivono su stdout — usa la redirezione della shell per salvare
+(es. `clup report --format csv > report.csv`).
+
+Nota: `CLICKUP_DEMO=1` viene **ignorato** da `report` — carica sempre la config reale e
+chiama la vera API; la demo mode è solo per la TUI.
+
+L'output di `--format json` è uno **schema di scripting stabile** (chiavi snake_case,
+timestamp RFC3339) — parsabile in sicurezza con `jq` e fissabile negli script.
+
 ## Configurazione
 
 La configurazione persiste sotto `os.UserConfigDir()` (quindi rispetta
