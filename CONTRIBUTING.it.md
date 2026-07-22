@@ -28,13 +28,13 @@ Per qualcosa di non banale, **apri prima una issue** così ci allineiamo sull'ap
 git clone https://github.com/marcoarnulfo/clickup-cli.git
 cd clickup-cli
 go build ./...
-go run ./cmd/clickup   # esecuzione locale
+go run ./cmd/clup   # esecuzione locale
 ```
 
 Per provarla su dati reali, passa un token via env (evita di scriverlo su disco):
 
 ```bash
-CLICKUP_TOKEN=pk_xxx go run ./cmd/clickup
+CLICKUP_TOKEN=pk_xxx go run ./cmd/clup
 ```
 
 ## Prima di aprire una PR
@@ -52,7 +52,8 @@ go build ./...
 ## Struttura del progetto e convenzioni
 
 ```
-cmd/clickup         entry point
+cmd/clup            entry point (binario: clup)
+cmd/clickup         shim deprecato, inoltra a cmd/clup con un warning
 internal/config     config (YAML + env CLICKUP_TOKEN)
 internal/clickup    client ClickUp API v2 (solo net/http)
 internal/report     DOMINIO PURO: aggregazione ore (nessun I/O, nessuna dip. esterna)

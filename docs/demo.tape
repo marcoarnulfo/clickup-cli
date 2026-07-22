@@ -5,7 +5,11 @@
 #
 # Uses the built-in demo mode (CLICKUP_DEMO=1): fixture data, no ClickUp
 # account or token needed, so the GIF is fully reproducible. Requires the
-# `clickup` binary on PATH (go install ./cmd/clickup).
+# `clup` binary on PATH (go install ./cmd/clup).
+#
+# NOTE: the binary was renamed clickup -> clup (v1.6); this script was
+# updated to match but docs/demo.gif was NOT regenerated here — re-run
+# `vhs docs/demo.tape` to refresh it (vhs is not available in this env).
 
 Output docs/demo.gif
 
@@ -18,7 +22,7 @@ Set Theme "Dracula"
 
 # Launch in demo mode (hidden while it boots)
 Hide
-Type "CLICKUP_DEMO=1 clickup"
+Type "CLICKUP_DEMO=1 clup"
 Enter
 Sleep 2s
 Show

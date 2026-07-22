@@ -1,6 +1,6 @@
 [English](README.md) · **Italiano**
 
-# clickup — ClickUp Hours CLI
+# clup — ClickUp Hours CLI
 
 [![CI](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml)
 [![Ultima release](https://img.shields.io/github/v/release/marcoarnulfo/clickup-cli)](https://github.com/marcoarnulfo/clickup-cli/releases)
@@ -21,9 +21,9 @@
 
 ## Demo
 
-![clickup demo](docs/demo.gif)
+![clup demo](docs/demo.gif)
 
-Provala senza account ClickUp: **`CLICKUP_DEMO=1 clickup`** avvia una modalità demo con dati
+Provala senza account ClickUp: **`CLICKUP_DEMO=1 clup`** avvia una modalità demo con dati
 fittizi. Il GIF è registrato con [vhs](https://github.com/charmbracelet/vhs) da
 [`docs/demo.tape`](docs/demo.tape) (lancia `vhs docs/demo.tape` per rigenerarlo).
 
@@ -36,10 +36,10 @@ fittizi. Il GIF è registrato con [vhs](https://github.com/charmbracelet/vhs) da
 ## Installazione
 
 ```bash
-go install github.com/marcoarnulfo/clickup-cli/cmd/clickup@latest
+go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest
 ```
 
-Installa il binario `clickup` in `$(go env GOPATH)/bin` (assicurati che sia nel `PATH`).
+Installa il binario `clup` in `$(go env GOPATH)/bin` (assicurati che sia nel `PATH`).
 
 <details>
 <summary>Compilare da sorgente</summary>
@@ -47,24 +47,25 @@ Installa il binario `clickup` in `$(go env GOPATH)/bin` (assicurati che sia nel 
 ```bash
 git clone https://github.com/marcoarnulfo/clickup-cli.git
 cd clickup-cli
-go build -o clickup ./cmd/clickup
-./clickup
+go build -o clup ./cmd/clup
+./clup
 ```
 </details>
 
 ## Avvio rapido
 
-1. **Installa** (vedi sopra) e lancia `clickup`.
-2. Al primo avvio, il **wizard di setup** chiede token API, workspace, tariffa oraria opzionale e valuta — salvati in `~/.config/clickup-cli/config.yml`.
+1. **Installa** (vedi sopra) e lancia `clup`.
+2. Al primo avvio, il **wizard di setup** chiede token API, workspace, tariffa oraria opzionale e valuta — salvati nel file di config (vedi [Configurazione](#configurazione) per il percorso esatto).
 3. Scegli un **periodo** (`d`) e lo **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
 
 ## Uso
 
-Lancia `clickup`. Al primo avvio parte un wizard di setup che chiede, in
+Lancia `clup`. Al primo avvio parte un wizard di setup che chiede, in
 sequenza: il token API personale (lo trovi in ClickUp → Settings → Apps →
 API Token), il workspace da usare (scelto tra quelli visibili al token),
 una tariffa oraria opzionale e la valuta (default `EUR`). Il risultato viene
-salvato in `~/.config/clickup-cli/config.yml` e riusato ai lanci successivi.
+salvato nel file di config (vedi [Configurazione](#configurazione)) e
+riusato ai lanci successivi.
 
 Dalla home scegli un periodo e lo scope, poi `Enter` genera il report. Il report non
 è più limitato a un mese di calendario: premi `d` nella home per aprire il
@@ -190,8 +191,13 @@ titolo del report).
 
 ## Configurazione
 
-La configurazione persiste in `~/.config/clickup-cli/config.yml` (segue
-`os.UserConfigDir()`, quindi rispetta `XDG_CONFIG_HOME` su Linux):
+La configurazione persiste sotto `os.UserConfigDir()` (quindi rispetta
+`XDG_CONFIG_HOME` su Linux): `~/Library/Application Support/clup/config.yml`
+su macOS, `~/.config/clup/config.yml` su Linux. Se quel file non esiste ancora,
+viene letto come fallback il percorso legacy pre-rebrand
+(`~/.config/clickup-cli/config.yml` e il suo equivalente per-OS), così
+l'aggiornamento da una vecchia installazione `clickup` non perde le
+impostazioni.
 
 ```yaml
 token: pk_xxx...
@@ -216,7 +222,7 @@ La variabile d'ambiente `CLICKUP_TOKEN`, se impostata, sovrascrive sempre il
 disco):
 
 ```bash
-CLICKUP_TOKEN=pk_xxx clickup
+CLICKUP_TOKEN=pk_xxx clup
 ```
 
 ## Contribuire

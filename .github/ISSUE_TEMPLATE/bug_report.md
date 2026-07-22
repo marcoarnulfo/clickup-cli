@@ -22,7 +22,7 @@ A clear description of the bug.
 **Environment**
 - OS:
 - Go version (`go version`):
-- clickup version/commit (`clickup --version` or `git rev-parse HEAD`):
+- clup version/commit (`clup --version` or `git rev-parse HEAD`):
 
 ---
 
@@ -43,4 +43,4 @@ Una descrizione chiara del bug.
 **Ambiente**
 - OS:
 - Versione Go (`go version`):
-- Versione/commit di clickup (`clickup --version` oppure `git rev-parse HEAD`):
+- Versione/commit di clup (`clup --version` oppure `git rev-parse HEAD`):

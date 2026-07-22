@@ -27,13 +27,13 @@ For anything non-trivial, please **open an issue first** so we can align on the 
 git clone https://github.com/marcoarnulfo/clickup-cli.git
 cd clickup-cli
 go build ./...
-go run ./cmd/clickup   # run locally
+go run ./cmd/clup   # run locally
 ```
 
 To try it against real data, set a token via env (avoids writing it to disk):
 
 ```bash
-CLICKUP_TOKEN=pk_xxx go run ./cmd/clickup
+CLICKUP_TOKEN=pk_xxx go run ./cmd/clup
 ```
 
 ## Before opening a PR
@@ -51,7 +51,8 @@ go build ./...
 ## Project layout & conventions
 
 ```
-cmd/clickup         entry point
+cmd/clup            entry point (binary: clup)
+cmd/clickup         deprecated shim, forwards to cmd/clup with a warning
 internal/config     config (YAML + CLICKUP_TOKEN env)
 internal/clickup    ClickUp API v2 client (net/http only)
 internal/report     PURE domain: hours aggregation (no I/O, no external deps)
