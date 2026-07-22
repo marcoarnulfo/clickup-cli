@@ -72,7 +72,7 @@ func TestLoadEntriesUsesGivenRange(t *testing.T) {
 	c.BaseURL = srv.URL
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 0, 10)
-	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil)().(entriesMsg); !ok {
+	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil, screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg")
 	}
 	if gotStart != strconv.FormatInt(start.UnixMilli(), 10) || gotEnd != strconv.FormatInt(end.UnixMilli(), 10) {
@@ -127,9 +127,13 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
-	if _, ok := msg.(errMsg); !ok {
-		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil, screenHome)()
+	rem, ok := msg.(retryableErrMsg)
+	if !ok {
+		t.Fatalf("team scope with workspace not found should give retryableErrMsg, got %T", msg)
+	}
+	if rem.origin != screenHome {
+		t.Errorf("origin = %v, want screenHome", rem.origin)
 	}
 }
 
@@ -157,7 +161,7 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil, screenHome)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
@@ -184,7 +188,7 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil)()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil, screenHome)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
@@ -224,7 +228,7 @@ func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9})()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9}, screenHome)()
 	if _, ok := msg.(entriesMsg); !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}
@@ -257,7 +261,7 @@ func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
 		selectedMembers: map[int]bool{5: true},
 		now:             time.Now,
 	}
-	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+	if _, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
@@ -286,7 +290,7 @@ func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
 		selectedMembers: map[int]bool{5: true}, // stale from a prior team selection
 		now:             time.Now,
 	}
-	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+	if _, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
@@ -349,6 +353,30 @@ func TestErrMsgSwitchesToErrorScreen(t *testing.T) {
 	mm := updated.(Model)
 	if mm.screen != screenError {
 		t.Fatalf("errMsg should switch to error screen, got %v", mm.screen)
+	}
+}
+
+// #38: a retryable error originating from Home must send the user back to
+// Home with an inline message, instead of the dead-end error screen.
+func TestRetryableErrOnHomeStaysHome(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: errors.New("boom")})
+	mm := updated.(Model)
+	if mm.screen != screenHome {
+		t.Fatalf("retryableErrMsg with origin screenHome should stay on home, got %v", mm.screen)
+	}
+	if !strings.Contains(mm.home.errText, "boom") {
+		t.Fatalf("home.errText = %q, want it to contain %q", mm.home.errText, "boom")
+	}
+}
+
+// #38: a 401 must still relaunch the setup wizard, regardless of origin.
+func TestRetryableErrUnauthorizedGoesToSetup(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: fmt.Errorf("x: %w", clickup.ErrUnauthorized)})
+	mm := updated.(Model)
+	if mm.screen != screenSetup {
+		t.Fatalf("retryableErrMsg wrapping ErrUnauthorized should go to setup, got %v", mm.screen)
 	}
 }
 

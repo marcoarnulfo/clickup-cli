@@ -61,7 +61,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = screenHome
 	case "r":
 		m.screen = screenLoading
-		return m, m.reloadEntriesCmd()
+		return m, m.reloadEntriesCmd(screenReport)
 	case "e":
 		m.export = newExport(m.report)
 		m.screen = screenExport

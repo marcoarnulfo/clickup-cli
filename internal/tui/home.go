@@ -8,9 +8,13 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// homeModel is stateless: month/year/scope live on the root Model (single source
-// of truth); the view receives them as arguments.
-type homeModel struct{}
+// homeModel is mostly stateless: month/year/scope live on the root Model
+// (single source of truth); the view receives them as arguments. errText
+// holds the message from a retryableErrMsg routed back to Home (#38), shown
+// inline until the next load attempt clears it.
+type homeModel struct {
+	errText string
+}
 
 func newHome() homeModel { return homeModel{} }
 
@@ -61,11 +65,12 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.demo {
 			return m, demoMembersCmd()
 		}
-		return m, loadMembersCmd(m.client, m.cfg.WorkspaceID)
+		return m, loadMembersCmd(m.client, m.cfg.WorkspaceID, screenHome)
 	case "enter":
+		m.home.errText = "" // clear any previous inline error before retrying
 		m.screen = screenLoading
 		// loadEntriesCmd derives the team assignees on its own when scope=="team".
-		return m, m.reloadEntriesCmd()
+		return m, m.reloadEntriesCmd(screenHome)
 	}
 	return m, nil
 }
@@ -89,7 +94,7 @@ func (m Model) rangeLabel() string {
 	return report.PeriodLabel(start, end)
 }
 
-func (homeModel) view(rangeLabel, scope, membersNote string) string {
+func (m homeModel) view(rangeLabel, scope, membersNote string) string {
 	title := styleTitle.Render("ClickUp Hours — Report")
 	scopeStr := styleAccent.Render(scope)
 	if membersNote != "" {
@@ -102,5 +107,9 @@ func (homeModel) view(rangeLabel, scope, membersNote string) string {
 		help += "f: select members · " // only active in team scope
 	}
 	help += "Enter: generate report · n: log hours · q: quit"
-	return title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
+	out := title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
+	if m.errText != "" {
+		out += "\n\n" + styleErr.Render(m.errText)
+	}
+	return out
 }

@@ -39,6 +39,16 @@ type (
 	statusesMsg struct{ byTask map[string]string }
 	errMsg      struct{ err error }
 
+	// retryableErrMsg is a recoverable API error dispatched from a specific
+	// origin screen. Unlike errMsg (which always dead-ends on screenError),
+	// its handler routes back to origin when it's a screen that knows how to
+	// show an inline error (currently only screenHome); other origins fall
+	// back to screenError, matching the old errMsg behavior.
+	retryableErrMsg struct {
+		origin screen
+		err    error
+	}
+
 	spacesMsg        struct{ spaces []clickup.Space }
 	spaceContentsMsg struct {
 		spaceID    string
@@ -135,8 +145,10 @@ func (m Model) currentRange() (start, end time.Time) {
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
-// in demo mode, otherwise the real API call.
-func (m Model) reloadEntriesCmd() tea.Cmd {
+// in demo mode, otherwise the real API call. origin identifies the screen
+// that dispatched the load, so a failure can be routed back there (see
+// retryableErrMsg); demoEntriesCmd never fails, so it doesn't need it.
+func (m Model) reloadEntriesCmd(origin screen) tea.Cmd {
 	// The member filter is a team-scope concept; never carry a stale
 	// selection into a "me" load.
 	var assignees []int
@@ -152,7 +164,7 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 		}
 		return demoEntriesCmd(start, end, assignees)
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees)
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees, origin)
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -192,11 +204,11 @@ func (m Model) filteredNote() string {
 }
 
 // loadEntriesCmd calls the report I/O pipeline (internal/service) in the
-// background and returns entriesMsg or errMsg. For scope "team" with an empty
-// assignees slice it derives ALL workspace members (via TeamMembers) and
-// filters on them; a non-empty assignees slice is used as-is (skipping the
-// members lookup). For scope "me" no assignee filter is applied.
-func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int) tea.Cmd {
+// background and returns entriesMsg or retryableErrMsg{origin, err}. For scope
+// "team" with an empty assignees slice it derives ALL workspace members (via
+// TeamMembers) and filters on them; a non-empty assignees slice is used as-is
+// (skipping the members lookup). For scope "me" no assignee filter is applied.
+func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int, origin screen) tea.Cmd {
 	return func() tea.Msg {
 		// 60s (raised from 30s): under the rate limiter a report spanning many
 		// lists spends real time in ListNames enrichment waits.
@@ -204,7 +216,7 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 		defer cancel()
 		entries, err := service.LoadEntries(ctx, c, teamID, start, end, scope, assignees)
 		if err != nil {
-			return errMsg{err: err}
+			return retryableErrMsg{origin: origin, err: err}
 		}
 		return entriesMsg{entries: entries}
 	}
@@ -337,14 +349,15 @@ func pruneFilterSet(sel, present map[string]bool) map[string]bool {
 }
 
 // loadMembersCmd fetches the workspace members in the background and returns
-// membersMsg or errMsg.
-func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
+// membersMsg or retryableErrMsg{origin, err}. It's Home-only today, so origin
+// is always screenHome at the call site.
+func loadMembersCmd(c *clickup.Client, teamID string, origin screen) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		members, err := c.TeamMembers(ctx, teamID)
 		if err != nil {
-			return errMsg{err: err}
+			return retryableErrMsg{origin: origin, err: err}
 		}
 		return membersMsg{members: members}
 	}
@@ -426,6 +439,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenSetup
 			m.setup = newSetup()
 		} else {
+			m.screen = screenError
+		}
+		return m, nil
+
+	case retryableErrMsg:
+		m.err = msg.err
+		if errors.Is(msg.err, clickup.ErrUnauthorized) {
+			m.screen = screenSetup
+			m.setup = newSetup()
+			return m, nil
+		}
+		switch msg.origin {
+		case screenHome:
+			m.home.errText = "Error: " + msg.err.Error()
+			m.screen = screenHome
+		default:
 			m.screen = screenError
 		}
 		return m, nil
