@@ -154,7 +154,7 @@ func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
 	m.logScreen.loading = true
 	m.logScreen.step = logListPick
 	m.screen = screenLog
-	return listTasksCmd(m.client, id)
+	return m.tasksCmd(id)
 }
 
 func (bs listBrowserModel) view() string {
