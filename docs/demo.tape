@@ -7,9 +7,10 @@
 # account or token needed, so the GIF is fully reproducible. Requires the
 # `clup` binary on PATH (go install ./cmd/clup).
 #
-# NOTE: the binary was renamed clickup -> clup (v1.6); this script was
-# updated to match but docs/demo.gif was NOT regenerated here — re-run
-# `vhs docs/demo.tape` to refresh it (vhs is not available in this env).
+# NOTE: the binary was renamed clickup -> clup (v1.6); this script and
+# docs/demo.gif were both updated to match. Re-run `vhs docs/demo.tape`
+# to refresh the GIF after any UI change (the TUI itself is unchanged by
+# the rebrand — the visual redesign lands in v1.9).
 
 Output docs/demo.gif
 
