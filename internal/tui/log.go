@@ -213,6 +213,44 @@ func enterForm(lg logModel) logModel {
 	return lg
 }
 
+// tasksCmd / logCreateCmd / timerStartCmd / timerStopCmd / timerCurrentCmd
+// pick the demo or real source for the log-hours flow, mirroring the
+// reloadEntriesCmd / spacesCmd pattern: demo mode never touches m.client.
+func (m Model) tasksCmd(listID string) tea.Cmd {
+	if m.demo {
+		return demoTasksCmd(listID)
+	}
+	return listTasksCmd(m.client, listID)
+}
+
+func (m Model) logCreateCmd(tid string, start time.Time, dur time.Duration, desc string, billable bool) tea.Cmd {
+	if m.demo {
+		return demoCreateEntryCmd(tid, dur)
+	}
+	return createEntryCmd(m.client, m.cfg.WorkspaceID, tid, start, dur, desc, billable)
+}
+
+func (m Model) timerStartCmd(tid, desc string) tea.Cmd {
+	if m.demo {
+		return demoStartTimerCmd(tid)
+	}
+	return startTimerCmd(m.client, m.cfg.WorkspaceID, tid, desc)
+}
+
+func (m Model) timerStopCmd() tea.Cmd {
+	if m.demo {
+		return demoStopTimerCmd()
+	}
+	return stopTimerCmd(m.client, m.cfg.WorkspaceID)
+}
+
+func (m Model) timerCurrentCmd() tea.Cmd {
+	if m.demo {
+		return demoCurrentTimerCmd()
+	}
+	return currentTimerCmd(m.client, m.cfg.WorkspaceID)
+}
+
 func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	lg := m.logScreen
 
@@ -237,7 +275,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			lg.mode = modeTimer
 			lg.step = logTimerPick
 			m.logScreen = lg
-			return m, currentTimerCmd(m.client, m.cfg.WorkspaceID)
+			return m, m.timerCurrentCmd()
 		}
 
 	case logTimerPick:
@@ -256,7 +294,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.logScreen = lg
 			m.screen = screenLoading
-			return m, stopTimerCmd(m.client, m.cfg.WorkspaceID)
+			return m, m.timerStopCmd()
 		case "esc":
 			m.screen = screenReport
 			return m, nil
@@ -283,7 +321,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if lg.mode == modeTimer {
 				m.logScreen = lg
 				m.screen = screenLoading
-				return m, startTimerCmd(m.client, m.cfg.WorkspaceID, id, "")
+				return m, m.timerStartCmd(id, "")
 			}
 			lg = enterForm(lg)
 			lg.taskID = id
@@ -315,7 +353,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, time.Local)
 			m.logScreen = lg
 			m.screen = screenLoading
-			return m, createEntryCmd(m.client, m.cfg.WorkspaceID, lg.taskID, start, dur, lg.noteStr, lg.billable)
+			return m, m.logCreateCmd(lg.taskID, start, dur, lg.noteStr, lg.billable)
 		}
 		if msg.Type == tea.KeyEnter {
 			val := lg.input.Value()
@@ -383,7 +421,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(lg.lists) > 0 {
 				lg.loading = true
 				m.logScreen = lg
-				return m, listTasksCmd(m.client, lg.lists[lg.listIdx].id)
+				return m, m.tasksCmd(lg.lists[lg.listIdx].id)
 			}
 		}
 		m.logScreen = lg
@@ -406,7 +444,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if lg.mode == modeTimer {
 					m.logScreen = lg
 					m.screen = screenLoading
-					return m, startTimerCmd(m.client, m.cfg.WorkspaceID, t.ID, "")
+					return m, m.timerStartCmd(t.ID, "")
 				}
 				id := t.ID
 				lg = enterForm(lg)

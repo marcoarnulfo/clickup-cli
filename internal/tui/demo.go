@@ -1,12 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -138,4 +140,51 @@ func demoSpaceContentsCmd(spaceID string) tea.Cmd {
 		folders, folderless := demoSpaceContents(spaceID)
 		return spaceContentsMsg{spaceID: spaceID, folders: folders, folderless: folderless}
 	}
+}
+
+// demoTasks returns a small fixed set of fake tasks for demo mode. listID is
+// accepted (mirroring the real ListTasks signature) but ignored: the fixture
+// set is the same for any list, which is enough to make the picker useful.
+func demoTasks(listID string) []clickup.Task {
+	return []clickup.Task{
+		{ID: "demo-t1", Name: "Fix login bug"},
+		{ID: "demo-t2", Name: "Write onboarding docs"},
+		{ID: "demo-t3", Name: "Refactor API client"},
+	}
+}
+
+// demoTasksCmd delivers the fake tasks as taskListMsg (no I/O).
+func demoTasksCmd(listID string) tea.Cmd {
+	return func() tea.Msg { return taskListMsg{tasks: demoTasks(listID)} }
+}
+
+// demoCreateEntryCmd mirrors createEntryCmd's success summary, without ever
+// calling the API.
+func demoCreateEntryCmd(tid string, dur time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		return logDoneMsg{summary: fmt.Sprintf("%s logged on %s", duration.Format(dur), tid)}
+	}
+}
+
+// demoStartTimerCmd returns a fake running timer for tid (no I/O). Start is
+// left zero, mirroring the real startTimerCmd's own fallback when the server
+// doesn't echo back a start time.
+func demoStartTimerCmd(tid string) tea.Cmd {
+	return func() tea.Msg {
+		return timerMsg{timer: &clickup.RunningTimer{TaskID: tid, TaskName: tid}}
+	}
+}
+
+// demoStopTimerCmd mirrors stopTimerCmd's success summary with a fixed fake
+// duration, without ever calling the API.
+func demoStopTimerCmd() tea.Cmd {
+	return func() tea.Msg {
+		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(45*time.Minute))}
+	}
+}
+
+// demoCurrentTimerCmd reports no timer running, which is the demo default
+// (demo mode never has a timer already in flight when the screen opens).
+func demoCurrentTimerCmd() tea.Cmd {
+	return func() tea.Msg { return timerMsg{timer: nil} }
 }

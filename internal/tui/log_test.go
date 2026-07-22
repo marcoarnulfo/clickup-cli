@@ -390,6 +390,122 @@ func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 	}
 }
 
+// demoLogModel builds a Model with demo mode enabled and a known list, ready
+// to drive the log-hours flow without ever touching m.client (which is left
+// nil on purpose: any accidental real-API call would panic instead of
+// silently succeeding, which is the point of these tests — see #32).
+func demoLogModel() Model {
+	m := Model{screen: screenLog, demo: true, cfg: demoConfig()}
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, m.cfg)
+	return m
+}
+
+func TestDemoGuidedListPickIssuesDemoTaskListMsg(t *testing.T) {
+	m := demoLogModel()
+	m.logScreen.step = logListPick
+	next, cmd := m.updateLog(key("enter"))
+	m = next.(Model)
+	if !m.logScreen.loading {
+		t.Fatalf("expected loading=true after Enter on the list")
+	}
+	if cmd == nil {
+		t.Fatal("expected a command from list pick in demo mode")
+	}
+	msg := cmd() // must not hit the network: m.client is nil
+	tlm, ok := msg.(taskListMsg)
+	if !ok {
+		t.Fatalf("expected taskListMsg from the demo tasks cmd, got %T", msg)
+	}
+	if len(tlm.tasks) == 0 {
+		t.Error("expected demo tasks, got 0")
+	}
+
+	// Feeding it back through Update must land on the task picker, never
+	// bounce to setup/error.
+	next2, _ := m.Update(msg)
+	m2 := next2.(Model)
+	if m2.screen == screenSetup || m2.screen == screenError {
+		t.Errorf("demo log flow must never route to setup/error, got screen=%v", m2.screen)
+	}
+	if m2.logScreen.step != logTaskPick {
+		t.Errorf("step = %v, expected logTaskPick", m2.logScreen.step)
+	}
+}
+
+func TestDemoFormSubmitIssuesLogDoneMsgNoIO(t *testing.T) {
+	m := demoLogModel()
+	m.logScreen = enterForm(m.logScreen)
+	m.logScreen.taskID = "demo-t1"
+	m.logScreen.durStr = "1h"
+	m.logScreen.formField = 3 // billable step
+
+	next, cmd := m.updateLog(key("enter")) // billable=yes -> submit
+	m = next.(Model)
+	if m.screen != screenLoading {
+		t.Fatalf("screen = %v, expected screenLoading after submit", m.screen)
+	}
+	if cmd == nil {
+		t.Fatal("expected a command on form submit")
+	}
+	msg := cmd() // must not hit the network: m.client is nil
+	ld, ok := msg.(logDoneMsg)
+	if !ok {
+		t.Fatalf("expected logDoneMsg from the demo create-entry cmd, got %T", msg)
+	}
+	if ld.summary == "" {
+		t.Error("expected a non-empty summary")
+	}
+
+	next2, _ := m.Update(msg)
+	m2 := next2.(Model)
+	if m2.screen == screenSetup || m2.screen == screenError {
+		t.Errorf("demo log flow must never route to setup/error, got screen=%v", m2.screen)
+	}
+	if m2.screen != screenLog || m2.logScreen.step != logDone {
+		t.Errorf("screen=%v step=%v, expected screenLog/logDone", m2.screen, m2.logScreen.step)
+	}
+}
+
+func TestDemoTimerStartAndStopNoIO(t *testing.T) {
+	m := demoLogModel()
+	m.logScreen.step = logIDInput
+	m.logScreen.mode = modeTimer
+	m.logScreen.input.SetValue("demo-t1")
+
+	next, cmd := m.updateLog(key("enter"))
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected a command starting the timer in demo mode")
+	}
+	msg := cmd() // must not hit the network: m.client is nil
+	tm, ok := msg.(timerMsg)
+	if !ok || tm.timer == nil {
+		t.Fatalf("expected timerMsg with a running timer, got %#v", msg)
+	}
+
+	m.logScreen.step = logTimerRunning
+	m.logScreen.timer = tm.timer
+	next, cmd = m.updateLog(key("s")) // stop
+	m = next.(Model)
+	if cmd == nil {
+		t.Fatal("expected a command stopping the timer in demo mode")
+	}
+	stopMsg := cmd() // must not hit the network: m.client is nil
+	if _, ok := stopMsg.(logDoneMsg); !ok {
+		t.Fatalf("expected logDoneMsg from the demo stop-timer cmd, got %T", stopMsg)
+	}
+}
+
+func TestDemoCurrentTimerCmdReportsNoTimer(t *testing.T) {
+	m := demoLogModel()
+	cmd := m.timerCurrentCmd()
+	msg := cmd() // must not hit the network: m.client is nil
+	tm, ok := msg.(timerMsg)
+	if !ok || tm.timer != nil {
+		t.Fatalf("expected timerMsg{timer:nil} in demo mode, got %#v", msg)
+	}
+}
+
 func TestListPickDebounceWhileLoading(t *testing.T) {
 	m := newTestModelOnReport()
 	m.logScreen = newLog(m.entries, m.cfg)
