@@ -19,10 +19,13 @@ func (c *Client) CreateTimeEntry(ctx context.Context, teamID, tid string, start 
 	return c.post(ctx, "/team/"+teamID+"/time_entries", body, nil)
 }
 
-// Task is a minimal ClickUp task (id + name) for the TUI picker.
+// Task is a minimal ClickUp task (id + name) for the TUI picker. Status and
+// ListID are populated by FilteredTeamTasks and left empty by ListTasks.
 type Task struct {
-	ID   string
-	Name string
+	ID     string
+	Name   string
+	Status string
+	ListID string
 }
 
 // ListTasks returns the tasks of a list. GET /list/{list_id}/task.
