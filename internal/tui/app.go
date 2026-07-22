@@ -63,6 +63,9 @@ type Model struct {
 	customStart time.Time // used when preset == report.PresetCustom
 	customEnd   time.Time
 
+	// injectable clock (default: time.Now)
+	now func() time.Time
+
 	// data
 	report          report.Report
 	entries         []report.TimeEntry
@@ -94,21 +97,20 @@ type Model struct {
 
 // New builds the root model from the config.
 func New(cfg config.Config) Model {
-	now := time.Now()
-	demo := demoEnabled()
-	if demo {
-		cfg = demoConfig()
-	}
 	m := Model{
 		cfg:    cfg,
-		demo:   demo,
-		year:   now.Year(),
-		month:  now.Month(),
+		demo:   demoEnabled(),
 		scope:  "me",
 		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
+		now:    time.Now,
 	}
-	if demo || cfg.Valid() {
+	if m.demo {
+		m.cfg = demoConfig()
+	}
+	t := m.now()
+	m.year, m.month = t.Year(), t.Month()
+	if m.demo || m.cfg.Valid() {
 		m.screen = screenHome
 		m.home = newHome()
 	} else {
@@ -126,7 +128,7 @@ func (m Model) currentRange() (start, end time.Time) {
 	if m.preset == report.PresetCustom {
 		return m.customStart, m.customEnd.AddDate(0, 0, 1)
 	}
-	return report.RangeForPreset(m.preset, m.year, m.month, time.Now())
+	return report.RangeForPreset(m.preset, m.year, m.month, m.now())
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)

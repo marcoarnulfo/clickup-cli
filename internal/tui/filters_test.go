@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -12,7 +13,7 @@ func filtersFixture() Model {
 		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress"},
 		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done"},
 	}
-	m := Model{screen: screenFilters, entries: entries}
+	m := Model{screen: screenFilters, entries: entries, now: time.Now}
 	m.filtersScreen = newFilters(entries, nil, nil, nil)
 	return m
 }
@@ -56,7 +57,7 @@ func TestFiltersEscDiscards(t *testing.T) {
 }
 
 func TestReportFOpensFilters(t *testing.T) {
-	m := Model{screen: screenReport, entries: []report.TimeEntry{{ListName: "A"}}}
+	m := Model{screen: screenReport, entries: []report.TimeEntry{{ListName: "A"}}, now: time.Now}
 	u, _ := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
 	m = u.(Model)
 	if m.screen != screenFilters {

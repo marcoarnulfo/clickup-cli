@@ -19,7 +19,12 @@ import (
 )
 
 func TestCurrentRangeDefaultsToMonth(t *testing.T) {
-	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth}
+	m := Model{
+		year:   2026,
+		month:  time.July,
+		preset: report.PresetThisMonth,
+		now:    time.Now,
+	}
 	start, end := m.currentRange()
 	ws, we := report.MonthRange(2026, time.July)
 	if !start.Equal(ws) || !end.Equal(we) {
@@ -34,6 +39,17 @@ func TestCurrentRangeCustomIsInclusive(t *testing.T) {
 	start, end := m.currentRange()
 	if !start.Equal(from) || !end.Equal(to.AddDate(0, 0, 1)) {
 		t.Errorf("custom range = [%s,%s), want [%s, %s+1d)", start, end, from, to)
+	}
+}
+
+func TestCurrentRangeUsesInjectedClock(t *testing.T) {
+	fixed := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	m := newWithClock(config.Config{Token: "t", WorkspaceID: "1"}, func() time.Time { return fixed })
+	m.preset = report.PresetLast7d
+	start, end := m.currentRange()
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Fatalf("range = [%v,%v), want [%v,%v)", start, end, wantStart, wantEnd)
 	}
 }
 
@@ -236,6 +252,7 @@ func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
 		month:           time.July,
 		scope:           "team",
 		selectedMembers: map[int]bool{5: true},
+		now:             time.Now,
 	}
 	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
@@ -264,6 +281,7 @@ func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
 		month:           time.July,
 		scope:           "me",
 		selectedMembers: map[int]bool{5: true}, // stale from a prior team selection
+		now:             time.Now,
 	}
 	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
@@ -348,7 +366,7 @@ func TestReportCycleGroupBy(t *testing.T) {
 func TestEntriesMsgMemberGroupingDoesNotLeakIntoMeScope(t *testing.T) {
 	// A "me" scope model that inherited a "member" GroupBy from a prior
 	// team report must fall back to total: member grouping is team-only.
-	m := Model{scope: "me"}
+	m := Model{scope: "me", now: time.Now}
 	m.report.GroupBy = report.GroupByMember
 	updated, _ := m.Update(entriesMsg{entries: nil})
 	mm := updated.(Model)
@@ -629,7 +647,13 @@ func TestVisibleEntriesAppliesFilter(t *testing.T) {
 }
 
 func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
-	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth, filterLists: map[string]bool{"A": true}}
+	m := Model{
+		year:        2026,
+		month:       time.July,
+		preset:      report.PresetThisMonth,
+		filterLists: map[string]bool{"A": true},
+		now:         time.Now,
+	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
 		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -642,9 +666,12 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 
 func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 	m := Model{
-		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		year:           2026,
+		month:          time.July,
+		preset:         report.PresetThisMonth,
 		taskStatus:     map[string]string{"t1": "done"},
 		filterStatuses: map[string]bool{"done": true},
+		now:            time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -739,8 +766,11 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 // silently stay stuck empty with no way to clear it from the Filters UI.
 func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
 	m := Model{
-		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		year:        2026,
+		month:       time.July,
+		preset:      report.PresetThisMonth,
 		filterLists: map[string]bool{"Gone": true},
+		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -872,4 +902,13 @@ func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 	if mm.browserScreen.loading || len(mm.browserScreen.spaces) != 1 || mm.browserScreen.level != browseSpaces || mm.browserScreen.idx != 0 {
 		t.Errorf("browser not updated: loading=%v spaces=%d level=%v idx=%d", mm.browserScreen.loading, len(mm.browserScreen.spaces), mm.browserScreen.level, mm.browserScreen.idx)
 	}
+}
+
+// newWithClock is a test helper that builds a Model with an injected clock.
+func newWithClock(cfg config.Config, now func() time.Time) Model {
+	m := New(cfg)
+	m.now = now
+	t := now()
+	m.year, m.month = t.Year(), t.Month()
+	return m
 }
