@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -229,27 +230,61 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 	}
 }
 
-// statusEnrichCmd fetches the current status of each task id and returns them
-// as a statusesMsg. A single non-retrievable task (deleted, no permission,
-// rate-limited, …) must not brick the Filters screen for the whole session:
-// per the spec, its status resolves to "" and enrichment continues with the
-// rest. An unauthorized token is the one failure worth surfacing as errMsg,
-// since it means the token itself needs re-entering via the setup wizard.
+// statusEnrichConcurrency bounds how many /task/{id} lookups statusEnrichCmd
+// runs at once, mirroring clickup.Client.ListNames' pattern.
+const statusEnrichConcurrency = 8
+
+// statusEnrichCmd fetches the current status of each task id, in parallel
+// (bounded concurrency), and returns them as a statusesMsg. A single
+// non-retrievable task (deleted, no permission, rate-limited, …) must not
+// brick the Filters screen for the whole session: per the spec, its status
+// resolves to "" and enrichment continues with the rest. An unauthorized
+// token is the one failure worth surfacing as errMsg, since it means the
+// token itself needs re-entering via the setup wizard; on the first such
+// error the derived context is canceled and the partial byTask is discarded.
 func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
+
 		byTask := make(map[string]string, len(taskIDs))
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, statusEnrichConcurrency)
+
+		var authErrOnce sync.Once
+		var authErr error
+
 		for _, id := range taskIDs {
-			st, err := c.TaskStatus(ctx, id)
-			if err != nil {
-				if errors.Is(err, clickup.ErrUnauthorized) {
-					return errMsg{err: err}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(id string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				st, err := c.TaskStatus(ctx, id)
+				if err != nil {
+					if errors.Is(err, clickup.ErrUnauthorized) {
+						authErrOnce.Do(func() {
+							authErr = err
+							cancel() // stop further/in-flight lookups
+						})
+						return
+					}
+					mu.Lock()
+					byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
+					mu.Unlock()
+					return
 				}
-				byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
-				continue
-			}
-			byTask[id] = st
+				mu.Lock()
+				byTask[id] = st
+				mu.Unlock()
+			}(id)
+		}
+		wg.Wait()
+
+		if authErr != nil {
+			return errMsg{err: authErr}
 		}
 		return statusesMsg{byTask: byTask}
 	}

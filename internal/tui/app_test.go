@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -870,6 +872,121 @@ func TestStatusEnrichCmdStillReturnsErrMsgOnUnauthorized(t *testing.T) {
 	}
 	if !errors.Is(em.err, clickup.ErrUnauthorized) {
 		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+}
+
+// #40 part 2: statusEnrichCmd must run its N /task/{id} lookups with bounded
+// concurrency instead of one-at-a-time, so it stays well inside the ctx
+// budget under the rate limiter. This test proves parallelism by tracking
+// the peak number of in-flight requests the fake server observed: a strictly
+// sequential implementation can never exceed 1.
+func TestStatusEnrichToleratesPerTaskErrors(t *testing.T) {
+	const n = statusEnrichConcurrency + 1 // >= concurrency+1 per brief
+
+	var inFlight int32
+	var peak int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+
+		id := strings.TrimPrefix(r.URL.Path, "/task/")
+		if id == "tbad" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"err":"Task not found","ECODE":"TASK_002"}`))
+			return
+		}
+		w.Write([]byte(fmt.Sprintf(`{"id":%q,"status":{"status":"status-%s"}}`, id, id)))
+	}))
+	defer srv.Close()
+
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	ids := make([]string, 0, n)
+	ids = append(ids, "tbad")
+	for i := 1; i < n; i++ {
+		ids = append(ids, fmt.Sprintf("t%d", i))
+	}
+
+	msg := statusEnrichCmd(c, ids)()
+	sm, ok := msg.(statusesMsg)
+	if !ok {
+		t.Fatalf("per-task errors should not abort enrichment; got %T (%+v)", msg, msg)
+	}
+	if len(sm.byTask) != n {
+		t.Fatalf("byTask has %d entries, want %d (every id present)", len(sm.byTask), n)
+	}
+	if st, ok := sm.byTask["tbad"]; !ok || st != "" {
+		t.Errorf(`byTask["tbad"] = (%q, %v), want ("", true)`, st, ok)
+	}
+	for i := 1; i < n; i++ {
+		id := fmt.Sprintf("t%d", i)
+		want := "status-" + id
+		if sm.byTask[id] != want {
+			t.Errorf("byTask[%q] = %q, want %q", id, sm.byTask[id], want)
+		}
+	}
+
+	if atomic.LoadInt32(&peak) < 2 {
+		t.Errorf("peak concurrent requests = %d, want >= 2 (statusEnrichCmd should run lookups in parallel)", peak)
+	}
+}
+
+// #40 part 2: the first ErrUnauthorized must short-circuit enrichment and
+// return errMsg — with byTask fully discarded, not merged into a
+// statusesMsg. Placing the unauthorized id LAST (after concurrency-many slow
+// tasks) proves the short-circuit happens promptly under a parallel
+// implementation: a sequential implementation would have to work through
+// every slow task first, taking far longer than the timing bound below.
+func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
+	const slowDelay = 150 * time.Millisecond
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, "/task/")
+		if id == "tunauth" {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_025"}`))
+			return
+		}
+		time.Sleep(slowDelay)
+		w.Write([]byte(fmt.Sprintf(`{"id":%q,"status":{"status":"open"}}`, id)))
+	}))
+	defer srv.Close()
+
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	ids := make([]string, 0, statusEnrichConcurrency+1)
+	for i := 0; i < statusEnrichConcurrency; i++ {
+		ids = append(ids, fmt.Sprintf("t%d", i))
+	}
+	ids = append(ids, "tunauth")
+
+	start := time.Now()
+	msg := statusEnrichCmd(c, ids)()
+	elapsed := time.Since(start)
+
+	em, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("401 should return errMsg, got %T (%+v)", msg, msg)
+	}
+	if !errors.Is(em.err, clickup.ErrUnauthorized) {
+		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+
+	// Sequential processing would reach "tunauth" only after every slow task
+	// ahead of it in the slice, i.e. after ~concurrency*slowDelay. A parallel
+	// implementation dispatches all of them at once, so it finishes close to
+	// a single slowDelay.
+	if budget := slowDelay * 4; elapsed >= budget {
+		t.Errorf("elapsed = %v, want < %v (statusEnrichCmd should dispatch lookups in parallel)", elapsed, budget)
 	}
 }
 
