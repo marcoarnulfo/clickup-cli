@@ -3,20 +3,17 @@ package clickup
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
 func TestSpaces(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/team/900/space" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		_, _ = w.Write([]byte(`{"spaces":[{"id":"s1","name":"Engineering"},{"id":"s2","name":"Marketing"}]}`))
-	}))
+	})
 	defer srv.Close()
-	c := New("tok")
-	c.BaseURL = srv.URL
 	spaces, err := c.Spaces(context.Background(), "900")
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +24,7 @@ func TestSpaces(t *testing.T) {
 }
 
 func TestSpaceContents(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/space/s1/folder":
 			_, _ = w.Write([]byte(`{"folders":[{"id":"f1","name":"Backend","lists":[{"id":"l1","name":"API"},{"id":"l2","name":"Auth"}]}]}`))
@@ -36,10 +33,8 @@ func TestSpaceContents(t *testing.T) {
 		default:
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
-	}))
+	})
 	defer srv.Close()
-	c := New("tok")
-	c.BaseURL = srv.URL
 	folders, folderless, err := c.SpaceContents(context.Background(), "s1")
 	if err != nil {
 		t.Fatal(err)

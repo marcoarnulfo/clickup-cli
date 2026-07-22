@@ -246,13 +246,11 @@ func TestListNameFallbackOnError(t *testing.T) {
 
 func TestTimeEntriesParsesTaskTags(t *testing.T) {
 	var gotInclude string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		gotInclude = r.URL.Query().Get("include_task_tags")
 		w.Write([]byte(`{"data":[{"id":"e1","task":{"id":"t","name":"T"},"task_tags":[{"name":"urgent"},{"name":"frontend"}],"task_location":{"list_id":"5"},"user":{"id":1,"username":"x"},"start":"1751360400000","duration":"3600000"}]}`))
-	}))
+	})
 	defer srv.Close()
-	c := New("tok")
-	c.BaseURL = srv.URL
 	start := time.UnixMilli(1751360400000).UTC()
 	entries, err := c.TimeEntries(context.Background(), "900", start, start.Add(24*time.Hour), nil)
 	if err != nil {

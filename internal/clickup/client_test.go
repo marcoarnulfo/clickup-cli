@@ -5,16 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
-
-	"golang.org/x/time/rate"
 )
 
 func TestDoRetriesOn429WithRetryAfterSeconds(t *testing.T) {
 	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		if calls == 1 {
 			w.Header().Set("Retry-After", "0")
@@ -22,11 +19,8 @@ func TestDoRetriesOn429WithRetryAfterSeconds(t *testing.T) {
 			return
 		}
 		w.Write([]byte(`{"ok":true}`))
-	}))
+	})
 	defer srv.Close()
-	c := New("tok")
-	c.BaseURL = srv.URL
-	c.limiter = rate.NewLimiter(rate.Inf, 0) // no throttling in tests
 	var out struct {
 		OK bool `json:"ok"`
 	}
@@ -55,7 +49,6 @@ func TestDoRetryAfterClampBoundsTheWait(t *testing.T) {
 		w.Write([]byte(`{"ok":true}`))
 	})
 	defer srv.Close()
-	c.limiter = rate.NewLimiter(rate.Inf, 0)
 	start := time.Now()
 	var out struct {
 		OK bool `json:"ok"`

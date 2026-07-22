@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 func TestCreateTimeEntry(t *testing.T) {
@@ -26,6 +28,7 @@ func TestCreateTimeEntry(t *testing.T) {
 
 	c := New("tok_x")
 	c.BaseURL = srv.URL
+	c.limiter = rate.NewLimiter(rate.Inf, 0)
 	start := time.UnixMilli(1_700_000_000_000).UTC()
 	err := c.CreateTimeEntry(context.Background(), "team1", "task9", start, 90*time.Minute, "note", true)
 	if err != nil {
@@ -58,13 +61,11 @@ func TestCreateTimeEntry(t *testing.T) {
 }
 
 func TestCreateTimeEntryUnauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_017"}`))
-	}))
+	})
 	defer srv.Close()
-	c := New("bad")
-	c.BaseURL = srv.URL
 	err := c.CreateTimeEntry(context.Background(), "t", "x", time.Now(), time.Hour, "", false)
 	if err == nil {
 		t.Fatal("expected 401 error")
@@ -73,13 +74,11 @@ func TestCreateTimeEntryUnauthorized(t *testing.T) {
 
 func TestListTasks(t *testing.T) {
 	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		_, _ = w.Write([]byte(`{"tasks":[{"id":"a1","name":"Task A"},{"id":"b2","name":"Task B"}]}`))
-	}))
+	})
 	defer srv.Close()
-	c := New("tok")
-	c.BaseURL = srv.URL
 	tasks, err := c.ListTasks(context.Background(), "list7")
 	if err != nil {
 		t.Fatalf("ListTasks error: %v", err)
