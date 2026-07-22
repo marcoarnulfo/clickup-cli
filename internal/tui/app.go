@@ -11,6 +11,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
 type screen int
@@ -190,41 +191,20 @@ func (m Model) filteredNote() string {
 	return " · filtered"
 }
 
-// loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
-// For scope "team" with an empty assignees slice it derives ALL workspace members
-// (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
-// (skipping the members lookup). For scope "me" no assignee filter is applied.
+// loadEntriesCmd calls the report I/O pipeline (internal/service) in the
+// background and returns entriesMsg or errMsg. For scope "team" with an empty
+// assignees slice it derives ALL workspace members (via TeamMembers) and
+// filters on them; a non-empty assignees slice is used as-is (skipping the
+// members lookup). For scope "me" no assignee filter is applied.
 func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// 60s (raised from 30s): under the rate limiter a report spanning many
+		// lists spends real time in ListNames enrichment waits.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-
-		if scope == "team" && len(assignees) == 0 {
-			members, err := c.TeamMembers(ctx, teamID)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			for _, mem := range members {
-				assignees = append(assignees, mem.ID)
-			}
-		}
-
-		entries, err := c.TimeEntries(ctx, teamID, start, end, assignees)
+		entries, err := service.LoadEntries(ctx, c, teamID, start, end, scope, assignees)
 		if err != nil {
 			return errMsg{err: err}
-		}
-		// Resolve human-readable list names ONCE per unique list_id, fetched
-		// concurrently (bounded) to avoid the 30s timeout when a report spans
-		// many distinct lists.
-		ids := make([]string, 0, len(entries))
-		for _, e := range entries {
-			ids = append(ids, e.ListID)
-		}
-		resolved := c.ListNames(ctx, ids)
-		for i := range entries {
-			if name := resolved[entries[i].ListID]; name != "" {
-				entries[i].ListName = name
-			}
 		}
 		return entriesMsg{entries: entries}
 	}
