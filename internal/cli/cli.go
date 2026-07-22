@@ -28,6 +28,7 @@ func rootCmd() *cobra.Command {
 		SilenceErrors: true,
 		RunE:          runTUI,
 	}
+	cmd.AddCommand(reportCmd())
 	return cmd
 }
 
