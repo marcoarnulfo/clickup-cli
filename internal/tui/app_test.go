@@ -940,15 +940,25 @@ func TestStatusEnrichToleratesPerTaskErrors(t *testing.T) {
 }
 
 // #40 part 2: the first ErrUnauthorized must short-circuit enrichment and
-// return errMsg — with byTask fully discarded, not merged into a
-// statusesMsg. Placing the unauthorized id LAST (after concurrency-many slow
-// tasks) proves the short-circuit happens promptly under a parallel
-// implementation: a sequential implementation would have to work through
-// every slow task first, taking far longer than the timing bound below.
+// return errMsg — with byTask fully discarded, not merged into a statusesMsg.
+// The short-circuit must occur promptly under a parallel implementation, proven
+// by tracking peak in-flight concurrency: placing the unauthorized id LAST
+// ensures slow tasks are already in flight when it returns 401.
 func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
 	const slowDelay = 150 * time.Millisecond
 
+	var inFlight int32
+	var peak int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+				break
+			}
+		}
+
 		id := strings.TrimPrefix(r.URL.Path, "/task/")
 		if id == "tunauth" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -969,9 +979,7 @@ func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
 	}
 	ids = append(ids, "tunauth")
 
-	start := time.Now()
 	msg := statusEnrichCmd(c, ids)()
-	elapsed := time.Since(start)
 
 	em, ok := msg.(errMsg)
 	if !ok {
@@ -981,12 +989,11 @@ func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
 		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
 	}
 
-	// Sequential processing would reach "tunauth" only after every slow task
-	// ahead of it in the slice, i.e. after ~concurrency*slowDelay. A parallel
-	// implementation dispatches all of them at once, so it finishes close to
-	// a single slowDelay.
-	if budget := slowDelay * 4; elapsed >= budget {
-		t.Errorf("elapsed = %v, want < %v (statusEnrichCmd should dispatch lookups in parallel)", elapsed, budget)
+	// A parallel implementation dispatches the first statusEnrichConcurrency
+	// slow tasks at once, then short-circuits on the 401 from tunauth.
+	// Peak concurrency >= 2 proves lookups were dispatched concurrently.
+	if atomic.LoadInt32(&peak) < 2 {
+		t.Errorf("peak concurrent requests = %d, want >= 2 (statusEnrichCmd should dispatch lookups in parallel)", atomic.LoadInt32(&peak))
 	}
 }
 
