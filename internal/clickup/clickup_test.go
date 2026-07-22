@@ -8,12 +8,15 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 func newTestClient(h http.HandlerFunc) (*Client, *httptest.Server) {
 	srv := httptest.NewServer(h)
 	c := New("tok_test")
 	c.BaseURL = srv.URL
+	c.limiter = rate.NewLimiter(rate.Inf, 0) // no throttling in tests
 	return c, srv
 }
 
