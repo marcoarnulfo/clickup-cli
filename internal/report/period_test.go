@@ -28,6 +28,50 @@ func TestRangeForPreset(t *testing.T) {
 	}
 }
 
+func TestCustomRange(t *testing.T) {
+	cases := []struct {
+		name      string
+		from      string
+		to        string
+		wantStart string
+		wantEnd   string
+	}{
+		{
+			name:      "month span",
+			from:      "2026-06-01",
+			to:        "2026-06-30",
+			wantStart: "2026-06-01",
+			wantEnd:   "2026-07-01",
+		},
+		{
+			name:      "single day",
+			from:      "2026-06-15",
+			to:        "2026-06-15",
+			wantStart: "2026-06-15",
+			wantEnd:   "2026-06-16",
+		},
+		{
+			name:      "multi-month span",
+			from:      "2026-01-15",
+			to:        "2026-03-10",
+			wantStart: "2026-01-15",
+			wantEnd:   "2026-03-11",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			from, _ := time.Parse("2006-01-02", c.from)
+			to, _ := time.Parse("2006-01-02", c.to)
+			start, end := CustomRange(from, to)
+			if start.Format("2006-01-02") != c.wantStart || end.Format("2006-01-02") != c.wantEnd {
+				t.Errorf("got [%s,%s), want [%s,%s)",
+					start.Format("2006-01-02"), end.Format("2006-01-02"),
+					c.wantStart, c.wantEnd)
+			}
+		})
+	}
+}
+
 func TestPeriodLabelAndSlug(t *testing.T) {
 	jul1 := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	aug1 := jul1.AddDate(0, 1, 0)

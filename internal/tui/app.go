@@ -128,7 +128,7 @@ func (m Model) Init() tea.Cmd { return nil }
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
 	if m.preset == report.PresetCustom {
-		return m.customStart, m.customEnd.AddDate(0, 0, 1)
+		return report.CustomRange(m.customStart, m.customEnd)
 	}
 	return report.RangeForPreset(m.preset, m.year, m.month, m.now())
 }
