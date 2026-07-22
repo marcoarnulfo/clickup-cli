@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,7 +22,12 @@ import (
 )
 
 func TestCurrentRangeDefaultsToMonth(t *testing.T) {
-	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth}
+	m := Model{
+		year:   2026,
+		month:  time.July,
+		preset: report.PresetThisMonth,
+		now:    time.Now,
+	}
 	start, end := m.currentRange()
 	ws, we := report.MonthRange(2026, time.July)
 	if !start.Equal(ws) || !end.Equal(we) {
@@ -34,6 +42,17 @@ func TestCurrentRangeCustomIsInclusive(t *testing.T) {
 	start, end := m.currentRange()
 	if !start.Equal(from) || !end.Equal(to.AddDate(0, 0, 1)) {
 		t.Errorf("custom range = [%s,%s), want [%s, %s+1d)", start, end, from, to)
+	}
+}
+
+func TestCurrentRangeUsesInjectedClock(t *testing.T) {
+	fixed := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	m := newWithClock(config.Config{Token: "t", WorkspaceID: "1"}, func() time.Time { return fixed })
+	m.preset = report.PresetLast7d
+	start, end := m.currentRange()
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed)
+	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+		t.Fatalf("range = [%v,%v), want [%v,%v)", start, end, wantStart, wantEnd)
 	}
 }
 
@@ -53,7 +72,7 @@ func TestLoadEntriesUsesGivenRange(t *testing.T) {
 	c.BaseURL = srv.URL
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 0, 10)
-	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil)().(entriesMsg); !ok {
+	if _, ok := loadEntriesCmd(c, "900", start, end, "me", nil, screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg")
 	}
 	if gotStart != strconv.FormatInt(start.UnixMilli(), 10) || gotEnd != strconv.FormatInt(end.UnixMilli(), 10) {
@@ -108,9 +127,13 @@ func TestLoadEntriesTeamWorkspaceNotFound(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
-	if _, ok := msg.(errMsg); !ok {
-		t.Fatalf("team scope with workspace not found should give errMsg, got %T", msg)
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil, screenHome)()
+	rem, ok := msg.(retryableErrMsg)
+	if !ok {
+		t.Fatalf("team scope with workspace not found should give retryableErrMsg, got %T", msg)
+	}
+	if rem.origin != screenHome {
+		t.Errorf("origin = %v, want screenHome", rem.origin)
 	}
 }
 
@@ -138,7 +161,7 @@ func TestLoadEntriesTeamHappyPath(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil)()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", nil, screenHome)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("team scope with workspace found should give entriesMsg, got %T", msg)
@@ -165,7 +188,7 @@ func TestLoadEntriesResolvesListNames(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil)()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "me", nil, screenHome)()
 	em, ok := msg.(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
@@ -205,7 +228,7 @@ func TestLoadEntriesTeamExplicitAssignees(t *testing.T) {
 
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	jEnd := jStart.AddDate(0, 1, 0)
-	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9})()
+	msg := loadEntriesCmd(c, "900", jStart, jEnd, "team", []int{7, 9}, screenHome)()
 	if _, ok := msg.(entriesMsg); !ok {
 		t.Fatalf("expected entriesMsg, got %T", msg)
 	}
@@ -236,8 +259,9 @@ func TestReloadEntriesCmdPassesSelectedAssignees(t *testing.T) {
 		month:           time.July,
 		scope:           "team",
 		selectedMembers: map[int]bool{5: true},
+		now:             time.Now,
 	}
-	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+	if _, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
@@ -264,8 +288,9 @@ func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
 		month:           time.July,
 		scope:           "me",
 		selectedMembers: map[int]bool{5: true}, // stale from a prior team selection
+		now:             time.Now,
 	}
-	if _, ok := m.reloadEntriesCmd()().(entriesMsg); !ok {
+	if _, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg); !ok {
 		t.Fatal("expected entriesMsg from reloadEntriesCmd")
 	}
 }
@@ -284,12 +309,74 @@ func TestNewStartsInHomeWhenValid(t *testing.T) {
 	}
 }
 
+// TestNewInDemoModeBuildsClientFromDemoToken is a regression test for a bug where
+// New() built the Model{client: clickup.New(cfg.Token)} literal BEFORE applying
+// demoConfig(), so in demo mode the client captured the caller's REAL token
+// instead of the demo one. Since log.go's timer/create/list-tasks paths use
+// m.client directly (not demo-gated), that bug meant CLICKUP_DEMO=1 with a real
+// config would fire genuine authenticated API calls, violating "demo mode = no
+// API calls". We assert on the actual wire-level Authorization header sent by
+// m.client, since clickup.Client's token field is unexported and otherwise
+// unobservable from this package.
+func TestNewInDemoModeBuildsClientFromDemoToken(t *testing.T) {
+	t.Setenv("CLICKUP_DEMO", "1")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	realCfg := config.Config{Token: "REAL-SECRET-TOKEN", WorkspaceID: "1"}
+	m := New(realCfg)
+	if !m.demo {
+		t.Fatal("expected m.demo = true with CLICKUP_DEMO set")
+	}
+	m.client.BaseURL = srv.URL
+
+	// Any authenticated call exercises the Authorization header the client
+	// was constructed with; TeamMembers is a convenient one already wired.
+	_, _ = m.client.TeamMembers(context.Background(), "1")
+
+	if gotAuth == realCfg.Token {
+		t.Fatalf("client was built from the caller's real token in demo mode: got Authorization %q", gotAuth)
+	}
+	if gotAuth != demoConfig().Token {
+		t.Errorf("Authorization = %q, want demo token %q", gotAuth, demoConfig().Token)
+	}
+}
+
 func TestErrMsgSwitchesToErrorScreen(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	updated, _ := m.Update(errMsg{err: errTest})
 	mm := updated.(Model)
 	if mm.screen != screenError {
 		t.Fatalf("errMsg should switch to error screen, got %v", mm.screen)
+	}
+}
+
+// #38: a retryable error originating from Home must send the user back to
+// Home with an inline message, instead of the dead-end error screen.
+func TestRetryableErrOnHomeStaysHome(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: errors.New("boom")})
+	mm := updated.(Model)
+	if mm.screen != screenHome {
+		t.Fatalf("retryableErrMsg with origin screenHome should stay on home, got %v", mm.screen)
+	}
+	if !strings.Contains(mm.home.errText, "boom") {
+		t.Fatalf("home.errText = %q, want it to contain %q", mm.home.errText, "boom")
+	}
+}
+
+// #38: a 401 must still relaunch the setup wizard, regardless of origin.
+func TestRetryableErrUnauthorizedGoesToSetup(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: fmt.Errorf("x: %w", clickup.ErrUnauthorized)})
+	mm := updated.(Model)
+	if mm.screen != screenSetup {
+		t.Fatalf("retryableErrMsg wrapping ErrUnauthorized should go to setup, got %v", mm.screen)
 	}
 }
 
@@ -348,7 +435,7 @@ func TestReportCycleGroupBy(t *testing.T) {
 func TestEntriesMsgMemberGroupingDoesNotLeakIntoMeScope(t *testing.T) {
 	// A "me" scope model that inherited a "member" GroupBy from a prior
 	// team report must fall back to total: member grouping is team-only.
-	m := Model{scope: "me"}
+	m := Model{scope: "me", now: time.Now}
 	m.report.GroupBy = report.GroupByMember
 	updated, _ := m.Update(entriesMsg{entries: nil})
 	mm := updated.(Model)
@@ -629,7 +716,13 @@ func TestVisibleEntriesAppliesFilter(t *testing.T) {
 }
 
 func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
-	m := Model{year: 2026, month: time.July, preset: report.PresetThisMonth, filterLists: map[string]bool{"A": true}}
+	m := Model{
+		year:        2026,
+		month:       time.July,
+		preset:      report.PresetThisMonth,
+		filterLists: map[string]bool{"A": true},
+		now:         time.Now,
+	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
 		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -642,9 +735,12 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 
 func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 	m := Model{
-		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		year:           2026,
+		month:          time.July,
+		preset:         report.PresetThisMonth,
 		taskStatus:     map[string]string{"t1": "done"},
 		filterStatuses: map[string]bool{"done": true},
+		now:            time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -739,8 +835,11 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 // silently stay stuck empty with no way to clear it from the Filters UI.
 func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
 	m := Model{
-		year: 2026, month: time.July, preset: report.PresetThisMonth,
+		year:        2026,
+		month:       time.July,
+		preset:      report.PresetThisMonth,
 		filterLists: map[string]bool{"Gone": true},
+		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
@@ -801,6 +900,128 @@ func TestStatusEnrichCmdStillReturnsErrMsgOnUnauthorized(t *testing.T) {
 	}
 	if !errors.Is(em.err, clickup.ErrUnauthorized) {
 		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+}
+
+// #40 part 2: statusEnrichCmd must run its N /task/{id} lookups with bounded
+// concurrency instead of one-at-a-time, so it stays well inside the ctx
+// budget under the rate limiter. This test proves parallelism by tracking
+// the peak number of in-flight requests the fake server observed: a strictly
+// sequential implementation can never exceed 1.
+func TestStatusEnrichToleratesPerTaskErrors(t *testing.T) {
+	const n = statusEnrichConcurrency + 1 // >= concurrency+1 per brief
+
+	var inFlight int32
+	var peak int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+
+		id := strings.TrimPrefix(r.URL.Path, "/task/")
+		if id == "tbad" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"err":"Task not found","ECODE":"TASK_002"}`))
+			return
+		}
+		w.Write([]byte(fmt.Sprintf(`{"id":%q,"status":{"status":"status-%s"}}`, id, id)))
+	}))
+	defer srv.Close()
+
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	ids := make([]string, 0, n)
+	ids = append(ids, "tbad")
+	for i := 1; i < n; i++ {
+		ids = append(ids, fmt.Sprintf("t%d", i))
+	}
+
+	msg := statusEnrichCmd(c, ids)()
+	sm, ok := msg.(statusesMsg)
+	if !ok {
+		t.Fatalf("per-task errors should not abort enrichment; got %T (%+v)", msg, msg)
+	}
+	if len(sm.byTask) != n {
+		t.Fatalf("byTask has %d entries, want %d (every id present)", len(sm.byTask), n)
+	}
+	if st, ok := sm.byTask["tbad"]; !ok || st != "" {
+		t.Errorf(`byTask["tbad"] = (%q, %v), want ("", true)`, st, ok)
+	}
+	for i := 1; i < n; i++ {
+		id := fmt.Sprintf("t%d", i)
+		want := "status-" + id
+		if sm.byTask[id] != want {
+			t.Errorf("byTask[%q] = %q, want %q", id, sm.byTask[id], want)
+		}
+	}
+
+	if atomic.LoadInt32(&peak) < 2 {
+		t.Errorf("peak concurrent requests = %d, want >= 2 (statusEnrichCmd should run lookups in parallel)", peak)
+	}
+}
+
+// #40 part 2: the first ErrUnauthorized must short-circuit enrichment and
+// return errMsg — with byTask fully discarded, not merged into a statusesMsg.
+// The short-circuit must occur promptly under a parallel implementation, proven
+// by tracking peak in-flight concurrency: placing the unauthorized id LAST
+// ensures slow tasks are already in flight when it returns 401.
+func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
+	const slowDelay = 150 * time.Millisecond
+
+	var inFlight int32
+	var peak int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inFlight, 1)
+		defer atomic.AddInt32(&inFlight, -1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if cur <= p || atomic.CompareAndSwapInt32(&peak, p, cur) {
+				break
+			}
+		}
+
+		id := strings.TrimPrefix(r.URL.Path, "/task/")
+		if id == "tunauth" {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"err":"Token invalid","ECODE":"OAUTH_025"}`))
+			return
+		}
+		time.Sleep(slowDelay)
+		w.Write([]byte(fmt.Sprintf(`{"id":%q,"status":{"status":"open"}}`, id)))
+	}))
+	defer srv.Close()
+
+	c := clickup.New("tok")
+	c.BaseURL = srv.URL
+
+	ids := make([]string, 0, statusEnrichConcurrency+1)
+	for i := 0; i < statusEnrichConcurrency; i++ {
+		ids = append(ids, fmt.Sprintf("t%d", i))
+	}
+	ids = append(ids, "tunauth")
+
+	msg := statusEnrichCmd(c, ids)()
+
+	em, ok := msg.(errMsg)
+	if !ok {
+		t.Fatalf("401 should return errMsg, got %T (%+v)", msg, msg)
+	}
+	if !errors.Is(em.err, clickup.ErrUnauthorized) {
+		t.Errorf("err = %v, want it to wrap ErrUnauthorized", em.err)
+	}
+
+	// A parallel implementation dispatches the first statusEnrichConcurrency
+	// slow tasks at once, then short-circuits on the 401 from tunauth.
+	// Peak concurrency >= 2 proves lookups were dispatched concurrently.
+	if atomic.LoadInt32(&peak) < 2 {
+		t.Errorf("peak concurrent requests = %d, want >= 2 (statusEnrichCmd should dispatch lookups in parallel)", atomic.LoadInt32(&peak))
 	}
 }
 
@@ -872,4 +1093,13 @@ func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 	if mm.browserScreen.loading || len(mm.browserScreen.spaces) != 1 || mm.browserScreen.level != browseSpaces || mm.browserScreen.idx != 0 {
 		t.Errorf("browser not updated: loading=%v spaces=%d level=%v idx=%d", mm.browserScreen.loading, len(mm.browserScreen.spaces), mm.browserScreen.level, mm.browserScreen.idx)
 	}
+}
+
+// newWithClock is a test helper that builds a Model with an injected clock.
+func newWithClock(cfg config.Config, now func() time.Time) Model {
+	m := New(cfg)
+	m.now = now
+	t := now()
+	m.year, m.month = t.Year(), t.Month()
+	return m
 }

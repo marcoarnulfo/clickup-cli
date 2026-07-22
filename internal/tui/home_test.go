@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -44,6 +46,26 @@ func TestHomeFUsesCache(t *testing.T) {
 	}
 	if len(m.membersScreen.members) != 1 {
 		t.Error("members screen should use cached members")
+	}
+}
+
+// #38: an inline error routed back to Home must be visible in the view...
+func TestHomeViewRendersErrText(t *testing.T) {
+	m := homeModel{errText: "Error: boom"}
+	out := m.view("This month", "me", "")
+	if !strings.Contains(out, "Error: boom") {
+		t.Fatalf("home view should render errText, got:\n%s", out)
+	}
+}
+
+// ...and must not linger once the user retries.
+func TestHomeEnterClearsErrText(t *testing.T) {
+	m := Model{scope: "me", screen: screenHome, demo: true, now: time.Now}
+	m.home = homeModel{errText: "Error: boom"}
+	u, _ := m.updateHome(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.home.errText != "" {
+		t.Fatalf("home.errText should be cleared before dispatching a new load, got %q", m.home.errText)
 	}
 }
 

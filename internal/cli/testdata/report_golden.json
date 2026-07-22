@@ -1,0 +1,22 @@
+{
+  "start": "2026-06-01T00:00:00Z",
+  "end": "2026-07-01T00:00:00Z",
+  "scope": "me",
+  "group_by": "list",
+  "currency": "EUR",
+  "rate": 50,
+  "buckets": [
+    {
+      "label": "Client A",
+      "hours": 2,
+      "amount": 160
+    },
+    {
+      "label": "Client B",
+      "hours": 1,
+      "amount": 50
+    }
+  ],
+  "total_hours": 3,
+  "total_amount": 210
+}

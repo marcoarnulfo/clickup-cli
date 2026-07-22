@@ -18,6 +18,14 @@ func midnightUTC(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
+// CustomRange returns the half-open interval [start, end) for a custom date range,
+// where the "to" date is inclusive. Specifically, end = to + 1 day.
+// Both input and output instants are preserved (assumed to be UTC midnights);
+// no timezone conversion is performed.
+func CustomRange(from, to time.Time) (start, end time.Time) {
+	return from, to.AddDate(0, 0, 1)
+}
+
 // RangeForPreset returns the half-open interval [start, end) for a non-custom
 // preset. this_month uses the given year/month; the relative presets use now.
 // An unknown preset falls back to this_month.

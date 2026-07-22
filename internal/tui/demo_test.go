@@ -23,8 +23,8 @@ func TestDemoModeSkipsSetup(t *testing.T) {
 }
 
 func TestReloadEntriesCmdUsesDemo(t *testing.T) {
-	m := Model{demo: true, year: 2026, month: time.July}
-	cmd := m.reloadEntriesCmd()
+	m := Model{demo: true, year: 2026, month: time.July, now: time.Now}
+	cmd := m.reloadEntriesCmd(screenHome)
 	if cmd == nil {
 		t.Fatal("reloadEntriesCmd returned nil")
 	}
@@ -59,8 +59,8 @@ func TestDemoEntriesMultipleUsers(t *testing.T) {
 
 func TestReloadDemoFiltersMembers(t *testing.T) {
 	// Team scope, only alice (id 1) selected: the demo report must exclude bob/carol.
-	m := Model{demo: true, year: 2026, month: time.July, scope: "team", selectedMembers: map[int]bool{1: true}}
-	em, ok := m.reloadEntriesCmd()().(entriesMsg)
+	m := Model{demo: true, year: 2026, month: time.July, scope: "team", selectedMembers: map[int]bool{1: true}, now: time.Now}
+	em, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg")
 	}
@@ -77,8 +77,8 @@ func TestReloadDemoFiltersMembers(t *testing.T) {
 func TestReloadDemoMeScopeIsSingleSelfUser(t *testing.T) {
 	// Real "me" scope is server-side filtered to the authenticated caller
 	// (one user); demo must mirror that instead of summing all demo users.
-	m := Model{demo: true, year: 2026, month: time.July, scope: "me"}
-	em, ok := m.reloadEntriesCmd()().(entriesMsg)
+	m := Model{demo: true, year: 2026, month: time.July, scope: "me", now: time.Now}
+	em, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg)
 	if !ok {
 		t.Fatalf("expected entriesMsg")
 	}

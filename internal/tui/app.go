@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
 type screen int
@@ -37,6 +39,16 @@ type (
 	statusesMsg struct{ byTask map[string]string }
 	errMsg      struct{ err error }
 
+	// retryableErrMsg is a recoverable API error dispatched from a specific
+	// origin screen. Unlike errMsg (which always dead-ends on screenError),
+	// its handler routes back to origin when it's a screen that knows how to
+	// show an inline error (currently only screenHome); other origins fall
+	// back to screenError, matching the old errMsg behavior.
+	retryableErrMsg struct {
+		origin screen
+		err    error
+	}
+
 	spacesMsg        struct{ spaces []clickup.Space }
 	spaceContentsMsg struct {
 		spaceID    string
@@ -62,6 +74,9 @@ type Model struct {
 	preset      string    // report.Preset* ; default report.PresetThisMonth
 	customStart time.Time // used when preset == report.PresetCustom
 	customEnd   time.Time
+
+	// injectable clock (default: time.Now)
+	now func() time.Time
 
 	// data
 	report          report.Report
@@ -94,7 +109,6 @@ type Model struct {
 
 // New builds the root model from the config.
 func New(cfg config.Config) Model {
-	now := time.Now()
 	demo := demoEnabled()
 	if demo {
 		cfg = demoConfig()
@@ -102,13 +116,14 @@ func New(cfg config.Config) Model {
 	m := Model{
 		cfg:    cfg,
 		demo:   demo,
-		year:   now.Year(),
-		month:  now.Month(),
 		scope:  "me",
 		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
+		now:    time.Now,
 	}
-	if demo || cfg.Valid() {
+	t := m.now()
+	m.year, m.month = t.Year(), t.Month()
+	if m.demo || m.cfg.Valid() {
 		m.screen = screenHome
 		m.home = newHome()
 	} else {
@@ -124,14 +139,16 @@ func (m Model) Init() tea.Cmd { return nil }
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
 	if m.preset == report.PresetCustom {
-		return m.customStart, m.customEnd.AddDate(0, 0, 1)
+		return report.CustomRange(m.customStart, m.customEnd)
 	}
-	return report.RangeForPreset(m.preset, m.year, m.month, time.Now())
+	return report.RangeForPreset(m.preset, m.year, m.month, m.now())
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
-// in demo mode, otherwise the real API call.
-func (m Model) reloadEntriesCmd() tea.Cmd {
+// in demo mode, otherwise the real API call. origin identifies the screen
+// that dispatched the load, so a failure can be routed back there (see
+// retryableErrMsg); demoEntriesCmd never fails, so it doesn't need it.
+func (m Model) reloadEntriesCmd(origin screen) tea.Cmd {
 	// The member filter is a team-scope concept; never carry a stale
 	// selection into a "me" load.
 	var assignees []int
@@ -147,7 +164,7 @@ func (m Model) reloadEntriesCmd() tea.Cmd {
 		}
 		return demoEntriesCmd(start, end, assignees)
 	}
-	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees)
+	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees, origin)
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -186,67 +203,80 @@ func (m Model) filteredNote() string {
 	return " · filtered"
 }
 
-// loadEntriesCmd calls the API in the background and returns entriesMsg or errMsg.
-// For scope "team" with an empty assignees slice it derives ALL workspace members
-// (via TeamMembers) and filters on them; a non-empty assignees slice is used as-is
+// loadEntriesCmd calls the report I/O pipeline (internal/service) in the
+// background and returns entriesMsg or retryableErrMsg{origin, err}. For scope
+// "team" with an empty assignees slice it derives ALL workspace members (via
+// TeamMembers) and filters on them; a non-empty assignees slice is used as-is
 // (skipping the members lookup). For scope "me" no assignee filter is applied.
-func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int) tea.Cmd {
+func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scope string, assignees []int, origin screen) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// 60s (raised from 30s): under the rate limiter a report spanning many
+		// lists spends real time in ListNames enrichment waits.
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-
-		if scope == "team" && len(assignees) == 0 {
-			members, err := c.TeamMembers(ctx, teamID)
-			if err != nil {
-				return errMsg{err: err}
-			}
-			for _, mem := range members {
-				assignees = append(assignees, mem.ID)
-			}
-		}
-
-		entries, err := c.TimeEntries(ctx, teamID, start, end, assignees)
+		entries, err := service.LoadEntries(ctx, c, teamID, start, end, scope, assignees)
 		if err != nil {
-			return errMsg{err: err}
-		}
-		// Resolve human-readable list names ONCE per unique list_id, fetched
-		// concurrently (bounded) to avoid the 30s timeout when a report spans
-		// many distinct lists.
-		ids := make([]string, 0, len(entries))
-		for _, e := range entries {
-			ids = append(ids, e.ListID)
-		}
-		resolved := c.ListNames(ctx, ids)
-		for i := range entries {
-			if name := resolved[entries[i].ListID]; name != "" {
-				entries[i].ListName = name
-			}
+			return retryableErrMsg{origin: origin, err: err}
 		}
 		return entriesMsg{entries: entries}
 	}
 }
 
-// statusEnrichCmd fetches the current status of each task id and returns them
-// as a statusesMsg. A single non-retrievable task (deleted, no permission,
-// rate-limited, …) must not brick the Filters screen for the whole session:
-// per the spec, its status resolves to "" and enrichment continues with the
-// rest. An unauthorized token is the one failure worth surfacing as errMsg,
-// since it means the token itself needs re-entering via the setup wizard.
+// statusEnrichConcurrency bounds how many /task/{id} lookups statusEnrichCmd
+// runs at once, mirroring clickup.Client.ListNames' pattern.
+const statusEnrichConcurrency = 8
+
+// statusEnrichCmd fetches the current status of each task id, in parallel
+// (bounded concurrency), and returns them as a statusesMsg. A single
+// non-retrievable task (deleted, no permission, rate-limited, …) must not
+// brick the Filters screen for the whole session: per the spec, its status
+// resolves to "" and enrichment continues with the rest. An unauthorized
+// token is the one failure worth surfacing as errMsg, since it means the
+// token itself needs re-entering via the setup wizard; on the first such
+// error the derived context is canceled and the partial byTask is discarded.
 func statusEnrichCmd(c *clickup.Client, taskIDs []string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
+
 		byTask := make(map[string]string, len(taskIDs))
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, statusEnrichConcurrency)
+
+		var authErrOnce sync.Once
+		var authErr error
+
 		for _, id := range taskIDs {
-			st, err := c.TaskStatus(ctx, id)
-			if err != nil {
-				if errors.Is(err, clickup.ErrUnauthorized) {
-					return errMsg{err: err}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(id string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				st, err := c.TaskStatus(ctx, id)
+				if err != nil {
+					if errors.Is(err, clickup.ErrUnauthorized) {
+						authErrOnce.Do(func() {
+							authErr = err
+							cancel() // stop further/in-flight lookups
+						})
+						return
+					}
+					mu.Lock()
+					byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
+					mu.Unlock()
+					return
 				}
-				byTask[id] = "" // non-retrievable: cache as resolved-empty, don't retry within this load
-				continue
-			}
-			byTask[id] = st
+				mu.Lock()
+				byTask[id] = st
+				mu.Unlock()
+			}(id)
+		}
+		wg.Wait()
+
+		if authErr != nil {
+			return errMsg{err: authErr}
 		}
 		return statusesMsg{byTask: byTask}
 	}
@@ -319,14 +349,15 @@ func pruneFilterSet(sel, present map[string]bool) map[string]bool {
 }
 
 // loadMembersCmd fetches the workspace members in the background and returns
-// membersMsg or errMsg.
-func loadMembersCmd(c *clickup.Client, teamID string) tea.Cmd {
+// membersMsg or retryableErrMsg{origin, err}. It's Home-only today, so origin
+// is always screenHome at the call site.
+func loadMembersCmd(c *clickup.Client, teamID string, origin screen) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		members, err := c.TeamMembers(ctx, teamID)
 		if err != nil {
-			return errMsg{err: err}
+			return retryableErrMsg{origin: origin, err: err}
 		}
 		return membersMsg{members: members}
 	}
@@ -408,6 +439,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = screenSetup
 			m.setup = newSetup()
 		} else {
+			m.screen = screenError
+		}
+		return m, nil
+
+	case retryableErrMsg:
+		m.err = msg.err
+		if errors.Is(msg.err, clickup.ErrUnauthorized) {
+			m.screen = screenSetup
+			m.setup = newSetup()
+			return m, nil
+		}
+		switch msg.origin {
+		case screenHome:
+			m.home.errText = "Error: " + msg.err.Error()
+			m.screen = screenHome
+		default:
 			m.screen = screenError
 		}
 		return m, nil

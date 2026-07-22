@@ -422,7 +422,9 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "r":
 			m.screen = screenLoading
-			return m, m.reloadEntriesCmd()
+			// screenLog isn't a retryableErrMsg-aware origin: falls through to
+			// the existing screenError, unchanged behavior (out of scope for #38).
+			return m, m.reloadEntriesCmd(screenLog)
 		case "esc", "enter":
 			m.screen = screenReport
 			return m, nil

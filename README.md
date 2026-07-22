@@ -1,6 +1,6 @@
 **English** · [Italiano](README.it.md)
 
-# clickup — ClickUp Hours CLI
+# clup — ClickUp Hours CLI
 
 [![CI](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/marcoarnulfo/clickup-cli/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/marcoarnulfo/clickup-cli)](https://github.com/marcoarnulfo/clickup-cli/releases)
@@ -21,9 +21,9 @@
 
 ## Demo
 
-![clickup demo](docs/demo.gif)
+![clup demo](docs/demo.gif)
 
-Try it yourself without a ClickUp account: **`CLICKUP_DEMO=1 clickup`** runs a demo mode with
+Try it yourself without a ClickUp account: **`CLICKUP_DEMO=1 clup`** runs a demo mode with
 fixture data. The GIF is recorded with [vhs](https://github.com/charmbracelet/vhs) from
 [`docs/demo.tape`](docs/demo.tape) (run `vhs docs/demo.tape` to regenerate).
 
@@ -36,10 +36,10 @@ fixture data. The GIF is recorded with [vhs](https://github.com/charmbracelet/vh
 ## Installation
 
 ```bash
-go install github.com/marcoarnulfo/clickup-cli/cmd/clickup@latest
+go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest
 ```
 
-This installs the `clickup` binary into `$(go env GOPATH)/bin` (make sure it's on your `PATH`).
+This installs the `clup` binary into `$(go env GOPATH)/bin` (make sure it's on your `PATH`).
 
 <details>
 <summary>Build from source</summary>
@@ -47,24 +47,24 @@ This installs the `clickup` binary into `$(go env GOPATH)/bin` (make sure it's o
 ```bash
 git clone https://github.com/marcoarnulfo/clickup-cli.git
 cd clickup-cli
-go build -o clickup ./cmd/clickup
-./clickup
+go build -o clup ./cmd/clup
+./clup
 ```
 </details>
 
 ## Quick start
 
-1. **Install** (see above) and run `clickup`.
-2. On first launch, the **setup wizard** asks for your API token, workspace, an optional hourly rate, and currency — saved to `~/.config/clickup-cli/config.yml`.
+1. **Install** (see above) and run `clup`.
+2. On first launch, the **setup wizard** asks for your API token, workspace, an optional hourly rate, and currency — saved to your config file (see [Configuration](#configuration) for the exact path).
 3. Pick a **range** (`d`) and **scope** (`me`/`team`) on the home screen, press `Enter` → your report. Press `n` to log hours, `e` to export, `p` for per-list rates.
 
 ## Usage
 
-Run `clickup`. On first launch a setup wizard asks, in sequence: your personal API
+Run `clup`. On first launch a setup wizard asks, in sequence: your personal API
 token (find it in ClickUp → Settings → Apps → API Token), the workspace to use
 (chosen among those visible to the token), an optional hourly rate, and the currency
-(default `EUR`). The result is saved to `~/.config/clickup-cli/config.yml` and reused
-on subsequent launches.
+(default `EUR`). The result is saved to your config file (see
+[Configuration](#configuration)) and reused on subsequent launches.
 
 From the home screen pick a range and scope, then `Enter` generates the report. The
 report is no longer limited to a calendar month: press `d` on the home screen to open
@@ -180,10 +180,41 @@ aggregates the hours of the workspace members; by default **all** members are in
 you can press `f` from Home to open the member selection screen and pick individual members
 (a partial selection shows a `(k/n members)` note in the report title).
 
+### Headless report
+
+`clup report` prints an hours report to stdout without starting the TUI — meant for
+scripts, cron jobs, and agents. It reuses the same range/scope/grouping/rates logic as
+the interactive report, but never touches the terminal UI.
+
+```sh
+clup report --month 2026-06 --scope me --format json
+```
+
+Flags:
+
+- `--month YYYY-MM` — report a calendar month (default: current month if no other range flag is given).
+- `--from YYYY-MM-DD --to YYYY-MM-DD` — custom range, inclusive (given together).
+- `--preset this_month|last_month|last_7d|last_30d|this_week` — same presets as the TUI's range picker.
+- `--scope me|team` (default `me`).
+- `--group total|task|list|day|member` (default `total`).
+- `--format json|csv|md` (default `json`).
+
+All formats write to stdout — use shell redirection to save (e.g. `clup report --format csv > report.csv`).
+
+Note: `CLICKUP_DEMO=1` is **ignored** by `report` — it always loads the real config and
+calls the real API; demo mode is TUI-only.
+
+The `--format json` output is a **stable scripting schema** (snake_case keys, RFC3339
+timestamps) — safe to parse with `jq` and pin in scripts.
+
 ## Configuration
 
-Configuration persists in `~/.config/clickup-cli/config.yml` (it follows
-`os.UserConfigDir()`, so it respects `XDG_CONFIG_HOME` on Linux):
+Configuration persists under `os.UserConfigDir()` (so it respects
+`XDG_CONFIG_HOME` on Linux): `~/Library/Application Support/clup/config.yml`
+on macOS, `~/.config/clup/config.yml` on Linux. If that file doesn't exist yet,
+the legacy pre-rebrand path (`~/.config/clickup-cli/config.yml` and its
+per-OS equivalent) is still read as a fallback, so upgrading from an older
+`clickup` install doesn't lose your settings.
 
 ```yaml
 token: pk_xxx...
@@ -207,7 +238,7 @@ The `CLICKUP_TOKEN` environment variable, when set, always overrides the `token`
 the config file (handy for CI or to avoid saving the token to disk):
 
 ```bash
-CLICKUP_TOKEN=pk_xxx clickup
+CLICKUP_TOKEN=pk_xxx clup
 ```
 
 ## Contributing

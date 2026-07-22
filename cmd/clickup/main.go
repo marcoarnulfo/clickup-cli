@@ -4,20 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/marcoarnulfo/clickup-cli/internal/config"
-	"github.com/marcoarnulfo/clickup-cli/internal/tui"
+	"github.com/marcoarnulfo/clickup-cli/internal/cli"
 )
 
 func main() {
-	cfg, err := config.Load()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		os.Exit(1)
-	}
-	p := tea.NewProgram(tui.New(cfg), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
-	}
+	code := cli.Execute()
+	fmt.Fprintln(os.Stderr, "warning: 'clickup' is deprecated; install and use 'clup' instead.")
+	os.Exit(code)
 }

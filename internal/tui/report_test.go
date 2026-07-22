@@ -2,6 +2,7 @@ package tui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -26,7 +27,7 @@ func TestNextGroupByMeSkipsMember(t *testing.T) {
 // TestReportCycleGroupByTeamViaUpdate drives the 'g' key through Update() to
 // verify the team cycle reaches the member grouping.
 func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
-	m := Model{scope: "team", screen: screenReport}
+	m := Model{scope: "team", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByDay}
 	m.rep = newReport(m.report, "")
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
