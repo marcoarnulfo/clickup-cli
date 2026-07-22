@@ -181,6 +181,41 @@ func TestReportInvalidConfigErrors(t *testing.T) {
 	}
 }
 
+func TestReportRejectsUnknownGroupAndPreset(t *testing.T) {
+	srv := fakeReportServer(t) // should never be hit
+	withSeams(t, fixtureConfig(), srv)
+
+	t.Run("bogus group", func(t *testing.T) {
+		out, err := runReportCapture(t, []string{"--month", "2026-06", "--group", "bogus"})
+		if err == nil {
+			t.Fatal("report --group bogus: err = nil, want non-nil")
+		}
+		if out != "" {
+			t.Errorf("stdout = %q, want empty (invalid --group must produce no output)", out)
+		}
+	})
+
+	t.Run("bogus preset", func(t *testing.T) {
+		out, err := runReportCapture(t, []string{"--preset", "bogus"})
+		if err == nil {
+			t.Fatal("report --preset bogus: err = nil, want non-nil")
+		}
+		if out != "" {
+			t.Errorf("stdout = %q, want empty (invalid --preset must produce no output)", out)
+		}
+	})
+
+	t.Run("custom preset rejected", func(t *testing.T) {
+		out, err := runReportCapture(t, []string{"--preset", "custom"})
+		if err == nil {
+			t.Fatal("report --preset custom: err = nil, want non-nil (custom ranges come from --from/--to)")
+		}
+		if out != "" {
+			t.Errorf("stdout = %q, want empty (invalid --preset must produce no output)", out)
+		}
+	})
+}
+
 func TestReportIgnoresDemoEnv(t *testing.T) {
 	t.Setenv("CLICKUP_DEMO", "1")
 	srv := fakeReportServer(t)

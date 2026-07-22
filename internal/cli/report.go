@@ -56,6 +56,20 @@ func runReport(cmd *cobra.Command, args []string) error {
 	if scope != "me" && scope != "team" {
 		return fmt.Errorf("unsupported --scope %q, want \"me\" or \"team\"", scope)
 	}
+	switch group {
+	case report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember:
+	default:
+		return fmt.Errorf("unsupported --group %q, want one of %q, %q, %q, %q, %q",
+			group, report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember)
+	}
+	if preset != "" {
+		switch preset {
+		case report.PresetThisMonth, report.PresetLastMonth, report.PresetLast7d, report.PresetLast30d, report.PresetThisWeek:
+		default:
+			return fmt.Errorf("unsupported --preset %q, want one of %q, %q, %q, %q, %q",
+				preset, report.PresetThisMonth, report.PresetLastMonth, report.PresetLast7d, report.PresetLast30d, report.PresetThisWeek)
+		}
+	}
 
 	cfg, err := loadConfig()
 	if err != nil {
