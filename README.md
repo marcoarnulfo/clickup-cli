@@ -220,9 +220,30 @@ label. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Roadmap
 
-Roadmap and backlog live in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**
-(labels `roadmap`/`enhancement`, milestones `v1.3` / `v2.0`). Highlights: custom date
-ranges (v1.3), weekly summaries, invoice export, multi-currency (v2.0).
+The north star is to grow from a monthly hours-reporting tool into a **complete, beautiful
+ClickUp terminal client** — keeping **time tracking & billing as the flagship** (no other
+tool offers per-list/member rates, budgets and report export in a TUI).
+
+The full plan lives in **[GitHub Issues](https://github.com/marcoarnulfo/clickup-cli/issues)**,
+tracked by the **[🗺️ Roadmap epic #33](https://github.com/marcoarnulfo/clickup-cli/issues/33)**
+and organized into milestones:
+
+| Milestone | Focus |
+|---|---|
+| [v1.6 — Rebrand & foundations](https://github.com/marcoarnulfo/clickup-cli/milestone/4) | rebrand to `clup`, service layer, rate limiter, `report --json` |
+| [v1.7 — Billing depth](https://github.com/marcoarnulfo/clickup-cli/milestone/5) | billable split, per-member rates, budgets & burn-down, HTML/PDF export |
+| [v1.8 — Live time tracking](https://github.com/marcoarnulfo/clickup-cli/milestone/6) | live timer, edit/delete entries |
+| [v1.9 — TUI design system](https://github.com/marcoarnulfo/clickup-cli/milestone/7) | themes, tables, command palette, accessibility |
+| [v1.10 — Task context & accounts](https://github.com/marcoarnulfo/clickup-cli/milestone/8) | search, my-tasks, task detail, keychain, profiles |
+| [v1.11 — Task management](https://github.com/marcoarnulfo/clickup-cli/milestone/9) | create/update tasks, comments, checklists |
+| [v1.12 — Navigation, views & presets](https://github.com/marcoarnulfo/clickup-cli/milestone/10) | spaces/lists, saved views, report presets |
+| [v1.13 — Docs, Goals & Sprints](https://github.com/marcoarnulfo/clickup-cli/milestone/11) | ClickUp Docs, goals, sprints |
+| [v2.0 — Git & AI](https://github.com/marcoarnulfo/clickup-cli/milestone/3) | git integration, `--jq`/`--template`, MCP, skill files |
+| [Distribution & packaging](https://github.com/marcoarnulfo/clickup-cli/milestone/12) | goreleaser, Homebrew, completions, man page |
+| [Docs & website](https://github.com/marcoarnulfo/clickup-cli/milestone/13) | landing page, docs site, screenshots |
+
+**Out of scope:** fiscal invoicing (VAT, invoice numbering, legal PDF) — too country-specific;
+the tool produces shareable pre-invoice reports instead.
 
 ## License
 
