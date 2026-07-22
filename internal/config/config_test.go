@@ -264,6 +264,37 @@ func TestSaveDoesNotPersistEnvToken(t *testing.T) {
 	}
 }
 
+// TestSaveFreshConfigWritesTypedTokenEvenWhenEqualToEnv guards against a
+// silent token wipe: the TUI setup wizard builds a fresh Config{} (never
+// through Load) and calls Save directly. If the guard in Save compares
+// Token by VALUE against os.Getenv("CLICKUP_TOKEN"), it misfires whenever the
+// user happens to type the same token as an exported CLICKUP_TOKEN, wiping
+// the on-disk token to "" (fileToken is zero-value on a fresh Config). The
+// fix is a provenance flag (tokenFromEnv) that only Load can set, so a fresh
+// Config always persists its Token verbatim.
+func TestSaveFreshConfigWritesTypedTokenEvenWhenEqualToEnv(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "clup", "config.yml")
+	legacyPath := filepath.Join(dir, "clickup-cli", "config.yml")
+	withPaths(t, newPath, legacyPath)
+
+	t.Setenv("CLICKUP_TOKEN", "pk_real")
+
+	fresh := Config{Token: "pk_real", WorkspaceID: "900"}
+	if err := Save(fresh); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	t.Setenv("CLICKUP_TOKEN", "") // read back without the override in play
+	onDisk, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if onDisk.Token != "pk_real" {
+		t.Fatalf("expected on-disk token to be the typed value %q, got %q (silent token wipe)", "pk_real", onDisk.Token)
+	}
+}
+
 func TestSaveRoundTripsTokenWithoutEnv(t *testing.T) {
 	dir := t.TempDir()
 	newPath := filepath.Join(dir, "clup", "config.yml")

@@ -29,6 +29,15 @@ type Config struct {
 	// unexported fields, so this never leaks into the config file. Save
 	// uses it to avoid persisting an env-provided token to disk.
 	fileToken string
+	// tokenFromEnv records whether THIS Config's Token was populated by the
+	// CLICKUP_TOKEN env override during Load (true only when Load actually
+	// applied it). This is a provenance flag, not a value comparison: a
+	// freshly-constructed Config{} (e.g. from the TUI setup wizard) always
+	// has tokenFromEnv == false, so Save persists its Token verbatim even if
+	// it happens to equal the current env value. Only a Load-ed config whose
+	// token really came from the env has this set, which is what makes Save
+	// substitute fileToken instead of writing the env secret to disk.
+	tokenFromEnv bool
 	// loadedFromLegacy records whether Load fell back to the legacy
 	// pre-rebrand path. Save uses it to decide whether the legacy file
 	// should be rewritten to a pointer stub.
@@ -114,6 +123,7 @@ func Load() (Config, error) {
 
 	if env := os.Getenv("CLICKUP_TOKEN"); env != "" {
 		c.Token = env
+		c.tokenFromEnv = true
 	}
 
 	c = migrate(c)
@@ -138,11 +148,15 @@ func migrate(c Config) Config {
 }
 
 // Save writes the config to disk, creating the necessary directories. It
-// never persists a CLICKUP_TOKEN env override: if the config's token equals
-// the current env value, the on-disk token is left as whatever was
-// originally read from the file. If the config was loaded from the legacy
-// path and this is the first write to the new path, the legacy file is
-// rewritten to a pointer stub. Save is silent (no stdout/stderr output).
+// never persists a CLICKUP_TOKEN env override: if this Config's Token was
+// populated by the env override during Load (tokenFromEnv == true), the
+// on-disk token is written as whatever was originally read from the file
+// instead. This is a provenance check, not a value comparison, so it does not
+// misfire on a freshly-constructed Config (e.g. from the TUI setup wizard)
+// whose typed token happens to equal the env value. If the config was loaded
+// from the legacy path and this is the first write to the new path, the
+// legacy file is rewritten to a pointer stub. Save is silent (no
+// stdout/stderr output).
 func Save(c Config) error {
 	p, err := configPath()
 	if err != nil {
@@ -150,8 +164,11 @@ func Save(c Config) error {
 	}
 
 	out := c
-	if env := os.Getenv("CLICKUP_TOKEN"); env != "" && c.Token == env {
+	if c.tokenFromEnv {
 		out.Token = c.fileToken
+	}
+	if out.SchemaVersion == 0 {
+		out.SchemaVersion = currentSchemaVersion
 	}
 
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
