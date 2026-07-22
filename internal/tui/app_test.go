@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -299,6 +300,44 @@ func TestNewStartsInHomeWhenValid(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	if m.screen != screenHome {
 		t.Fatalf("valid config should start in home, got %v", m.screen)
+	}
+}
+
+// TestNewInDemoModeBuildsClientFromDemoToken is a regression test for a bug where
+// New() built the Model{client: clickup.New(cfg.Token)} literal BEFORE applying
+// demoConfig(), so in demo mode the client captured the caller's REAL token
+// instead of the demo one. Since log.go's timer/create/list-tasks paths use
+// m.client directly (not demo-gated), that bug meant CLICKUP_DEMO=1 with a real
+// config would fire genuine authenticated API calls, violating "demo mode = no
+// API calls". We assert on the actual wire-level Authorization header sent by
+// m.client, since clickup.Client's token field is unexported and otherwise
+// unobservable from this package.
+func TestNewInDemoModeBuildsClientFromDemoToken(t *testing.T) {
+	t.Setenv("CLICKUP_DEMO", "1")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	realCfg := config.Config{Token: "REAL-SECRET-TOKEN", WorkspaceID: "1"}
+	m := New(realCfg)
+	if !m.demo {
+		t.Fatal("expected m.demo = true with CLICKUP_DEMO set")
+	}
+	m.client.BaseURL = srv.URL
+
+	// Any authenticated call exercises the Authorization header the client
+	// was constructed with; TeamMembers is a convenient one already wired.
+	_, _ = m.client.TeamMembers(context.Background(), "1")
+
+	if gotAuth == realCfg.Token {
+		t.Fatalf("client was built from the caller's real token in demo mode: got Authorization %q", gotAuth)
+	}
+	if gotAuth != demoConfig().Token {
+		t.Errorf("Authorization = %q, want demo token %q", gotAuth, demoConfig().Token)
 	}
 }
 

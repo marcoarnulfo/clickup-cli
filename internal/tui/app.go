@@ -97,16 +97,17 @@ type Model struct {
 
 // New builds the root model from the config.
 func New(cfg config.Config) Model {
+	demo := demoEnabled()
+	if demo {
+		cfg = demoConfig()
+	}
 	m := Model{
 		cfg:    cfg,
-		demo:   demoEnabled(),
+		demo:   demo,
 		scope:  "me",
 		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
-	}
-	if m.demo {
-		m.cfg = demoConfig()
 	}
 	t := m.now()
 	m.year, m.month = t.Year(), t.Month()
