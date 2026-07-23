@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -190,6 +191,35 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			es.mode = entriesList
 		}
 	case entriesTags:
+		if es.tagNewMode {
+			switch msg.Type {
+			case tea.KeyEnter:
+				name := strings.TrimSpace(es.input.Value())
+				es.tagNewMode = false
+				if name != "" {
+					if !es.tagSel[name] {
+						es.tagSel[name] = true
+					}
+					if !slices.Contains(es.tagAll, name) {
+						es.tagAll = unionSortedTags(es.tagAll, []string{name})
+					}
+					// move cursor to the new tag
+					if i := slices.Index(es.tagAll, name); i >= 0 {
+						es.tagIdx = i
+					}
+				}
+				m.entriesScreen = es
+				return m, nil
+			case tea.KeyEsc:
+				es.tagNewMode = false
+				m.entriesScreen = es
+				return m, nil
+			}
+			var cmd tea.Cmd
+			es.input, cmd = es.input.Update(msg)
+			m.entriesScreen = es
+			return m, cmd
+		}
 		switch msg.String() {
 		case "esc":
 			es.mode = entriesList
@@ -206,8 +236,25 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				name := es.tagAll[es.tagIdx]
 				es.tagSel[name] = !es.tagSel[name]
 			}
+		case "n":
+			es.tagNewMode = true
+			es.input = newTextInput("New tag name")
+		case "enter":
+			desired := selectedTags(es.tagSel)
+			id := es.tagEntryID
+			es.mode = entriesList
+			m.entriesScreen = es
+			if m.demo { // record the demo override BEFORE building the cmd
+				if m.demoOverrides == nil {
+					m.demoOverrides = map[string]report.TimeEntry{}
+				}
+				base := entryByID(es.entries, id)
+				base.EntryTags = desired
+				m.demoOverrides[id] = base
+			}
+			m.screen = screenLoading
+			return m, m.setTagsCmd(id, desired)
 		}
-		// n (new tag) and enter (save) wired in Task 4.
 	case entriesConfirmDelete:
 		switch msg.String() {
 		case "y", "Y":
@@ -425,6 +472,49 @@ func (m Model) tagsFetchCmd() tea.Cmd {
 	}
 }
 
+// selectedTags returns the selected tag names, sorted (stable request bodies).
+func selectedTags(sel map[string]bool) []string {
+	var out []string
+	for name, on := range sel {
+		if on {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// entryByID returns a copy of the entry with the given id (zero value if absent).
+func entryByID(entries []report.TimeEntry, id string) report.TimeEntry {
+	for _, e := range entries {
+		if e.ID == id {
+			return e
+		}
+	}
+	return report.TimeEntry{}
+}
+
+// setTagsCmd saves the entry's tags (real API, replace-PUT) or relies on the
+// demo override already recorded on the Model (see the entriesTags "enter"
+// handler, which sets m.demoOverrides before this cmd is built) and reloads
+// the browser either way.
+func (m Model) setTagsCmd(entryID string, desired []string) tea.Cmd {
+	mm := m
+	if m.demo { // override already recorded in updateEntries
+		return func() tea.Msg { return reloadForBrowser(mm, "Tags saved.") }
+	}
+	c := m.client
+	teamID := m.cfg.WorkspaceID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := c.SetTimeEntryTags(ctx, teamID, entryID, desired); err != nil {
+			return entriesErr(err)
+		}
+		return reloadForBrowser(mm, "Tags saved.")
+	}
+}
+
 // unionSortedTags merges two tag lists, deduped and sorted, so a current tag
 // missing from the workspace fetch still appears in the picker.
 func unionSortedTags(a, b []string) []string {
@@ -517,6 +607,14 @@ func (m Model) entriesView() string {
 		}
 		if len(es.tagAll) == 0 {
 			b += styleHelp.Render("No tags yet.") + "\n"
+		}
+		if es.tagNewMode {
+			b += "\n" + es.input.View() + "\n"
+			b += "\n" + styleHelp.Render("Enter: add · Esc: back")
+			if es.msg != "" {
+				b += "\n" + styleErr.Render(es.msg)
+			}
+			return b
 		}
 		b += "\n" + styleHelp.Render("↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel")
 		if es.msg != "" {
