@@ -143,6 +143,31 @@ func TestFiltersBillableRadioIsExclusive(t *testing.T) {
 	}
 }
 
+// #51 (review followup): 'a' (select all/none) must be a no-op on the
+// Billable radio section — applying it would select all three mutually
+// exclusive options at once, breaking the exactly-one-selected invariant.
+func TestFiltersBillableANoOp(t *testing.T) {
+	m := filtersFixture()
+	for i := 0; i < 3; i++ {
+		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
+		m = u.(Model)
+	}
+	before := copyBool(m.filtersScreen.sections[3].selected)
+
+	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = u.(Model)
+
+	after := m.filtersScreen.sections[3].selected
+	if len(before) != len(after) {
+		t.Fatalf("selection map size changed: %v -> %v", before, after)
+	}
+	for k, v := range before {
+		if after[k] != v {
+			t.Errorf("a should be a no-op on the Billable section; %q changed from %v to %v", k, v, after[k])
+		}
+	}
+}
+
 func TestReportFOpensFilters(t *testing.T) {
 	m := Model{screen: screenReport, entries: []report.TimeEntry{{ListName: "A"}}, now: time.Now}
 	u, _ := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})

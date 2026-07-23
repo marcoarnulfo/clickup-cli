@@ -87,6 +87,67 @@ func TestHomeWTogglesToCurrentISOWeek(t *testing.T) {
 	}
 }
 
+// #4: the ISO week can straddle a Gregorian year boundary — Dec 31, 2024
+// falls in ISO week 1 of 2025, not week 53 of 2024 (Go's own ISOWeek() rule).
+// currentRange's wiring (app.go) must resolve the ISO year from ISOWeek()
+// itself, not assume it always matches m.now()'s calendar year.
+func TestHomeWeekModeCrossesYearBoundary(t *testing.T) {
+	fixedNow := time.Date(2024, time.December, 31, 12, 0, 0, 0, time.UTC)
+	m := Model{scope: "me", screen: screenHome, now: func() time.Time { return fixedNow }, loc: time.UTC}
+	u, _ := m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	m = u.(Model)
+
+	isoYear, isoWeek := fixedNow.ISOWeek()
+	if isoYear == fixedNow.Year() {
+		t.Fatalf("test fixture doesn't actually cross a year boundary: isoYear=%d calendarYear=%d", isoYear, fixedNow.Year())
+	}
+	wantStart, wantEnd := report.WeekRange(isoYear, isoWeek, time.UTC)
+	gotStart, gotEnd := m.currentRange()
+	if !gotStart.Equal(wantStart) || !gotEnd.Equal(wantEnd) {
+		t.Errorf("currentRange at the year boundary = [%v,%v), want [%v,%v)", gotStart, gotEnd, wantStart, wantEnd)
+	}
+}
+
+// #4 (review followup): picking a preset from the Range screen while in week
+// mode must commit that preset, not silently keep the ISO week — the exact
+// failure the binding note on the week toggle warned about. Regression test
+// for currentRange checking periodMode unconditionally before preset while
+// updateRange's preset-commit path never cleared it.
+func TestHomeWeekModeClearedByRangeSelection(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	m := Model{
+		scope: "me", screen: screenHome, preset: report.PresetThisMonth,
+		year: 2026, month: time.July, now: func() time.Time { return fixedNow }, loc: time.UTC,
+	}
+
+	u, _ := m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	m = u.(Model)
+	if m.periodMode != periodModeWeek {
+		t.Fatal("expected periodMode to be week after pressing w")
+	}
+
+	u, _ = m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
+	m = u.(Model)
+	if m.screen != screenRange {
+		t.Fatalf("d should open the range picker even in week mode, got %v", m.screen)
+	}
+	m.rangeScreen.idx = 1 // rangePresets[1] == last_month
+	u, _ = m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.preset != report.PresetLastMonth {
+		t.Fatalf("preset = %q, want last_month", m.preset)
+	}
+	if m.periodMode == periodModeWeek {
+		t.Fatal("picking a preset from the Range screen must clear week mode")
+	}
+
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLastMonth, m.year, m.month, fixedNow, time.UTC)
+	gotStart, gotEnd := m.currentRange()
+	if !gotStart.Equal(wantStart) || !gotEnd.Equal(wantEnd) {
+		t.Errorf("currentRange after w,d,last_month = [%v,%v), want the preset's range [%v,%v)", gotStart, gotEnd, wantStart, wantEnd)
+	}
+}
+
 // Pressing 'w' again returns to the month period.
 func TestHomeWTogglesBackToMonth(t *testing.T) {
 	fixedNow := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)

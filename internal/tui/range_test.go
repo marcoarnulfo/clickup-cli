@@ -22,6 +22,47 @@ func TestRangeSelectPreset(t *testing.T) {
 	}
 }
 
+// #4 (review followup): committing a preset from the Range screen must clear
+// a prior week-mode toggle, or the ISO week silently keeps overriding the
+// newly picked preset in currentRange.
+func TestRangeSelectPresetClearsWeekMode(t *testing.T) {
+	m := Model{
+		screen: screenRange, preset: report.PresetThisMonth, periodMode: periodModeWeek,
+		rangeScreen: newRange(report.PresetThisMonth),
+	}
+	m.rangeScreen.idx = 2 // "last_7d"
+	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.preset != report.PresetLast7d {
+		t.Fatalf("preset = %q, want last_7d", m.preset)
+	}
+	if m.periodMode == periodModeWeek {
+		t.Error("committing a preset must clear periodMode, not leave week mode active")
+	}
+}
+
+// Same regression, for the custom-range commit path.
+func TestRangeCustomValidDatesClearsWeekMode(t *testing.T) {
+	m := Model{screen: screenRange, periodMode: periodModeWeek, rangeScreen: newRange(report.PresetThisMonth)}
+	m.rangeScreen.idx = 5 // "custom"
+	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	rs := m.rangeScreen
+	rs.editing = true
+	rs.fromInput.SetValue("2026-07-01")
+	rs.toInput.SetValue("2026-07-15")
+	rs.field = 1
+	m.rangeScreen = rs
+	u, _ = m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.preset != report.PresetCustom {
+		t.Fatalf("preset = %q, want custom", m.preset)
+	}
+	if m.periodMode == periodModeWeek {
+		t.Error("committing a custom range must clear periodMode, not leave week mode active")
+	}
+}
+
 func TestRangeCustomValidDates(t *testing.T) {
 	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
 	m.rangeScreen.idx = 5 // "custom"

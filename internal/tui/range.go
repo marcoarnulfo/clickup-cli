@@ -71,6 +71,7 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.preset = report.PresetCustom
 			m.customStart = from
 			m.customEnd = to
+			m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
 			m.screen = screenHome
 			return m, nil
 		case tea.KeyEsc:
@@ -131,6 +132,7 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.preset = p.id
+		m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
 		m.screen = screenHome
 		return m, nil
 	case "esc":
