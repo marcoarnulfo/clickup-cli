@@ -21,6 +21,25 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
+// TestDefaultYearMonthFollowsLoc pins the fix for "New's default year/month
+// uses the local calendar even when a configured timezone names a different
+// zone". now is fixed at 23:30 on the last day of July in UTC (Rome-ish
+// local time is well within July), but loc is Pacific/Auckland (well ahead
+// of UTC), where the same instant already falls on August 1st. The default
+// month must follow loc, not now's own location.
+func TestDefaultYearMonthFollowsLoc(t *testing.T) {
+	auckland, err := time.LoadLocation("Pacific/Auckland")
+	if err != nil {
+		t.Skipf("tzdata unavailable: %v", err)
+	}
+	now := time.Date(2026, time.July, 31, 23, 30, 0, 0, time.UTC)
+
+	year, month := defaultYearMonth(now, auckland)
+	if year != 2026 || month != time.August {
+		t.Errorf("defaultYearMonth = %d-%s, want 2026-August (Auckland is already in August)", year, month)
+	}
+}
+
 func TestCurrentRangeDefaultsToMonth(t *testing.T) {
 	m := Model{
 		year:   2026,

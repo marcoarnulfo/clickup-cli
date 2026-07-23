@@ -198,6 +198,14 @@ func parseWeekFlag(week string) (isoYear, isoWeek int, err error) {
 // loc (the caller resolves loc via service.LoadLocation before calling this,
 // defaulting to UTC).
 func resolveRange(month, week, from, to, preset string, now time.Time, loc *time.Location) (start, end time.Time, err error) {
+	// n is now resolved into loc before reading its Year()/Month(): the
+	// preset/default branches below pick a calendar month, and that pick
+	// must follow the range's own timezone (UTC by default, never the
+	// machine's local clock) rather than now's original location. Without
+	// this, a run near a month boundary could report a different month in
+	// UTC than the pre-v1.7 CLI did (see the headless "never changes
+	// silently" constraint).
+	n := now.In(loc)
 	switch {
 	case month != "":
 		t, err := time.Parse("2006-01", month)
@@ -228,10 +236,10 @@ func resolveRange(month, week, from, to, preset string, now time.Time, loc *time
 		start, end := report.CustomRange(f, tt, loc)
 		return start, end, nil
 	case preset != "":
-		start, end := report.RangeForPreset(preset, now.Year(), now.Month(), now, loc)
+		start, end := report.RangeForPreset(preset, n.Year(), n.Month(), now, loc)
 		return start, end, nil
 	default:
-		start, end := report.RangeForPreset(report.PresetThisMonth, now.Year(), now.Month(), now, loc)
+		start, end := report.RangeForPreset(report.PresetThisMonth, n.Year(), n.Month(), now, loc)
 		return start, end, nil
 	}
 }

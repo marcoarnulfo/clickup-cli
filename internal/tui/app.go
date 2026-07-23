@@ -138,8 +138,7 @@ func New(cfg config.Config) Model {
 	// build; a genuinely invalid configured zone is caught and surfaced by
 	// locOrErr the first time a report is actually built (see #83).
 	m.loc, _ = service.LoadLocation(cfg.Timezone, time.Local)
-	t := m.now()
-	m.year, m.month = t.Year(), t.Month()
+	m.year, m.month = defaultYearMonth(m.now(), m.loc)
 	if m.demo || m.cfg.Valid() {
 		m.screen = screenHome
 		m.home = newHome()
@@ -148,6 +147,23 @@ func New(cfg config.Config) Model {
 		m.setup = newSetup()
 	}
 	return m
+}
+
+// defaultYearMonth picks the year/month a newly-constructed Model should
+// default to, deriving it from now resolved into loc rather than now's own
+// location. Without this, a configured non-local timezone (m.loc) would be
+// ignored for exactly this one calendar pick: a user in Rome with
+// timezone: Pacific/Auckland configured would get the wrong default month
+// for a few hours a day, even though m.loc is resolved one line above in New.
+// loc == nil (an invalid configured zone, surfaced later by locOrErr) is
+// treated as UTC, the same nil-means-UTC convention used throughout
+// internal/report and by currentRange's week branch.
+func defaultYearMonth(now time.Time, loc *time.Location) (int, time.Month) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t := now.In(loc)
+	return t.Year(), t.Month()
 }
 
 func (m Model) Init() tea.Cmd { return nil }

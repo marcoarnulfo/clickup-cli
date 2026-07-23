@@ -383,6 +383,40 @@ func TestResolveRangeMonthWinsOverWeek(t *testing.T) {
 	}
 }
 
+// TestResolveRangeDefaultMonthFollowsLoc pins the fix for the "current month
+// follows the machine's local clock, not loc" finding: the preset/default
+// branches must derive year/month from now.In(loc), not from now's own
+// location. now is built in a fixed zone 13 hours ahead of UTC, at 00:30 on
+// the 1st of the month — local calendar says August, but in UTC (loc) it is
+// still 11:30 on July 31. Both the default (no flags) and the explicit
+// this_month preset must resolve to July in UTC, matching the headless
+// path's "defaults to UTC and never changes silently" constraint.
+func TestResolveRangeDefaultMonthFollowsLoc(t *testing.T) {
+	farAhead := time.FixedZone("UTC+13", 13*60*60)
+	now := time.Date(2026, time.August, 1, 0, 30, 0, 0, farAhead)
+	wantStart, wantEnd := report.MonthRange(2026, time.July, time.UTC)
+
+	t.Run("default (no flags)", func(t *testing.T) {
+		start, end, err := resolveRange("", "", "", "", "", now, time.UTC)
+		if err != nil {
+			t.Fatalf("resolveRange: %v", err)
+		}
+		if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+			t.Errorf("got [%s, %s), want [%s, %s) (July in UTC, not August-local)", start, end, wantStart, wantEnd)
+		}
+	})
+
+	t.Run("--preset this_month", func(t *testing.T) {
+		start, end, err := resolveRange("", "", "", "", report.PresetThisMonth, now, time.UTC)
+		if err != nil {
+			t.Fatalf("resolveRange: %v", err)
+		}
+		if !start.Equal(wantStart) || !end.Equal(wantEnd) {
+			t.Errorf("got [%s, %s), want [%s, %s) (July in UTC, not August-local)", start, end, wantStart, wantEnd)
+		}
+	})
+}
+
 // TestReportWeekFlag confirms --week reaches the command end-to-end: the
 // emitted start/end match report.WeekRange for the requested ISO week.
 func TestReportWeekFlag(t *testing.T) {
