@@ -1212,3 +1212,54 @@ func newWithClock(cfg config.Config, now func() time.Time) Model {
 	m.year, m.month = t.Year(), t.Month()
 	return m
 }
+
+// TestExportFormatsCoverToFile pins that the TUI export menu offers every
+// format export.ToFile supports: HTML and the CSV invoice are v1.7
+// deliverables and were reachable only from `clup report --format`.
+func TestExportFormatsCoverToFile(t *testing.T) {
+	want := map[string]string{"csv": "csv", "json": "json", "markdown": "md", "html": "html", "csv-invoice": "csv"}
+	got := map[string]string{}
+	for _, f := range exportFormats {
+		got[f.key] = f.ext
+	}
+	for k, ext := range want {
+		if got[k] != ext {
+			t.Errorf("export format %q: ext = %q, want %q", k, got[k], ext)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("export formats = %v, want exactly %v", got, want)
+	}
+}
+
+// TestExportInvoiceWritesDistinctFile pins that the CSV invoice does not
+// overwrite the bucket CSV: it gets its own filename.
+func TestExportInvoiceWritesDistinctFile(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	os.Chdir(dir)
+
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	r := report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Key: "l1", Hours: 1}}, TotalHours: 1}
+
+	for i, f := range exportFormats {
+		m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+		m.report = r
+		m.export = newExport(r)
+		m.export.idx = i
+		m.screen = screenExport
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mm := updated.(Model)
+		if mm.export.err != nil {
+			t.Fatalf("export %q: %v", f.key, mm.export.err)
+		}
+		if _, err := os.Stat(mm.export.done); err != nil {
+			t.Fatalf("export %q: expected file %q: %v", f.key, mm.export.done, err)
+		}
+	}
+	if _, err := os.Stat("clickup-invoice-2026-07.csv"); err != nil {
+		t.Fatalf("expected a distinct invoice file: %v", err)
+	}
+}

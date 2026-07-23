@@ -89,7 +89,7 @@ di setup.
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
 | `Enter` | Home | Genera il report per il periodo/scope selezionati |
 | `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → tag → membro (team) → totale |
-| `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
+| `e` | Report | Apre il menu di export (CSV/JSON/Markdown/HTML/fattura CSV) |
 | `m` / `s` | Report | Torna alla home per cambiare range/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso periodo/scope |
 | `p` | Report | Apre la schermata **Impostazioni di fatturazione** (tariffe, valute, budget, arrotondamento, timezone) |
@@ -97,7 +97,7 @@ di setup.
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status/billable) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
-| `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (`<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
+| `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (la fattura CSV viene salvata come `clickup-invoice-<periodo>.csv`; `<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
 | `q` | Ovunque tranne setup / rates / range | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |

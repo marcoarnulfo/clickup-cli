@@ -10,14 +10,22 @@ import (
 
 type exportFormat struct {
 	label string
-	key   string
+	key   string // export.ToFile format key
 	ext   string
+	// prefix is the output filename stem. The CSV invoice needs its own:
+	// it shares the .csv extension with the bucket CSV and would otherwise
+	// overwrite it.
+	prefix string
 }
 
+// exportFormats must cover every format export.ToFile supports, so the TUI and
+// `clup report --format` offer the same set.
 var exportFormats = []exportFormat{
-	{"CSV", "csv", "csv"},
-	{"JSON", "json", "json"},
-	{"Markdown", "markdown", "md"},
+	{"CSV", "csv", "csv", "clickup-report"},
+	{"JSON", "json", "json", "clickup-report"},
+	{"Markdown", "markdown", "md", "clickup-report"},
+	{"HTML", "html", "html", "clickup-report"},
+	{"CSV invoice", "csv-invoice", "csv", "clickup-invoice"},
 }
 
 type exportModel struct {
@@ -46,7 +54,7 @@ func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		f := exportFormats[e.idx]
-		path := fmt.Sprintf("clickup-report-%s.%s", report.PeriodFileSlug(e.r.Start, e.r.End), f.ext)
+		path := fmt.Sprintf("%s-%s.%s", f.prefix, report.PeriodFileSlug(e.r.Start, e.r.End), f.ext)
 		if err := export.ToFile(f.key, e.r, path); err != nil {
 			e.err = err
 		} else {

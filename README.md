@@ -86,7 +86,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
 | `Enter` | Home | Generate the report for the selected range/scope |
 | `g` | Report | Cycle grouping: total → task → list → day → tag → member (team) → total |
-| `e` | Report | Open the export menu (CSV/JSON/Markdown) |
+| `e` | Report | Open the export menu (CSV/JSON/Markdown/HTML/CSV invoice) |
 | `m` / `s` | Report | Go back home to change range/scope |
 | `r` | Report | Reload the time entries from the API for the same range/scope |
 | `p` | Report | Open the **Billing settings** screen (rates, currencies, budgets, rounding, timezone) |
@@ -94,7 +94,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `f` | Report | Open the **Filters** screen (list/tag/status/billable) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
-| `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (`<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
+| `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (the CSV invoice is saved as `clickup-invoice-<period>.csv`; `<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
 | `q` | Everywhere except setup / rates / range | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
