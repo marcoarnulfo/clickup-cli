@@ -90,18 +90,9 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Pricing construction mirrors internal/tui's pricingFromConfig exactly; it
-	// is intentionally inlined rather than importing tui — a headless command
-	// must never depend on the TUI package. Centralizing both in
-	// internal/service is a later step.
-	pricing := report.Pricing{
-		Rates:           report.Rates{Default: cfg.Rate, ByList: cfg.Rates},
-		DefaultCurrency: cfg.Currency,
-	}
-
 	// The headless command's ranges are UTC (see resolveRange), so the report
 	// calendar is UTC too.
-	r := report.Build(entries, group, pricing, start, end, nil)
+	r := report.Build(entries, group, pricingFor(cfg), start, end, nil)
 	r.Scope = scope
 
 	switch format {
@@ -113,6 +104,17 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return export.Markdown(os.Stdout, r)
 	default:
 		return fmt.Errorf("unsupported --format %q, want \"json\", \"csv\" or \"md\"", format)
+	}
+}
+
+// pricingFor builds the report pricing from config. It mirrors internal/tui's
+// pricingFromConfig exactly and is intentionally duplicated rather than imported
+// — a headless command must never depend on the TUI package. Centralizing both
+// in internal/service is a later step.
+func pricingFor(cfg config.Config) report.Pricing {
+	return report.Pricing{
+		Rates:           report.Rates{Default: cfg.Rate, ByList: cfg.Rates},
+		DefaultCurrency: cfg.Currency,
 	}
 }
 

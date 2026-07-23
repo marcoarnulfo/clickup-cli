@@ -9,9 +9,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/export"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
 // update regenerates the golden file for TestReportJSONSchemaGolden:
@@ -30,8 +33,8 @@ func fakeReportServer(t *testing.T) *httptest.Server {
 		switch {
 		case strings.Contains(r.URL.Path, "/time_entries"):
 			w.Write([]byte(`{"data":[
-				{"id":"e1","task":{"id":"t1","name":"Task A"},"task_location":{"list_id":"55"},"user":{"id":1,"username":"marco"},"start":"1749110400000","duration":"7200000"},
-				{"id":"e2","task":{"id":"t2","name":"Task B"},"task_location":{"list_id":"66"},"user":{"id":1,"username":"marco"},"start":"1749542400000","duration":"3600000"}
+				{"id":"e1","task":{"id":"t1","name":"Task A"},"task_location":{"list_id":"55"},"user":{"id":1,"username":"marco"},"start":"1749110400000","duration":"7200000","billable":true},
+				{"id":"e2","task":{"id":"t2","name":"Task B"},"task_location":{"list_id":"66"},"user":{"id":1,"username":"marco"},"start":"1749542400000","duration":"3600000","billable":true}
 			]}`))
 		case strings.Contains(r.URL.Path, "/list/55"):
 			w.Write([]byte(`{"id":"55","name":"Client A"}`))
@@ -106,11 +109,14 @@ func TestReportJSONAgainstFakeServer(t *testing.T) {
 		t.Fatalf("report --format json: %v", err)
 	}
 
-	// total_amount is 0 because the ClickUp client does not read the entries'
-	// billable flag yet, so every entry arrives Billable:false and nothing is
-	// billed. The billing engine deliberately bills only billable entries; the
-	// client-side default ("billable absent ⇒ true") lands in a follow-up step,
-	// which will restore the 210 EUR here.
+	// The fixture declares "billable":true on both entries, but the ClickUp
+	// client does not decode that field yet (it lands with the "billable absent
+	// ⇒ true" default in a follow-up step), so entries still reach Build as
+	// non-billable and nothing is billed: total_amount is 0 here. The money
+	// formatting itself is constrained by TestReportMoneyPipeline below, which
+	// does not depend on that client gap. When the client starts reading the
+	// flag, this must go back to 210 (2h*80 + 1h*50) and the golden must be
+	// regenerated with -update.
 	// The deprecated "currency"/"rate" keys stay populated: the JSON schema this
 	// command promises must not break for existing scripts.
 	for _, want := range []string{
@@ -168,9 +174,61 @@ func TestReportCSVFormat(t *testing.T) {
 		t.Errorf("CSV header missing/wrong; got:\n%s", out)
 	}
 	// 0, not 210: see TestReportJSONAgainstFakeServer — entries arrive
-	// non-billable until the client reads the billable flag.
+	// non-billable until the client decodes the billable flag. The real CSV
+	// money row is asserted by TestReportMoneyPipeline.
 	if !strings.Contains(out, "TOTAL,3,0,EUR") {
 		t.Errorf("CSV total row missing; got:\n%s", out)
+	}
+}
+
+// TestReportMoneyPipeline constrains the command's money path — its own
+// pricingFor() plus report.Build plus the export writers — with billable
+// entries. It bypasses exactly one link of the chain, the ClickUp client's
+// entry decoding, which does not read the billable flag yet; every other
+// component is the one runReport uses. Without this, the end-to-end tests above
+// would pass even if Build produced no money at all.
+func TestReportMoneyPipeline(t *testing.T) {
+	cfg := fixtureConfig()
+	start, end, err := resolveRange("2026-06", "", "", "", time.Now())
+	if err != nil {
+		t.Fatalf("resolveRange: %v", err)
+	}
+	entries := []report.TimeEntry{
+		{ID: "e1", TaskID: "t1", TaskName: "Task A", ListID: "55", ListName: "Client A",
+			UserID: 1, UserName: "marco", Start: time.Date(2026, 6, 5, 8, 0, 0, 0, time.UTC),
+			Duration: 2 * time.Hour, Billable: true},
+		{ID: "e2", TaskID: "t2", TaskName: "Task B", ListID: "66", ListName: "Client B",
+			UserID: 1, UserName: "marco", Start: time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC),
+			Duration: time.Hour, Billable: true},
+	}
+	r := report.Build(entries, report.GroupByTotal, pricingFor(cfg), start, end, nil)
+	r.Scope = "me"
+
+	var jsonBuf bytes.Buffer
+	if err := export.JSON(&jsonBuf, r); err != nil {
+		t.Fatalf("export.JSON: %v", err)
+	}
+	for _, want := range []string{
+		`"total_hours": 3`,
+		`"total_amount": 210`, // 2h * 80 (list 55 override) + 1h * 50 (default)
+		`"currency": "EUR"`,
+		`"rate": 50`,
+		`"scope": "me"`,
+	} {
+		if !strings.Contains(jsonBuf.String(), want) {
+			t.Errorf("JSON missing %q; got:\n%s", want, jsonBuf.String())
+		}
+	}
+
+	var csvBuf bytes.Buffer
+	if err := export.CSV(&csvBuf, r); err != nil {
+		t.Fatalf("export.CSV: %v", err)
+	}
+	if !strings.HasPrefix(csvBuf.String(), "label,hours,amount,currency\n") {
+		t.Errorf("CSV header missing/wrong; got:\n%s", csvBuf.String())
+	}
+	if !strings.Contains(csvBuf.String(), "TOTAL,3,210,EUR") {
+		t.Errorf("CSV total row missing; got:\n%s", csvBuf.String())
 	}
 }
 

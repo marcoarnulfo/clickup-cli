@@ -123,8 +123,13 @@ func TestRoundingTwoDecimals(t *testing.T) {
 	if r.Buckets[0].Hours != 0.33 {
 		t.Fatalf("hours should round to 0.33, got %v", r.Buckets[0].Hours)
 	}
-	if r.TotalAmount != 10 { // 1/3 h * 30 = 10.00 exact (per-entry amount from actual hours)
-		t.Fatalf("amount should be 10, got %v", r.TotalAmount)
+	// 9.90, not 10.00: the amount bills the hours the unit reports (0.33 * 30),
+	// so the invoice line reconciles with its own arithmetic. See Build.
+	if r.TotalAmount != 9.9 {
+		t.Fatalf("amount should be 9.9, got %v", r.TotalAmount)
+	}
+	if r.Lines[0].Hours*r.Lines[0].Rate != r.Lines[0].Amount {
+		t.Fatalf("line must reconcile: %+v", r.Lines[0])
 	}
 }
 
@@ -257,10 +262,16 @@ func TestBuildBillableSplitAndCurrency(t *testing.T) {
 		t.Fatalf("report billed hours = %v, want 3", r.BilledHours)
 	}
 	// Buckets carry the split too.
+	byKey := map[string]Bucket{}
 	for _, b := range r.Buckets {
-		if b.Key == "A" && (b.Hours != 3 || b.BillableHours != 2 || b.BilledHours != 2) {
-			t.Fatalf("bucket A = %+v", b)
-		}
+		byKey[b.Key] = b
+	}
+	bA, ok := byKey["A"]
+	if !ok {
+		t.Fatalf("no bucket keyed A in %+v", r.Buckets)
+	}
+	if bA.Hours != 3 || bA.BillableHours != 2 || bA.BilledHours != 2 {
+		t.Fatalf("bucket A = %+v, want hours=3 billable=2 billed=2", bA)
 	}
 }
 
@@ -610,6 +621,45 @@ func TestBuildLinesSumMatchesCurrencySubtotals(t *testing.T) {
 		if sums[s.Currency] != s.Amount {
 			t.Errorf("%s: sum(lines) = %v, subtotal = %v", s.Currency, sums[s.Currency], s.Amount)
 		}
+	}
+}
+
+// Every emitted invoice line must reconcile with its own arithmetic: the amount
+// is computed from the hours the line reports, so Hours * Rate == Amount even
+// for increments whose hour value is not exact to 2 decimals (5m -> 0.08h).
+func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
+	loc := time.UTC
+	at := time.Date(2026, 6, 1, 9, 0, 0, 0, loc)
+	entries := []TimeEntry{
+		{ID: "1", ListID: "A", ListName: "Alpha", UserID: 1, Start: at, Duration: 7 * time.Minute, Billable: true},
+		{ID: "2", ListID: "A", ListName: "Alpha", UserID: 1, Start: at.Add(time.Hour), Duration: 23 * time.Minute, Billable: true},
+		{ID: "3", ListID: "A", ListName: "Alpha", UserID: 1, Start: at.Add(2 * time.Hour), Duration: 41 * time.Minute, Billable: true},
+	}
+	p := Pricing{
+		Rates: Rates{Default: 60}, DefaultCurrency: "EUR",
+		Rounding: RoundRule{Increment: 5 * time.Minute, Mode: duration.RoundNearest, Scope: PerEntry},
+	}
+	r := Build(entries, GroupByList, p, junStart, junEnd, loc)
+	if len(r.Lines) != 3 {
+		t.Fatalf("want 3 lines, got %d", len(r.Lines))
+	}
+	var sum float64
+	for _, l := range r.Lines {
+		if got := round2(l.Hours * l.Rate); got != l.Amount {
+			t.Errorf("line %+v does not reconcile: %v * %v = %v, Amount = %v", l, l.Hours, l.Rate, got, l.Amount)
+		}
+		sum = round2(sum + l.Amount)
+	}
+	// 7m -> 5m (0.08h), 23m -> 25m (0.42h), 41m -> 40m (0.67h), all at 60/h.
+	if r.Lines[0].Hours != 0.08 || r.Lines[0].Amount != 4.8 {
+		t.Errorf("line[0] = %+v, want 0.08h / 4.80", r.Lines[0])
+	}
+	// The ledger identity still holds: sum(lines) == currency subtotal.
+	if len(r.CurrencySubtotals) != 1 || sum != r.CurrencySubtotals[0].Amount {
+		t.Errorf("sum(lines) = %v, subtotals = %+v", sum, r.CurrencySubtotals)
+	}
+	if sum != r.TotalAmount {
+		t.Errorf("sum(lines) = %v, TotalAmount = %v", sum, r.TotalAmount)
 	}
 }
 
