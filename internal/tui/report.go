@@ -101,6 +101,13 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.openBudgetView() {
 			return m, nil
 		}
+	case "v":
+		m = m.openEntries()
+		var cmd tea.Cmd
+		if m.userID == 0 {
+			cmd = m.currentUserCmd() // lazy retry so gating can enable
+		}
+		return m, cmd
 	}
 	return m, nil
 }
@@ -242,7 +249,7 @@ func (rm reportModel) view() string {
 	total += "\n" + styleHelp.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · m/s: change range/scope · r: reload · q: quit")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · v: entries · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("No hours to show.")

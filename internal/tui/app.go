@@ -30,6 +30,7 @@ const (
 	screenFilters
 	screenListBrowser
 	screenBudget
+	screenEntries
 )
 
 // Async messages.
@@ -132,6 +133,7 @@ type Model struct {
 	rangeScreen   rangeModel
 	filtersScreen filtersModel
 	budgetScreen  budgetModel
+	entriesScreen entriesModel
 
 	// shared Space→Folder→List browser (log/rates entry points)
 	browserScreen   listBrowserModel
@@ -567,7 +569,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser && m.screen != screenLog && m.screen != screenEntries {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -770,6 +772,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateListBrowser(msg)
 	case screenBudget:
 		return m.updateBudget(msg)
+	case screenEntries:
+		return m.updateEntries(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -815,6 +819,8 @@ func (m Model) View() string {
 		return m.browserScreen.view()
 	case screenBudget:
 		return m.budgetScreen.view()
+	case screenEntries:
+		return m.entriesView()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}
