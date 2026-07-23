@@ -136,8 +136,12 @@ func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 		"2 entries · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
 		"subtotal EUR", "200.00 EUR",
 		"subtotal USD", "90.00 USD",
-		"billable", "0.50", // non-billable split: 0.50h non-billable
-		"non-billable",
+		// The explicit split line, as one contiguous substring: billable 3h
+		// (2h EUR + 1h USD) and non-billable 0.5h. A bare "non-billable"
+		// check (which "non-billable" itself also satisfies for "billable")
+		// would already pass on the old rendering that only ever showed a
+		// conditional non-billable line — this pins the new segment.
+		"billable 3.00h · non-billable 0.50h",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q; got:\n%s", want, out)
