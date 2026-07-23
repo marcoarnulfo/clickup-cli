@@ -9,20 +9,17 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 	"github.com/marcoarnulfo/clickup-cli/internal/tui"
 	"github.com/spf13/cobra"
 )
-
-// version is the build version reported by `clup --version`. It has no
-// dedicated release tooling yet, so it is pinned to "dev".
-const version = "dev"
 
 // rootCmd builds the root command. Unexported so tests can exercise the
 // command wiring directly without going through Execute/os.Exit.
 func rootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "clup",
-		Version:       version,
+		Version:       service.CurrentVersion(),
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
