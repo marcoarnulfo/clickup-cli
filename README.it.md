@@ -410,16 +410,20 @@ fa:
 - **In cache.** Il risultato è salvato in `os.UserCacheDir()/clup/update.json` e
   riusato per 24 ore, così la maggior parte delle esecuzioni non fa alcuna chiamata
   di rete.
-- **Le build da sorgente sono esenti.** Se hai compilato `clup` tu stesso con un
-  semplice `go build` invece di `go install .../cmd/clup@vX.Y.Z`, il binario riporta
-  una pseudo-version anziché una release numerata, il controllo non parte mai e
-  l'avviso non compare mai.
+- **La maggior parte delle build da sorgente sono esenti.** Se hai compilato
+  `clup` tu stesso con un semplice `go build`, il binario riporta una
+  pseudo-version anziché una release numerata e il controllo non parte mai —
+  a meno che il checkout non sia pulito e posizionato esattamente su un tag di
+  release, nel qual caso riporta esattamente quella versione e il controllo si
+  comporta come per qualsiasi build di release. A tenerlo silenzioso sono i
+  commit successivi al tag, oppure un albero sporco (`+dirty`).
 - **Dove compare:** come riga aggiuntiva nella home della TUI e, per `clup report`,
   come riga su **stderr** stampata dopo il corpo del report — mai su stdout, così
   `clup report --format json` resta interpretabile dagli strumenti a valle.
-- **Disattivarlo** con `CLUP_NO_UPDATE_CHECK=1` (qualsiasi valore non vuoto) oppure
-  con `update_check: false` nel config; la variabile d'ambiente vince sempre sul
-  config. Omettere la chiave lascia il controllo attivo.
+- **Disattivarlo** con `CLUP_NO_UPDATE_CHECK=1` (qualsiasi valore non vuoto), con
+  `update_check: false` nel config, oppure eseguendo in modalità demo
+  (`CLICKUP_DEMO=1`), che non fa alcun I/O; la variabile d'ambiente vince sempre
+  sul config. Omettere la chiave lascia il controllo attivo.
 
 ## Contribuire
 

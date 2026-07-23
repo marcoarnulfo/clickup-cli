@@ -378,16 +378,19 @@ short notice. It is deliberately narrow in what it does:
   `go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest`.
 - **Cached.** The result is stored at `os.UserCacheDir()/clup/update.json` and
   reused for 24 hours, so most runs make no network call at all.
-- **Source builds are exempt.** If you built `clup` yourself with a plain
-  `go build` rather than `go install .../cmd/clup@vX.Y.Z`, the binary reports a
-  pseudo-version rather than a numbered release, the check never runs, and you'll
-  never see the notice.
+- **Most source builds are exempt.** If you built `clup` yourself with a plain
+  `go build`, the binary reports a pseudo-version rather than a numbered release
+  and the check never runs — unless the checkout is clean and sitting exactly on
+  a release tag, in which case it reports that exact version and the check
+  behaves as it would for any release build. Extra commits past the tag, or a
+  dirty tree (`+dirty`), are what keep it silent.
 - **Where it shows up:** as an extra line on the TUI's home screen, and for
   `clup report`, as a line on **stderr** printed after the report body — never on
   stdout, so `clup report --format json` stays parsable by downstream tools.
-- **Opt out** with `CLUP_NO_UPDATE_CHECK=1` (any non-empty value) or with
-  `update_check: false` in the config; the environment variable always wins over
-  the config. Omitting the key leaves the check enabled.
+- **Opt out** with `CLUP_NO_UPDATE_CHECK=1` (any non-empty value), with
+  `update_check: false` in the config, or by running in demo mode
+  (`CLICKUP_DEMO=1`), which performs no I/O at all; the environment variable
+  always wins over the config. Omitting the key leaves the check enabled.
 
 ## Contributing
 
