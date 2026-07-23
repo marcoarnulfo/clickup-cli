@@ -53,3 +53,33 @@ func TestTimeEntriesDescription(t *testing.T) {
 		t.Fatalf("Description = %q, want %q", got[0].Description, "wip")
 	}
 }
+
+func TestTimeEntriesParsesEntryTags(t *testing.T) {
+	const payload = `{"data":[
+		{"id":"e1","start":"1700000000000","duration":"3600000",
+		 "task":{"id":"t1","name":"Fix"},
+		 "task_tags":[{"name":"backend"}],
+		 "tags":[{"name":"focus"},{"name":"client-A"}]}
+	]}`
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(payload))
+	})
+	defer srv.Close()
+
+	entries, err := c.TimeEntries(context.Background(), "team1",
+		time.UnixMilli(0), time.UnixMilli(2_000_000_000_000), nil)
+	if err != nil {
+		t.Fatalf("TimeEntries error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+	e := entries[0]
+	// task tags stay in Tags (report grouping); entry tags go to EntryTags.
+	if len(e.Tags) != 1 || e.Tags[0] != "backend" {
+		t.Errorf("Tags = %v, want [backend] (task tags)", e.Tags)
+	}
+	if len(e.EntryTags) != 2 || e.EntryTags[0] != "focus" || e.EntryTags[1] != "client-A" {
+		t.Errorf("EntryTags = %v, want [focus client-A]", e.EntryTags)
+	}
+}

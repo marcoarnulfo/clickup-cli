@@ -699,6 +699,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenEntries
 		return m, nil
 
+	case tagsMsg:
+		if m.screen != screenEntries {
+			return m, nil // stale: the user left the browser before the fetch landed
+		}
+		es := m.entriesScreen
+		es.tagLoading = false
+		es.tagAll = unionSortedTags(msg.tags, es.tagAll) // fetched ∪ current, deduped+sorted
+		m.entriesScreen = es
+		return m, nil
+
 	case teamsMsg:
 		// delivered to setup for workspace selection
 		var cmd tea.Cmd

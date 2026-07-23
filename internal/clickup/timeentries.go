@@ -53,6 +53,9 @@ type rawEntry struct {
 	TaskTags []struct {
 		Name string `json:"name"`
 	} `json:"task_tags"`
+	Tags []struct {
+		Name string `json:"name"`
+	} `json:"tags"` // the entry's own time-tracking tags
 	Billable    *bool  `json:"billable"` // absent (nil) means "bill everything": defaults to true
 	Description string `json:"description"`
 }
@@ -73,6 +76,10 @@ func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 	for _, t := range r.TaskTags {
 		tags = append(tags, t.Name)
 	}
+	entryTags := make([]string, 0, len(r.Tags))
+	for _, t := range r.Tags {
+		entryTags = append(entryTags, t.Name)
+	}
 	billable := true
 	if r.Billable != nil {
 		billable = *r.Billable
@@ -88,6 +95,7 @@ func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 		Start:       time.UnixMilli(startMs).UTC(),
 		Duration:    time.Duration(ms) * time.Millisecond,
 		Tags:        tags,
+		EntryTags:   entryTags,
 		Billable:    billable,
 		Description: r.Description,
 	}, nil
