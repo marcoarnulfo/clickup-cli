@@ -51,6 +51,10 @@ type (
 		err    error
 	}
 
+	// historyMsg carries a time entry's change history (Task 8), delivered by
+	// historyCmd and rendered by the read-only entriesHistory browser mode.
+	historyMsg struct{ changes []clickup.HistoryChange }
+
 	spacesMsg        struct{ spaces []clickup.Space }
 	spaceContentsMsg struct {
 		spaceID    string
@@ -676,6 +680,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		es.mode = entriesList
 		es.msg = msg.err.Error()
 		es.msgErr = true
+		m.entriesScreen = es
+		m.screen = screenEntries
+		return m, nil
+
+	case historyMsg:
+		es := m.entriesScreen
+		es.historyChanges = msg.changes
+		es.mode = entriesHistory
 		m.entriesScreen = es
 		m.screen = screenEntries
 		return m, nil

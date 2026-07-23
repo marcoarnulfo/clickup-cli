@@ -64,6 +64,10 @@ type entriesModel struct {
 	editBillable bool
 	editID       string
 	input        textinput.Model
+
+	// history (Task 8): read-only change list opened with 'h', for ANY entry
+	// (not ownership-gated — it's read-only).
+	historyChanges []clickup.HistoryChange
 }
 
 // canEdit reports whether the authenticated user owns the entry. The userID != 0
@@ -143,8 +147,19 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
 				es = enterEditForm(es, m.now(), m.loc)
 			}
+		case "h":
+			// Read-only, not ownership-gated: history is allowed on ANY entry.
+			if len(es.entries) > 0 {
+				id := es.entries[es.idx].ID
+				m.entriesScreen = es
+				m.screen = screenLoading
+				return m, m.historyCmd(id)
+			}
 		}
-		// h wired in Task 8.
+	case entriesHistory:
+		if msg.String() == "esc" {
+			es.mode = entriesList
+		}
 	case entriesConfirmDelete:
 		switch msg.String() {
 		case "y", "Y":
@@ -333,6 +348,28 @@ func (m Model) updateEntryCmd(id string, start time.Time, dur time.Duration, not
 	}
 }
 
+// historyCmd fetches entry id's change history (real: clickup.TimeEntryHistory;
+// demo: demoHistoryCmd) and returns historyMsg on success. A fetch error routes
+// through entriesErr (Task 6) so it shows inline in the browser, never a
+// dead-end screenError — history is read-only and not worth losing the
+// browser over.
+func (m Model) historyCmd(id string) tea.Cmd {
+	if m.demo {
+		return demoHistoryCmd()
+	}
+	c := m.client
+	teamID := m.cfg.WorkspaceID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		changes, err := c.TimeEntryHistory(ctx, teamID, id)
+		if err != nil {
+			return entriesErr(err)
+		}
+		return historyMsg{changes: changes}
+	}
+}
+
 // reloadForBrowser re-reads the entries synchronously (inside a cmd goroutine)
 // and wraps them in entriesReloadedMsg. Real mode uses service.LoadEntries;
 // demo mode goes through demoEntriesSnapshot so demoDeleted/demoOverrides are
@@ -363,6 +400,9 @@ func (m Model) entriesView() string {
 	}
 	if es.mode == entriesEdit {
 		return entriesEditView(es)
+	}
+	if es.mode == entriesHistory {
+		return entriesHistoryView(es, m.loc)
 	}
 	b := styleTitle.Render("Entries") + "\n\n"
 	if len(es.entries) == 0 {

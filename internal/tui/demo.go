@@ -174,6 +174,20 @@ func (m Model) demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
 	return func() tea.Msg { return entriesMsg{entries: snap} }
 }
 
+// demoHistoryChanges is a small fixed change history for demo mode (Task 8),
+// enough to make the read-only history view demonstrable without any I/O.
+func demoHistoryChanges() []clickup.HistoryChange {
+	return []clickup.HistoryChange{
+		{Field: "duration", Before: "3600000", After: "5400000", Date: time.Date(2026, time.July, 3, 9, 5, 0, 0, time.UTC), User: "alice"},
+		{Field: "description", Before: "", After: "Landing page redesign", Date: time.Date(2026, time.July, 3, 9, 10, 0, 0, time.UTC), User: "alice"},
+	}
+}
+
+// demoHistoryCmd delivers the fake history as historyMsg (no I/O).
+func demoHistoryCmd() tea.Cmd {
+	return func() tea.Msg { return historyMsg{changes: demoHistoryChanges()} }
+}
+
 // demoSpaces / demoSpaceContents are fake workspace data for demo mode.
 func demoSpaces() []clickup.Space {
 	return []clickup.Space{{ID: "s-web", Name: "Web"}, {ID: "s-mobile", Name: "Mobile"}}
