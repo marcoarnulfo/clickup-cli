@@ -29,6 +29,7 @@ const (
 	screenRange
 	screenFilters
 	screenListBrowser
+	screenBudget
 )
 
 // Async messages.
@@ -74,9 +75,19 @@ type Model struct {
 	preset      string    // report.Preset* ; default report.PresetThisMonth
 	customStart time.Time // used when preset == report.PresetCustom
 	customEnd   time.Time
+	// periodMode overrides preset with the current ISO week when set to
+	// periodModeWeek (#4); "" (periodModeMonth) is the default month/preset
+	// behavior. Toggled from Home with 'w'.
+	periodMode string
 
 	// injectable clock (default: time.Now)
 	now func() time.Time
+
+	// loc is the resolved location for range computation and report building
+	// (#83): the configured timezone, falling back to time.Local. Set once at
+	// New() and re-resolved (with error surfacing) by locOrErr at each report
+	// build, mirroring pricingOrErr.
+	loc *time.Location
 
 	// data
 	report          report.Report
@@ -84,10 +95,11 @@ type Model struct {
 	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
 	teamMembers     []clickup.Member // workspace members (session cache)
 
-	// client-side report filter (list/tag/status); empty = no filter
+	// client-side report filter (list/tag/status/billable); empty/nil = no filter
 	filterLists    map[string]bool
 	filterTags     map[string]bool
 	filterStatuses map[string]bool
+	filterBillable *bool             // nil = no constraint; see report.FilterCriteria.Billable
 	taskStatus     map[string]string // task id -> current status (session cache)
 
 	// sub-models
@@ -100,6 +112,7 @@ type Model struct {
 	membersScreen membersModel
 	rangeScreen   rangeModel
 	filtersScreen filtersModel
+	budgetScreen  budgetModel
 
 	// shared Space→Folder→List browser (log/rates entry points)
 	browserScreen   listBrowserModel
@@ -121,8 +134,11 @@ func New(cfg config.Config) Model {
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
 	}
-	t := m.now()
-	m.year, m.month = t.Year(), t.Month()
+	// Best-effort default so range/label display works before the first report
+	// build; a genuinely invalid configured zone is caught and surfaced by
+	// locOrErr the first time a report is actually built (see #83).
+	m.loc, _ = service.LoadLocation(cfg.Timezone, time.Local)
+	m.year, m.month = defaultYearMonth(m.now(), m.loc)
 	if m.demo || m.cfg.Valid() {
 		m.screen = screenHome
 		m.home = newHome()
@@ -133,15 +149,44 @@ func New(cfg config.Config) Model {
 	return m
 }
 
+// defaultYearMonth picks the year/month a newly-constructed Model should
+// default to, deriving it from now resolved into loc rather than now's own
+// location. Without this, a configured non-local timezone (m.loc) would be
+// ignored for exactly this one calendar pick: a user in Rome with
+// timezone: Pacific/Auckland configured would get the wrong default month
+// for a few hours a day, even though m.loc is resolved one line above in New.
+// loc == nil (an invalid configured zone, surfaced later by locOrErr) is
+// treated as UTC, the same nil-means-UTC convention used throughout
+// internal/report and by currentRange's week branch.
+func defaultYearMonth(now time.Time, loc *time.Location) (int, time.Month) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	t := now.In(loc)
+	return t.Year(), t.Month()
+}
+
 func (m Model) Init() tea.Cmd { return nil }
 
-// currentRange returns the [start, end) period the report should cover, from the
+// currentRange returns the [start, end) period the report should cover.
+// periodMode == periodModeWeek overrides everything else with the current
+// ISO week, derived from the injected clock (m.now()) and the Model's single
+// resolved location (m.loc) — never time.Now() and never a second location
+// (see the task's binding note on the week toggle). Otherwise it follows the
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
-	if m.preset == report.PresetCustom {
-		return report.CustomRange(m.customStart, m.customEnd)
+	if m.periodMode == periodModeWeek {
+		loc := m.loc
+		if loc == nil { // same nil-means-UTC convention as the report package (#83)
+			loc = time.UTC
+		}
+		isoYear, isoWeek := m.now().In(loc).ISOWeek()
+		return report.WeekRange(isoYear, isoWeek, loc)
 	}
-	return report.RangeForPreset(m.preset, m.year, m.month, m.now())
+	if m.preset == report.PresetCustom {
+		return report.CustomRange(m.customStart, m.customEnd, m.loc)
+	}
+	return report.RangeForPreset(m.preset, m.year, m.month, m.now(), m.loc)
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
@@ -180,14 +225,43 @@ func (m Model) selectedAssignees() []int {
 	return ids
 }
 
-// ratesFromConfig builds the report rates from config (default + overrides).
-func ratesFromConfig(cfg config.Config) report.Rates {
-	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+// pricingOrErr builds report.Pricing from config via the shared
+// service.PricingFromConfig. On error (an unparseable billing.rounding
+// increment, see #57) it routes to screenError exactly like the errMsg case
+// in Update, and ok is false so the caller must skip the report rebuild.
+func (m *Model) pricingOrErr() (report.Pricing, bool) {
+	p, err := service.PricingFromConfig(m.cfg)
+	if err != nil {
+		m.err = err
+		m.screen = screenError
+		return report.Pricing{}, false
+	}
+	return p, true
+}
+
+// locOrErr resolves and (re-)caches the TUI's location — the configured
+// timezone, falling back to time.Local — and mirrors pricingOrErr: an
+// invalid configured zone routes to screenError instead of silently falling
+// back. Call it right before currentRange/report.Build at every report-build
+// site (#83): a range computed in one zone and a report built in another
+// would mis-assign entries at day boundaries.
+func (m *Model) locOrErr() (*time.Location, bool) {
+	loc, err := service.LoadLocation(m.cfg.Timezone, time.Local)
+	if err != nil {
+		m.err = err
+		m.screen = screenError
+		return nil, false
+	}
+	m.loc = loc
+	return loc, true
 }
 
 // filterCriteria assembles the active client-side filter from session state.
 func (m Model) filterCriteria() report.FilterCriteria {
-	return report.FilterCriteria{Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses}
+	return report.FilterCriteria{
+		Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses,
+		Billable: m.filterBillable,
+	}
 }
 
 // visibleEntries applies the active filter to the loaded entries.
@@ -479,8 +553,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
+		if _, ok := m.locOrErr(); !ok {
+			return m, nil
+		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		p, ok := m.pricingOrErr()
+		if !ok {
+			return m, nil
+		}
+		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
@@ -536,7 +617,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.taskStatus[id] = st
 		}
 		m.assignStatuses()
-		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
 		m.screen = screenFilters
 		return m, nil
 
@@ -595,6 +676,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateFilters(msg)
 	case screenListBrowser:
 		return m.updateListBrowser(msg)
+	case screenBudget:
+		return m.updateBudget(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -631,6 +714,8 @@ func (m Model) View() string {
 		return m.filtersScreen.view()
 	case screenListBrowser:
 		return m.browserScreen.view()
+	case screenBudget:
+		return m.budgetScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}

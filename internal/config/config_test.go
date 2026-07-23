@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -340,5 +341,149 @@ func TestSaveRoundTripsTokenWithoutEnv(t *testing.T) {
 
 	if string(data1) != string(data2) {
 		t.Fatalf("expected byte-stable steady-state round trip:\ndata1=%q\ndata2=%q", data1, data2)
+	}
+}
+
+// --- Task 6: schema v2 (timezone + billing block) ---
+
+func TestLoadV1MigratesToV2(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "clup", "config.yml")
+	legacyPath := filepath.Join(dir, "clickup-cli", "config.yml")
+	withPaths(t, newPath, legacyPath)
+
+	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A v1 config: schema_version 1, only the old rate/rates/currency fields.
+	v1 := "schema_version: 1\n" +
+		"token: tok\n" +
+		"workspace_id: \"1\"\n" +
+		"currency: EUR\n" +
+		"rate: 45\n" +
+		"rates:\n" +
+		"  \"111\": 60\n"
+	if err := os.WriteFile(newPath, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.SchemaVersion != 2 {
+		t.Fatalf("expected schema_version migrated to 2, got %d", got.SchemaVersion)
+	}
+	if got.Currency != "EUR" || got.Rate != 45 {
+		t.Fatalf("expected v1 fields preserved, got currency=%q rate=%v", got.Currency, got.Rate)
+	}
+	if len(got.Rates) != 1 || got.Rates["111"] != 60 {
+		t.Fatalf("expected v1 rates preserved, got %+v", got.Rates)
+	}
+	if got.Timezone != "" {
+		t.Fatalf("expected Timezone to stay empty on migration, got %q", got.Timezone)
+	}
+	if !reflect.DeepEqual(got.Billing, Billing{}) {
+		t.Fatalf("expected Billing to stay zero on migration, got %+v", got.Billing)
+	}
+}
+
+func TestSaveLoadV2RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "clup", "config.yml")
+	legacyPath := filepath.Join(dir, "clickup-cli", "config.yml")
+	withPaths(t, newPath, legacyPath)
+
+	want := Config{
+		Token:       "tok_v2",
+		WorkspaceID: "900",
+		Currency:    "EUR",
+		Rate:        45,
+		Timezone:    "Europe/Rome",
+		Billing: Billing{
+			DefaultCurrency: "EUR",
+			RatesByMember:   map[int]float64{1: 50, 2: 65},
+			RateOverrides: []Override{
+				{List: "111", Member: 1, Rate: 80},
+			},
+			Currencies: map[string]string{"111": "USD"},
+			Budgets:    map[string]float64{"111": 1000},
+			Rounding:   Rounding{Increment: "15m", Mode: "up", Scope: "entry"},
+		},
+	}
+	if err := Save(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Timezone != want.Timezone {
+		t.Fatalf("timezone round-trip mismatch: got %q want %q", got.Timezone, want.Timezone)
+	}
+	if !reflect.DeepEqual(got.Billing, want.Billing) {
+		t.Fatalf("billing round-trip mismatch:\ngot  %+v\nwant %+v", got.Billing, want.Billing)
+	}
+	if got.SchemaVersion != 2 {
+		t.Fatalf("expected schema_version 2, got %d", got.SchemaVersion)
+	}
+}
+
+// TestMigrateIdempotentOnV2 guards against re-migration drift (amendment M3):
+// loading an already-v2 config, saving it, and loading it again must leave
+// the whole Config unchanged -- no field drift, no repeated migration side
+// effects.
+func TestMigrateIdempotentOnV2(t *testing.T) {
+	dir := t.TempDir()
+	newPath := filepath.Join(dir, "clup", "config.yml")
+	legacyPath := filepath.Join(dir, "clickup-cli", "config.yml")
+	withPaths(t, newPath, legacyPath)
+
+	seed := Config{
+		Token:       "tok_v2",
+		WorkspaceID: "900",
+		Currency:    "EUR",
+		Rate:        45,
+		Rates:       map[string]float64{"111": 60},
+		Timezone:    "Europe/Rome",
+		Billing: Billing{
+			DefaultCurrency: "EUR",
+			RatesByMember:   map[int]float64{1: 50},
+			RateOverrides:   []Override{{List: "111", Member: 1, Rate: 80}},
+			Currencies:      map[string]string{"111": "USD"},
+			Budgets:         map[string]float64{"111": 1000},
+			Rounding:        Rounding{Increment: "15m", Mode: "up", Scope: "entry"},
+		},
+	}
+	if err := Save(seed); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	first, err := Load()
+	if err != nil {
+		t.Fatalf("Load (1st): %v", err)
+	}
+	if first.SchemaVersion != 2 {
+		t.Fatalf("expected schema_version 2 after first load, got %d", first.SchemaVersion)
+	}
+
+	if err := Save(first); err != nil {
+		t.Fatalf("Save (2nd): %v", err)
+	}
+	second, err := Load()
+	if err != nil {
+		t.Fatalf("Load (2nd): %v", err)
+	}
+
+	// Clear the unexported provenance fields before comparing: they are not
+	// part of the persisted schema and their transient state (e.g.
+	// loadedFromLegacy) is irrelevant to this test's claim.
+	first.fileToken, second.fileToken = "", ""
+	first.tokenFromEnv, second.tokenFromEnv = false, false
+	first.loadedFromLegacy, second.loadedFromLegacy = false, false
+
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("expected idempotent migrate/save/load cycle, no drift:\nfirst  %+v\nsecond %+v", first, second)
 	}
 }

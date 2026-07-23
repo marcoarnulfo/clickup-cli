@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -19,6 +21,11 @@ import (
 var loadConfig = config.Load
 var newClient = func(token string) *clickup.Client { return clickup.New(token) }
 
+// rangePrecedence documents (and is quoted by) every range flag's help text,
+// so the priority order is discoverable from --help alone rather than only
+// from source or docs.
+const rangePrecedence = "range priority: --month > --week > --from/--to > --preset > current month (default)"
+
 // reportCmd builds the headless `report` subcommand: it loads the config,
 // builds a report for a range/scope, and writes it to stdout. It never
 // starts bubbletea.
@@ -31,13 +38,17 @@ func reportCmd() *cobra.Command {
 		SilenceErrors: true,
 		RunE:          runReport,
 	}
-	cmd.Flags().String("month", "", "report month, YYYY-MM (default: current month)")
-	cmd.Flags().String("from", "", "range start date, YYYY-MM-DD (use with --to)")
-	cmd.Flags().String("to", "", "range end date, YYYY-MM-DD, inclusive (use with --from)")
-	cmd.Flags().String("preset", "", "range preset: this_month|last_month|last_7d|last_30d|this_week")
+	cmd.Flags().String("month", "", "report month, YYYY-MM; "+rangePrecedence)
+	cmd.Flags().String("week", "", "report ISO-8601 week, YYYY-Www (e.g. 2026-W30); "+rangePrecedence)
+	cmd.Flags().String("from", "", "range start date, YYYY-MM-DD (use with --to); "+rangePrecedence)
+	cmd.Flags().String("to", "", "range end date, YYYY-MM-DD, inclusive (use with --from); "+rangePrecedence)
+	cmd.Flags().String("preset", "", "range preset: this_month|last_month|last_7d|last_30d|this_week; "+rangePrecedence)
 	cmd.Flags().String("scope", "me", "report scope: me|team")
-	cmd.Flags().String("group", report.GroupByTotal, "group by: task|list|day|member|total")
-	cmd.Flags().String("format", "json", "output format: json|csv|md")
+	cmd.Flags().String("group", report.GroupByTotal, "group by: task|list|day|member|tag|total")
+	cmd.Flags().String("format", "json", "output format: json|csv|md|html|csv-invoice")
+	cmd.Flags().Bool("billable", false, "filter to billable entries only (pass --billable=false to keep non-billable entries only); default: no filter")
+	cmd.Flags().StringArray("tag", nil, "filter to entries carrying this tag (repeatable; matches any of the given tags)")
+	cmd.Flags().String("tz", "", "IANA timezone for range boundaries and the report's timezone field (default: config's timezone, else UTC)")
 	return cmd
 }
 
@@ -46,21 +57,25 @@ func reportCmd() *cobra.Command {
 // seams (loadConfig/newClient), never tui's demo data.
 func runReport(cmd *cobra.Command, args []string) error {
 	month, _ := cmd.Flags().GetString("month")
+	week, _ := cmd.Flags().GetString("week")
 	from, _ := cmd.Flags().GetString("from")
 	to, _ := cmd.Flags().GetString("to")
 	preset, _ := cmd.Flags().GetString("preset")
 	scope, _ := cmd.Flags().GetString("scope")
 	group, _ := cmd.Flags().GetString("group")
 	format, _ := cmd.Flags().GetString("format")
+	tags, _ := cmd.Flags().GetStringArray("tag")
+	billable, _ := cmd.Flags().GetBool("billable")
+	tzFlag, _ := cmd.Flags().GetString("tz")
 
 	if scope != "me" && scope != "team" {
 		return fmt.Errorf("unsupported --scope %q, want \"me\" or \"team\"", scope)
 	}
 	switch group {
-	case report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember:
+	case report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember, report.GroupByTag:
 	default:
-		return fmt.Errorf("unsupported --group %q, want one of %q, %q, %q, %q, %q",
-			group, report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember)
+		return fmt.Errorf("unsupported --group %q, want one of %q, %q, %q, %q, %q, %q",
+			group, report.GroupByTotal, report.GroupByTask, report.GroupByList, report.GroupByDay, report.GroupByMember, report.GroupByTag)
 	}
 	if preset != "" {
 		switch preset {
@@ -79,7 +94,19 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("run 'clup' to configure, or set CLICKUP_TOKEN")
 	}
 
-	start, end, err := resolveRange(month, from, to, preset, time.Now())
+	// Timezone two-track (global constraint): headless defaults to UTC and
+	// never changes silently. Resolution order: --tz flag, then config
+	// timezone, then UTC.
+	tzName := tzFlag
+	if tzName == "" {
+		tzName = cfg.Timezone
+	}
+	loc, err := service.LoadLocation(tzName, time.UTC)
+	if err != nil {
+		return err
+	}
+
+	start, end, err := resolveRange(month, week, from, to, preset, time.Now(), loc)
 	if err != nil {
 		return err
 	}
@@ -90,12 +117,26 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Rates construction mirrors internal/tui's ratesFromConfig exactly; this
-	// is intentionally inlined rather than importing tui, to avoid coupling a
-	// headless command to the TUI package for a two-line struct literal.
-	rates := report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+	// A3: the billable filter already exists on report.FilterCriteria — use
+	// it rather than inventing a private pre-filter. Billable is only set
+	// (non-nil) when --billable was actually passed on the command line, so
+	// omitting the flag imposes no constraint (both billable and
+	// non-billable entries are kept).
+	criteria := report.FilterCriteria{Tags: tagSet(tags)}
+	if cmd.Flags().Changed("billable") {
+		b := billable
+		criteria.Billable = &b
+	}
+	if !criteria.Empty() {
+		entries = report.Filter(entries, criteria)
+	}
 
-	r := report.Build(entries, group, rates, cfg.Currency, start, end)
+	p, err := service.PricingFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	r := report.Build(entries, group, p, start, end, loc)
 	r.Scope = scope
 
 	switch format {
@@ -105,22 +146,80 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return export.CSV(os.Stdout, r)
 	case "md":
 		return export.Markdown(os.Stdout, r)
+	case "html":
+		return export.HTML(os.Stdout, r)
+	case "csv-invoice":
+		return export.InvoiceCSV(os.Stdout, r)
 	default:
-		return fmt.Errorf("unsupported --format %q, want \"json\", \"csv\" or \"md\"", format)
+		return fmt.Errorf("unsupported --format %q, want \"json\", \"csv\", \"md\", \"html\" or \"csv-invoice\"", format)
 	}
 }
 
+// tagSet converts a repeatable --tag flag's values into the map
+// report.FilterCriteria.Tags expects. A nil/empty input returns a nil map,
+// which is fine: FilterCriteria.Empty() treats it as no constraint.
+func tagSet(tags []string) map[string]bool {
+	if len(tags) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		m[t] = true
+	}
+	return m
+}
+
+// weekFlagPattern matches the --week flag's required YYYY-Www shape (a
+// 4-digit ISO year, literal "W", 2-digit week number). Bounds on the week
+// number itself are checked separately by parseWeekFlag, so the error
+// message can distinguish "malformed" from "out of range".
+var weekFlagPattern = regexp.MustCompile(`^(\d{4})-W(\d{2})$`)
+
+// parseWeekFlag parses --week's YYYY-Www value into an ISO year/week pair,
+// rejecting malformed strings and week numbers outside 1-53 (amendment M4).
+// This is the only bounds guard: report.WeekRange itself does no validation
+// and would silently extrapolate past the real weeks of a year (e.g. week 0
+// or 54).
+func parseWeekFlag(week string) (isoYear, isoWeek int, err error) {
+	m := weekFlagPattern.FindStringSubmatch(week)
+	if m == nil {
+		return 0, 0, fmt.Errorf("invalid --week %q: want format YYYY-Www (e.g. 2026-W30)", week)
+	}
+	isoYear, _ = strconv.Atoi(m[1])
+	isoWeek, _ = strconv.Atoi(m[2])
+	if isoWeek < 1 || isoWeek > 53 {
+		return 0, 0, fmt.Errorf("invalid --week %q: week %d out of range, want 1-53", week, isoWeek)
+	}
+	return isoYear, isoWeek, nil
+}
+
 // resolveRange picks exactly one range source, in priority order: --month,
-// then --from/--to, then --preset, else this month. All boundaries are UTC.
-func resolveRange(month, from, to, preset string, now time.Time) (start, end time.Time, err error) {
-	now = now.UTC()
+// --week, --from/--to, --preset, else this month. Boundaries are computed in
+// loc (the caller resolves loc via service.LoadLocation before calling this,
+// defaulting to UTC).
+func resolveRange(month, week, from, to, preset string, now time.Time, loc *time.Location) (start, end time.Time, err error) {
+	// n is now resolved into loc before reading its Year()/Month(): the
+	// preset/default branches below pick a calendar month, and that pick
+	// must follow the range's own timezone (UTC by default, never the
+	// machine's local clock) rather than now's original location. Without
+	// this, a run near a month boundary could report a different month in
+	// UTC than the pre-v1.7 CLI did (see the headless "never changes
+	// silently" constraint).
+	n := now.In(loc)
 	switch {
 	case month != "":
 		t, err := time.Parse("2006-01", month)
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("invalid --month %q: %w", month, err)
 		}
-		start, end := report.RangeForPreset(report.PresetThisMonth, t.Year(), t.Month(), now)
+		start, end := report.RangeForPreset(report.PresetThisMonth, t.Year(), t.Month(), now, loc)
+		return start, end, nil
+	case week != "":
+		isoYear, isoWeek, err := parseWeekFlag(week)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		start, end := report.WeekRange(isoYear, isoWeek, loc)
 		return start, end, nil
 	case from != "" || to != "":
 		if from == "" || to == "" {
@@ -134,13 +233,13 @@ func resolveRange(month, from, to, preset string, now time.Time) (start, end tim
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("invalid --to %q: %w", to, err)
 		}
-		start, end := report.CustomRange(f, tt)
+		start, end := report.CustomRange(f, tt, loc)
 		return start, end, nil
 	case preset != "":
-		start, end := report.RangeForPreset(preset, now.Year(), now.Month(), now)
+		start, end := report.RangeForPreset(preset, n.Year(), n.Month(), now, loc)
 		return start, end, nil
 	default:
-		start, end := report.RangeForPreset(report.PresetThisMonth, now.Year(), now.Month(), now)
+		start, end := report.RangeForPreset(report.PresetThisMonth, n.Year(), n.Month(), now, loc)
 		return start, end, nil
 	}
 }

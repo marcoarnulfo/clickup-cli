@@ -73,3 +73,36 @@ func Format(d time.Duration) string {
 		return fmt.Sprintf("%dm", m)
 	}
 }
+
+// FormatHours renders a duration as decimal hours with 2 decimals, e.g. "1.50h".
+func FormatHours(d time.Duration) string {
+	return strconv.FormatFloat(d.Hours(), 'f', 2, 64) + "h"
+}
+
+type RoundMode int
+
+const (
+	RoundNearest RoundMode = iota
+	RoundUp
+)
+
+// Round rounds d to the nearest multiple of increment (RoundNearest) or up to it
+// (RoundUp). increment <= 0 returns d unchanged. Negative d is returned unchanged.
+func Round(d, increment time.Duration, mode RoundMode) time.Duration {
+	if increment <= 0 || d <= 0 {
+		return d
+	}
+	q := d / increment
+	r := d % increment
+	switch mode {
+	case RoundUp:
+		if r > 0 {
+			q++
+		}
+	default: // RoundNearest
+		if r*2 >= increment {
+			q++
+		}
+	}
+	return q * increment
+}

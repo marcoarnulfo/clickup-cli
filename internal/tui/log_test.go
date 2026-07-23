@@ -9,6 +9,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
 func key(s string) tea.KeyMsg {
@@ -26,9 +27,13 @@ func newTestModelOnReport() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
 	m := New(cfg)
 	m.screen = screenReport
-	m.entries = []report.TimeEntry{{ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1"}}
-	start, end := report.MonthRange(m.year, m.month)
-	m.report = report.Build(m.entries, report.GroupByTotal, ratesFromConfig(cfg), "EUR", start, end)
+	m.entries = []report.TimeEntry{{ID: "e1", ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1", Billable: true}}
+	start, end := report.MonthRange(m.year, m.month, nil)
+	p, err := service.PricingFromConfig(cfg)
+	if err != nil {
+		panic(err) // fixed test config, never expected to fail
+	}
+	m.report = report.Build(m.entries, report.GroupByTotal, p, start, end, nil)
 	m.rep = newReport(m.report, "")
 	return m
 }

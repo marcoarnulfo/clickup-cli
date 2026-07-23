@@ -18,8 +18,28 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+// TestDefaultYearMonthFollowsLoc pins the fix for "New's default year/month
+// uses the local calendar even when a configured timezone names a different
+// zone". now is fixed at 23:30 on the last day of July in UTC (Rome-ish
+// local time is well within July), but loc is Pacific/Auckland (well ahead
+// of UTC), where the same instant already falls on August 1st. The default
+// month must follow loc, not now's own location.
+func TestDefaultYearMonthFollowsLoc(t *testing.T) {
+	auckland, err := time.LoadLocation("Pacific/Auckland")
+	if err != nil {
+		t.Skipf("tzdata unavailable: %v", err)
+	}
+	now := time.Date(2026, time.July, 31, 23, 30, 0, 0, time.UTC)
+
+	year, month := defaultYearMonth(now, auckland)
+	if year != 2026 || month != time.August {
+		t.Errorf("defaultYearMonth = %d-%s, want 2026-August (Auckland is already in August)", year, month)
+	}
+}
 
 func TestCurrentRangeDefaultsToMonth(t *testing.T) {
 	m := Model{
@@ -29,7 +49,7 @@ func TestCurrentRangeDefaultsToMonth(t *testing.T) {
 		now:    time.Now,
 	}
 	start, end := m.currentRange()
-	ws, we := report.MonthRange(2026, time.July)
+	ws, we := report.MonthRange(2026, time.July, nil)
 	if !start.Equal(ws) || !end.Equal(we) {
 		t.Errorf("currentRange = [%s,%s), want month", start, end)
 	}
@@ -45,12 +65,15 @@ func TestCurrentRangeCustomIsInclusive(t *testing.T) {
 	}
 }
 
+// #83: a Model built via New() defaults to time.Local (no `timezone`
+// configured), not UTC — currentRange must reflect that, since it feeds the
+// same loc into report.Build (see TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild).
 func TestCurrentRangeUsesInjectedClock(t *testing.T) {
 	fixed := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	m := newWithClock(config.Config{Token: "t", WorkspaceID: "1"}, func() time.Time { return fixed })
 	m.preset = report.PresetLast7d
 	start, end := m.currentRange()
-	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed)
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed, time.Local)
 	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
 		t.Fatalf("range = [%v,%v), want [%v,%v)", start, end, wantStart, wantEnd)
 	}
@@ -390,6 +413,77 @@ func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
 	}
 }
 
+// #83: the location used to compute the report's range and the location
+// used to build the report (day-bucketing) must be the same value, or a
+// boundary entry is mis-assigned to the wrong day/period. Europe/Rome is
+// UTC+2 in July (DST): this instant is 2026-06-30 23:00 UTC but
+// 2026-07-01 01:00 in Rome, so it belongs to the July "this_month" report
+// AND to the 2026-07-01 day bucket only if both the range and the
+// day-grouping are computed in Rome — never a mix of Rome and UTC.
+func TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Europe/Rome"}
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	m.preset = report.PresetThisMonth
+	m.report.GroupBy = report.GroupByDay // carried across the reload by entriesMsg
+
+	boundary := time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC)
+	entries := []report.TimeEntry{
+		{ID: "1", ListID: "l", ListName: "L", Start: boundary, Duration: time.Hour, Billable: true},
+	}
+	updated, _ := m.Update(entriesMsg{entries: entries})
+	mm := updated.(Model)
+
+	if mm.screen != screenReport {
+		t.Fatalf("screen = %v, want screenReport (err: %v)", mm.screen, mm.err)
+	}
+	if mm.report.Timezone != "Europe/Rome" {
+		t.Fatalf("report.Timezone = %q, want Europe/Rome — Build must receive the same loc as the range", mm.report.Timezone)
+	}
+	wantStart := time.Date(2026, 6, 30, 22, 0, 0, 0, time.UTC) // 2026-07-01T00:00:00 in Rome
+	if !mm.report.Start.Equal(wantStart) {
+		t.Fatalf("report.Start = %v, want %v (this_month range must be computed in Rome, not UTC)", mm.report.Start, wantStart)
+	}
+	if len(mm.report.Buckets) != 1 || mm.report.Buckets[0].Label != "2026-07-01" {
+		t.Fatalf("buckets = %+v, want a single 2026-07-01 bucket (the boundary entry is July 1st in Rome)", mm.report.Buckets)
+	}
+}
+
+// #57: an unparseable billing.rounding.increment must route to screenError
+// exactly like errMsg (never silently fall back to unrounded billing), and
+// must not leave a stale report screen in place.
+func TestEntriesMsgWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}
+	cfg.Billing.Rounding.Increment = "not-a-duration"
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
+	mm := updated.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("entriesMsg with an unparseable rounding increment should switch to screenError, got %v", mm.screen)
+	}
+	if mm.err == nil || !strings.Contains(mm.err.Error(), "not-a-duration") {
+		t.Fatalf("err = %v, want it to name the offending increment", mm.err)
+	}
+}
+
+// #83: an invalid configured timezone must route to screenError exactly like
+// a bad rounding increment (see TestEntriesMsgWithBadRoundingRoutesToErrorScreen)
+// — never silently fall back to time.Local or UTC.
+func TestEntriesMsgWithBadTimezoneRoutesToErrorScreen(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Not/AZone"}
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
+	mm := updated.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("entriesMsg with an invalid timezone should switch to screenError, got %v", mm.screen)
+	}
+	if mm.err == nil || !strings.Contains(mm.err.Error(), "Not/AZone") {
+		t.Fatalf("err = %v, want it to name the offending zone", mm.err)
+	}
+}
+
 func TestQuitKey(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -418,7 +512,7 @@ func TestReportCycleGroupBy(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}})
 	mm := updated.(Model)
 	if mm.report.GroupBy != report.GroupByTotal {
@@ -473,8 +567,8 @@ func TestExportWritesFile(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
-	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), Currency: "EUR",
-		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
+	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Key: "l1", Hours: 1}}, TotalHours: 1}
 	m.export = newExport(m.report)
 	m.screen = screenExport
 
@@ -506,7 +600,7 @@ func TestRatesScreenOpensFromReport(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -529,7 +623,7 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -563,11 +657,46 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	}
 }
 
+// #57: an unparseable billing.rounding.increment must never reach the disk —
+// the next load would fail on it (PricingFromConfig rejects it) and a silent
+// fallback to "rounding off" would over-bill. The billing editor now owns
+// that field, so the save path re-validates it: pressing 's' with a bad
+// increment in the editor's state stays on screenRates with an inline message
+// and writes nothing.
+func TestRatesScreenSaveWithBadRoundingIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	m.ratesScreen.rounding.Increment = "not-a-duration"
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("screen = %v, want screenRates (the save must be refused)", m.screen)
+	}
+	if !strings.Contains(m.ratesScreen.msg, "increment") {
+		t.Fatalf("msg = %q, want an inline complaint about the rounding increment", m.ratesScreen.msg)
+	}
+	if m.cfg.Billing.Rounding.Increment != "" {
+		t.Fatalf("a rejected increment must not be persisted, got %q", m.cfg.Billing.Rounding.Increment)
+	}
+}
+
 func TestRatesScreenEscCancelsEdit(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -593,7 +722,7 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -621,7 +750,7 @@ func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -640,7 +769,7 @@ func TestRatesScreenEscDiscardsAndReturns(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -673,7 +802,7 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -697,8 +826,8 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 func TestVisibleEntriesAppliesFilter(t *testing.T) {
 	m := Model{
 		entries: []report.TimeEntry{
-			{ListName: "A", Duration: time.Hour},
-			{ListName: "B", Duration: time.Hour},
+			{ListName: "A", Duration: time.Hour, Billable: true},
+			{ListName: "B", Duration: time.Hour, Billable: true},
 		},
 		filterLists: map[string]bool{"A": true},
 	}
@@ -724,8 +853,8 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
-		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
+		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.report.TotalHours != 1 {
@@ -743,7 +872,7 @@ func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 		now:            time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.report.TotalHours != 1 {
@@ -814,7 +943,7 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -842,7 +971,7 @@ func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
 		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.filterLists["Gone"] {
@@ -1099,7 +1228,75 @@ func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 func newWithClock(cfg config.Config, now func() time.Time) Model {
 	m := New(cfg)
 	m.now = now
-	t := now()
-	m.year, m.month = t.Year(), t.Month()
+	// Re-derive the default month from the injected clock the same way New
+	// does, so the helper cannot re-encode the local-calendar bug
+	// defaultYearMonth exists to prevent.
+	m.year, m.month = defaultYearMonth(m.now(), m.loc)
 	return m
+}
+
+// TestExportFormatsCoverToFile pins that the TUI export menu offers every
+// format export.ToFile supports: HTML and the CSV invoice are v1.7
+// deliverables and were reachable only from `clup report --format`. Unlike
+// the hand-duplicated literal map this test used to pin (itself a comment-only
+// invariant that drifted once already), it checks against export.Formats(),
+// the package's own source of truth, and actually round-trips every
+// exportFormats key through export.ToFile — so a future format added on
+// either side without the other fails this test loudly instead of silently
+// drifting again.
+func TestExportFormatsCoverToFile(t *testing.T) {
+	r := report.Report{}
+	dir := t.TempDir()
+
+	seen := make(map[string]bool, len(exportFormats))
+	for _, f := range exportFormats {
+		seen[f.key] = true
+		path := filepath.Join(dir, f.key+"."+f.ext)
+		if err := export.ToFile(f.key, r, path); err != nil {
+			t.Errorf("exportFormats entry %q does not round-trip through export.ToFile: %v", f.key, err)
+		}
+	}
+
+	want := export.Formats()
+	if len(seen) != len(want) {
+		t.Errorf("exportFormats has %d distinct keys, export.ToFile supports %d; want the same size (exportFormats keys %v, export.Formats() %v)",
+			len(seen), len(want), seen, want)
+	}
+	for _, k := range want {
+		if !seen[k] {
+			t.Errorf("export.ToFile supports format %q but it is missing from the TUI's exportFormats menu", k)
+		}
+	}
+}
+
+// TestExportInvoiceWritesDistinctFile pins that the CSV invoice does not
+// overwrite the bucket CSV: it gets its own filename.
+func TestExportInvoiceWritesDistinctFile(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	os.Chdir(dir)
+
+	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	r := report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Key: "l1", Hours: 1}}, TotalHours: 1}
+
+	for i, f := range exportFormats {
+		m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+		m.report = r
+		m.export = newExport(r)
+		m.export.idx = i
+		m.screen = screenExport
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+		mm := updated.(Model)
+		if mm.export.err != nil {
+			t.Fatalf("export %q: %v", f.key, mm.export.err)
+		}
+		if _, err := os.Stat(mm.export.done); err != nil {
+			t.Fatalf("export %q: expected file %q: %v", f.key, mm.export.done, err)
+		}
+	}
+	if _, err := os.Stat("clickup-invoice-2026-07.csv"); err != nil {
+		t.Fatalf("expected a distinct invoice file: %v", err)
+	}
 }

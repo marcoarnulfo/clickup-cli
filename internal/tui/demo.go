@@ -17,7 +17,11 @@ import (
 // useful for trying the app without an account and for generating the README GIF.
 func demoEnabled() bool { return os.Getenv("CLICKUP_DEMO") != "" }
 
-// demoConfig is a fake config for demo mode (no real token).
+// demoConfig is a fake config for demo mode (no real token). It fills in the
+// v1.7 billing fields too (#51,#6,#53,#64) so the billable split,
+// per-currency subtotals, member rate and budget burn-down all have
+// something real to show; see demoEntries for the fixture they're billed
+// against.
 func demoConfig() config.Config {
 	return config.Config{
 		Token:       "DEMO",
@@ -25,6 +29,21 @@ func demoConfig() config.Config {
 		Currency:    "EUR",
 		Rate:        50,
 		Rates:       map[string]float64{"web": 65, "mobile": 45},
+		// Pinned (M6): without it the TUI falls back to time.Local, and the
+		// rendered report (and the README GIF recorded from it) would differ
+		// per machine.
+		Timezone: "UTC",
+		Billing: config.Billing{
+			DefaultCurrency: "EUR",
+			// Carol is the senior on the mobile project: a flat per-member
+			// rate that overrides the mobile list rate for her entries.
+			RatesByMember: map[int]float64{3: 60},
+			// Two clients, two invoicing currencies: the Website project
+			// bills in EUR, the Mobile app project in USD.
+			Currencies: map[string]string{"web": "EUR", "mobile": "USD"},
+			// One budget so the burn-down view (#64) has something to show.
+			Budgets: map[string]float64{"web": 450},
+		},
 	}
 }
 
@@ -32,26 +51,51 @@ func demoConfig() config.Config {
 // to this id, mirroring the real API's server-side self-filter.
 const demoSelfID = 1
 
-// demoEntries returns fake time entries for the given month, spread across a few
-// users so the member selection and per-member grouping are meaningful in demo.
-func demoEntries(year int, month time.Month) []report.TimeEntry {
-	at := func(d, h, m int) time.Time { return time.Date(year, month, d, h, m, 0, 0, time.UTC) }
-	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration) report.TimeEntry {
+// demoEntries returns fake time entries covering the half-open range
+// [start, end), spread across a few users so the member selection and the
+// per-member grouping are meaningful in demo.
+//
+// The fixture days are day offsets from start, wrapped modulo the range span
+// (#4): anchoring them to a fixed set of month days would leave any range not
+// covering those days empty — pressing `w` mid-month showed "No hours to
+// show" — and would drop the other month's share of a range straddling two
+// months. For a full month (start = the 1st) the offsets still land on days
+// 2..10, so the month view is unchanged.
+func demoEntries(start, end time.Time) []report.TimeEntry {
+	loc := start.Location()
+	span := int(end.Sub(start) / (24 * time.Hour))
+	if span < 1 {
+		span = 1
+	}
+	day0 := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
+	// d is the 1-based day of the fixture within the range: kept as a day
+	// number so the month layout reads the same as before.
+	at := func(d, h, m int) time.Time {
+		return day0.AddDate(0, 0, (d-1)%span).Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute)
+	}
+	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration, billable bool) report.TimeEntry {
 		return report.TimeEntry{
 			ID: id, TaskID: taskID, TaskName: task,
 			ListID: listID, ListName: list,
 			UserID: uid, UserName: user,
 			Tags: tags, Status: status,
 			Start: start, Duration: dur,
+			Billable: billable,
 		}
 	}
 	return []report.TimeEntry{
-		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute),
-		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour),
-		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute),
-		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour),
-		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute),
-		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute),
+		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute, true),
+		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour, true),
+		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute, true),
+		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour, true),
+		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute, true),
+		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute, true),
+		// Alice also has a foot in the mobile project, billed in USD: her own
+		// ("me" scope) report shows both currencies, not just Website's EUR.
+		mk("7", "t7", "Cross-platform sync", "mobile", "Mobile app", 1, "alice", []string{"frontend"}, "in progress", at(9, 11, 0), 2*time.Hour, true),
+		// Internal, unbilled work: the billable/non-billable split (#51) needs
+		// at least one non-billable entry to be visibly non-trivial.
+		mk("8", "t8", "Sprint planning", "web", "Website", 1, "alice", []string{"planning"}, "done", at(2, 9, 0), 1*time.Hour, false),
 	}
 }
 
@@ -103,7 +147,7 @@ func demoStatusEnrichCmd(entries []report.TimeEntry) tea.Cmd {
 // selected member ids and clipped to [start, end).
 func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
 	return func() tea.Msg {
-		entries := filterByUsers(demoEntries(start.Year(), start.Month()), assignees)
+		entries := filterByUsers(demoEntries(start, end), assignees)
 		out := entries[:0]
 		for _, e := range entries {
 			if !e.Start.Before(start) && e.Start.Before(end) {

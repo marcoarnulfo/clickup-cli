@@ -12,8 +12,38 @@ import (
 )
 
 // currentSchemaVersion is the schema_version this binary understands and
-// stamps on any config missing it.
-const currentSchemaVersion = 1
+// stamps on any config below it.
+const currentSchemaVersion = 2
+
+// Override is a (list, member) pair rate override: the most specific entry
+// in the billing rate precedence.
+type Override struct {
+	List   string  `yaml:"list"`
+	Member int     `yaml:"member"`
+	Rate   float64 `yaml:"rate"`
+}
+
+// Rounding configures how billable hours are rounded before invoicing.
+// Increment is a human duration string (e.g. "15m"); parsing it is not this
+// package's job.
+type Rounding struct {
+	Increment string `yaml:"increment"`
+	Mode      string `yaml:"mode"`
+	Scope     string `yaml:"scope"`
+}
+
+// Billing carries the v2 billing configuration: per-member rates, (list,
+// member) overrides, per-list currencies, budgets and a rounding rule. It is
+// additive to the pre-existing top-level Rate/Rates/Currency fields, which
+// stay in place unchanged.
+type Billing struct {
+	DefaultCurrency string             `yaml:"default_currency,omitempty"`
+	RatesByMember   map[int]float64    `yaml:"rates_by_member,omitempty"`
+	RateOverrides   []Override         `yaml:"rate_overrides,omitempty"`
+	Currencies      map[string]string  `yaml:"currencies,omitempty"` // listID -> currency ISO
+	Budgets         map[string]float64 `yaml:"budgets,omitempty"`
+	Rounding        Rounding           `yaml:"rounding,omitempty"`
+}
 
 // Config is the persisted CLI configuration.
 type Config struct {
@@ -23,6 +53,8 @@ type Config struct {
 	Currency      string             `yaml:"currency"`
 	Rate          float64            `yaml:"rate"`
 	Rates         map[string]float64 `yaml:"rates,omitempty"` // list_id -> rate override
+	Timezone      string             `yaml:"timezone,omitempty"`
+	Billing       Billing            `yaml:"billing,omitempty"`
 
 	// fileToken is the token as it was read from disk, before any
 	// CLICKUP_TOKEN env override is applied. yaml.v3 never marshals
@@ -132,14 +164,18 @@ func Load() (Config, error) {
 }
 
 // migrate stamps schema_version on the in-memory config. It is idempotent:
-// an absent (zero) version is stamped to currentSchemaVersion. A version
-// newer than currentSchemaVersion means a future binary wrote this file;
-// Load warns on stderr but still loads the config as-is (Load may warn,
-// Save must stay silent). There is no migration registry: this is a single
-// stamp, not a multi-step upgrade path.
+// any version below currentSchemaVersion (including an absent/zero version)
+// is stamped up to currentSchemaVersion. The migration is purely additive --
+// no field is moved, renamed or defaulted by this function; a v1 file's
+// existing rate/rates/currency values are left exactly as read, and the new
+// v2 fields (Timezone, Billing) simply stay at their zero value until the
+// user sets them. A version newer than currentSchemaVersion means a future
+// binary wrote this file; Load warns on stderr but still loads the config
+// as-is (Load may warn, Save must stay silent). There is no migration
+// registry: this is a single stamp, not a multi-step upgrade path.
 func migrate(c Config) Config {
 	switch {
-	case c.SchemaVersion == 0:
+	case c.SchemaVersion < currentSchemaVersion:
 		c.SchemaVersion = currentSchemaVersion
 	case c.SchemaVersion > currentSchemaVersion:
 		fmt.Fprintf(os.Stderr, "warning: config schema_version %d is newer than the version this build understands (%d); loading anyway\n", c.SchemaVersion, currentSchemaVersion)

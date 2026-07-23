@@ -1,22 +1,80 @@
 {
+  "schema_version": 1,
   "start": "2026-06-01T00:00:00Z",
   "end": "2026-07-01T00:00:00Z",
   "scope": "me",
   "group_by": "list",
+  "timezone": "UTC",
   "currency": "EUR",
   "rate": 50,
   "buckets": [
     {
       "label": "Client A",
+      "key": "55",
       "hours": 2,
-      "amount": 160
+      "billable_hours": 2,
+      "billed_hours": 2,
+      "amounts": [
+        {
+          "currency": "EUR",
+          "amount": 160
+        }
+      ]
     },
     {
       "label": "Client B",
+      "key": "66",
       "hours": 1,
-      "amount": 50
+      "billable_hours": 1,
+      "billed_hours": 1,
+      "amounts": [
+        {
+          "currency": "EUR",
+          "amount": 50
+        }
+      ]
+    }
+  ],
+  "lines": [
+    {
+      "date": "2025-06-05",
+      "list_id": "55",
+      "list_name": "Client A",
+      "user_id": 1,
+      "user_name": "marco",
+      "description": "Task A",
+      "hours": 2,
+      "rate": 80,
+      "amount": 160,
+      "currency": "EUR",
+      "billable": true
+    },
+    {
+      "date": "2025-06-10",
+      "list_id": "66",
+      "list_name": "Client B",
+      "user_id": 1,
+      "user_name": "marco",
+      "description": "Task B",
+      "hours": 1,
+      "rate": 50,
+      "amount": 50,
+      "currency": "EUR",
+      "billable": true
+    }
+  ],
+  "currency_subtotals": [
+    {
+      "currency": "EUR",
+      "hours": 3,
+      "billable_hours": 3,
+      "billed_hours": 3,
+      "amount": 210
     }
   ],
   "total_hours": 3,
+  "billable_hours": 3,
+  "non_billable_hours": 0,
+  "billed_hours": 3,
   "total_amount": 210
 }

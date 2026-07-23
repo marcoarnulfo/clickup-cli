@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestDemoMembers(t *testing.T) {
 
 func TestDemoEntriesMultipleUsers(t *testing.T) {
 	users := map[string]bool{}
-	for _, e := range demoEntries(2026, time.July) {
+	for _, e := range demoEntries(demoJuly2026()) {
 		users[e.UserName] = true
 	}
 	if len(users) < 2 {
@@ -93,14 +94,214 @@ func TestReloadDemoMeScopeIsSingleSelfUser(t *testing.T) {
 }
 
 func TestDemoEntriesBuildReport(t *testing.T) {
-	entries := demoEntries(2026, time.July)
-	rates := report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}}
+	entries := demoEntries(demoJuly2026())
+	pricing := report.Pricing{
+		Rates:           report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}},
+		DefaultCurrency: "EUR",
+	}
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
-	r := report.Build(entries, report.GroupByList, rates, "EUR", start, start.AddDate(0, 1, 0))
-	if r.TotalHours <= 0 || r.TotalAmount <= 0 {
-		t.Errorf("empty demo report: hours=%v amount=%v", r.TotalHours, r.TotalAmount)
+	r := report.Build(entries, report.GroupByList, pricing, start, start.AddDate(0, 1, 0), nil)
+	// Demo parity: the fake entries are billable, so demo mode shows real money.
+	if r.TotalHours <= 0 || r.TotalAmount <= 0 || r.BilledHours <= 0 {
+		t.Errorf("empty demo report: hours=%v billed=%v amount=%v", r.TotalHours, r.BilledHours, r.TotalAmount)
 	}
 	if len(r.Buckets) != 2 { // Website + Mobile app
 		t.Errorf("buckets per list = %d, expected 2", len(r.Buckets))
 	}
+}
+
+// TestDemoConfigHasBillingFields pins the v1.7 demo-parity additions to
+// demoConfig() (#51,#6,#53,#64): a pinned timezone (M6 -- deterministic
+// output across machines, no time.Local fallback) and a fully populated
+// Billing block, so every v1.7 billing feature has something real to show.
+func TestDemoConfigHasBillingFields(t *testing.T) {
+	cfg := demoConfig()
+
+	if cfg.Timezone != "UTC" {
+		t.Errorf("demo Timezone = %q, want %q (pinned for deterministic output, M6)", cfg.Timezone, "UTC")
+	}
+	if cfg.Billing.DefaultCurrency == "" {
+		t.Error("demo Billing.DefaultCurrency is empty")
+	}
+	if len(cfg.Billing.RatesByMember) == 0 {
+		t.Error("demo Billing.RatesByMember is empty")
+	}
+	if len(cfg.Billing.Budgets) == 0 {
+		t.Error("demo Billing.Budgets is empty, want at least one demo budget")
+	}
+
+	distinct := map[string]bool{}
+	for _, c := range cfg.Billing.Currencies {
+		distinct[c] = true
+	}
+	if len(distinct) < 2 {
+		t.Errorf("demo Billing.Currencies = %v, want at least 2 lists mapped to different currencies", cfg.Billing.Currencies)
+	}
+}
+
+// TestDemoEntriesHaveBillableMix pins the mix the billable/non-billable split
+// needs: earlier demo entries were all Billable:true (so the report wasn't
+// stuck at zero); this task adds the mix so the split is visibly non-trivial.
+func TestDemoEntriesHaveBillableMix(t *testing.T) {
+	entries := demoEntries(demoJuly2026())
+	var billable, nonBillable int
+	for _, e := range entries {
+		if e.Billable {
+			billable++
+		} else {
+			nonBillable++
+		}
+	}
+	if billable == 0 || nonBillable == 0 {
+		t.Errorf("expected a mix of billable/non-billable demo entries, got billable=%d non-billable=%d", billable, nonBillable)
+	}
+}
+
+// TestDemoReportShowsBillingDepth is the v1.7 demo-parity smoke test
+// (#51,#6,#53,#64). It drives the same Model methods the real TUI uses
+// (reloadEntriesCmd/applyReport/openBudgetView) to check that a demo session
+// actually shows: a visible billable/non-billable split, at least two
+// currency subtotals (with TotalAmount staying 0 -- no cross-currency total),
+// at least one tag bucket, and at least one budget line with a sensible burn
+// percentage.
+func TestDemoReportShowsBillingDepth(t *testing.T) {
+	t.Setenv("CLICKUP_DEMO", "1")
+	m := New(config.Config{})
+	m.year, m.month = 2026, time.July
+
+	msg := m.reloadEntriesCmd(screenHome)()
+	em, ok := msg.(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg, got %T", msg)
+	}
+	m.entries = em.entries
+
+	if !m.applyReport() {
+		t.Fatalf("applyReport failed: %v", m.err)
+	}
+	r := m.report
+
+	if r.BillableHours <= 0 || r.NonBillableHours <= 0 {
+		t.Errorf("expected a visible billable/non-billable split, got billable=%v non-billable=%v", r.BillableHours, r.NonBillableHours)
+	}
+	if len(r.CurrencySubtotals) < 2 {
+		t.Errorf("expected at least 2 currency subtotals, got %v", r.CurrencySubtotals)
+	}
+	if r.TotalAmount != 0 {
+		t.Errorf("cross-currency TotalAmount must stay 0 (no FX), got %v", r.TotalAmount)
+	}
+
+	// Tag grouping (#6): at least one bucket once grouped by tag.
+	m.report.GroupBy = report.GroupByTag
+	if !m.applyReport() {
+		t.Fatalf("applyReport (tag) failed: %v", m.err)
+	}
+	if len(m.report.Buckets) == 0 {
+		t.Error("expected at least one tag bucket in the demo report")
+	}
+
+	// Budget burn-down (#64): at least one budget line, with a burn
+	// percentage that is neither 0% nor wildly over 100%.
+	if !m.openBudgetView() {
+		t.Fatalf("openBudgetView failed: %v", m.err)
+	}
+	if len(m.budgetScreen.lines) == 0 {
+		t.Fatal("expected at least one budget line in the demo data")
+	}
+	for _, l := range m.budgetScreen.lines {
+		if l.PercentUsed <= 0 || l.PercentUsed > 150 {
+			t.Errorf("budget line %s percent used = %.2f, want a sensible burn in (0,150]", l.ListName, l.PercentUsed)
+		}
+	}
+}
+
+// TestDemoModeBillingEditorNeverWritesConfig extends the zero-I/O guarantee
+// already covering rates.go's config.Save (see TestRatesSaveInDemoModeWritesNoConfig)
+// to the now fully populated demo Billing config: even with real values in
+// every field, saving from the billing editor in demo mode must never touch
+// disk. Removing the "if !m.demo" guard around config.Save in saveRates makes
+// this test fail.
+func TestDemoModeBillingEditorNeverWritesConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_DEMO", "1")
+
+	m := New(config.Config{})
+	m.entries = demoEntries(demoJuly2026())
+	m.ratesScreen = newRates(m.entries, m.cfg)
+	m.screen = screenRates
+
+	m = press(t, m, "s")
+
+	p, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("demo mode must not write %s (stat err = %v)", p, err)
+	}
+}
+
+// TestDemoWeekToggleHasEntries pins demo parity for the week toggle (#4): the
+// fixture days are anchored to the requested range, not to days 2..10 of the
+// month, so pressing `w` on any date yields a non-empty report instead of
+// "No hours to show".
+func TestDemoWeekToggleHasEntries(t *testing.T) {
+	// A Thursday in the middle of a month: the ISO week is Jul 20..26, which
+	// under the month-anchored fixture contained zero entries.
+	now := time.Date(2026, time.July, 23, 10, 0, 0, 0, time.UTC)
+	m := Model{demo: true, cfg: demoConfig(), loc: time.UTC, scope: "me",
+		periodMode: periodModeWeek, now: func() time.Time { return now }}
+
+	em, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg")
+	}
+	if len(em.entries) == 0 {
+		t.Fatal("week toggle in demo mode produced 0 entries")
+	}
+
+	start, end := m.currentRange()
+	for _, e := range em.entries {
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			t.Errorf("entry %s at %s outside the week range [%s,%s)", e.ID, e.Start, start, end)
+		}
+	}
+
+	r := report.Build(em.entries, report.GroupByList, report.Pricing{
+		Rates: report.Rates{Default: 50}, DefaultCurrency: "EUR",
+	}, start, end, time.UTC)
+	if len(r.Buckets) == 0 || r.BilledHours <= 0 {
+		t.Errorf("empty demo week report: buckets=%d billed=%v", len(r.Buckets), r.BilledHours)
+	}
+}
+
+// TestDemoEntriesSpanMonthBoundary pins that a range straddling two months
+// still gets fixtures: they follow the range start, not a single month.
+func TestDemoEntriesSpanMonthBoundary(t *testing.T) {
+	start := time.Date(2026, time.July, 27, 0, 0, 0, 0, time.UTC) // Mon
+	end := start.AddDate(0, 0, 7)                                 // into August
+	entries := demoEntries(start, end)
+	if len(entries) == 0 {
+		t.Fatal("no demo entries for a month-straddling week")
+	}
+	var august int
+	for _, e := range entries {
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			t.Fatalf("entry %s at %s outside [%s,%s)", e.ID, e.Start, start, end)
+		}
+		if e.Start.Month() == time.August {
+			august++
+		}
+	}
+	if august == 0 {
+		t.Error("expected at least one entry in the second month of the range")
+	}
+}
+
+// demoJuly2026 is the [start, end) month range used by the demo tests.
+func demoJuly2026() (time.Time, time.Time) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 1, 0)
 }

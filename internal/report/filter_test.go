@@ -63,3 +63,56 @@ func TestFilterTagAnyMatch(t *testing.T) {
 		t.Fatalf("tag any-match should keep 1, got %v", names(got))
 	}
 }
+
+func feBillable(list, status string, billable bool) TimeEntry {
+	e := fe(list, status)
+	e.Billable = billable
+	return e
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestFilterBillableNilIsNoConstraint(t *testing.T) {
+	in := []TimeEntry{feBillable("A", "open", true), feBillable("B", "open", false)}
+	if got := Filter(in, FilterCriteria{}); len(got) != 2 {
+		t.Fatalf("nil Billable should impose no constraint, got %v", names(got))
+	}
+}
+
+func TestFilterBillableTrueKeepsOnlyBillable(t *testing.T) {
+	in := []TimeEntry{feBillable("A", "open", true), feBillable("B", "open", false)}
+	c := FilterCriteria{Billable: boolPtr(true)}
+	got := Filter(in, c)
+	if len(got) != 1 || !got[0].Billable {
+		t.Fatalf("Billable=true should keep only billable entries, got %v", names(got))
+	}
+}
+
+func TestFilterBillableFalseKeepsOnlyNonBillable(t *testing.T) {
+	in := []TimeEntry{feBillable("A", "open", true), feBillable("B", "open", false)}
+	c := FilterCriteria{Billable: boolPtr(false)}
+	got := Filter(in, c)
+	if len(got) != 1 || got[0].Billable {
+		t.Fatalf("Billable=false should keep only non-billable entries, got %v", names(got))
+	}
+}
+
+func TestFilterBillableCombinedWithOtherDimensionAND(t *testing.T) {
+	in := []TimeEntry{
+		feBillable("A", "open", true),
+		feBillable("A", "open", false),
+		feBillable("B", "open", true),
+	}
+	c := FilterCriteria{Lists: map[string]bool{"A": true}, Billable: boolPtr(true)}
+	got := Filter(in, c)
+	if len(got) != 1 || got[0].ListName != "A" || !got[0].Billable {
+		t.Fatalf("list AND billable should keep 1, got %v", names(got))
+	}
+}
+
+func TestFilterCriteriaWithOnlyBillableIsNotEmpty(t *testing.T) {
+	c := FilterCriteria{Billable: boolPtr(true)}
+	if c.Empty() {
+		t.Fatalf("a criteria with only Billable set must not report itself Empty")
+	}
+}
