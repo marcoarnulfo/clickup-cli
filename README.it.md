@@ -367,6 +367,9 @@ billing:
       vuoto/omesso) arrotonda al valore più vicino.
     - `scope`: `day` arrotonda il totale per (giorno, lista, membro) invece che per
       singola voce; qualsiasi altro valore arrotonda ogni voce singolarmente.
+- `update_check` (opzionale): impostare `false` per disattivare il controllo
+  aggiornamenti descritto più sotto. Omettere la chiave (o impostare `true`) lo
+  lascia attivo.
 
 ### Come vengono calcolati gli importi fatturati
 
@@ -390,6 +393,33 @@ disco):
 ```bash
 CLICKUP_TOKEN=pk_xxx clup
 ```
+
+### Controllo aggiornamenti
+
+Una volta al giorno, `clup` chiede a GitHub se esiste una release più recente e, in
+caso affermativo, mostra un breve avviso. È deliberatamente circoscritto in ciò che
+fa:
+
+- **Anonimo.** È una singola chiamata GET, con timeout di 2 secondi, all'endpoint
+  pubblico `https://api.github.com/repos/marcoarnulfo/clickup-cli/releases/latest`,
+  con i soli header `Accept` e `User-Agent`. Non c'è alcun header `Authorization` —
+  il tuo token ClickUp non viaggia mai verso GitHub.
+- **Nessun self-update.** `clup` non scarica né sostituisce mai il proprio binario;
+  l'avviso si limita a segnalare che esiste una versione più recente e a indicare
+  `go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest`.
+- **In cache.** Il risultato è salvato in `os.UserCacheDir()/clup/update.json` e
+  riusato per 24 ore, così la maggior parte delle esecuzioni non fa alcuna chiamata
+  di rete.
+- **Le build da sorgente sono esenti.** Se hai compilato `clup` tu stesso con un
+  semplice `go build` invece di `go install .../cmd/clup@vX.Y.Z`, il binario riporta
+  una pseudo-version anziché una release numerata, il controllo non parte mai e
+  l'avviso non compare mai.
+- **Dove compare:** come riga aggiuntiva nella home della TUI e, per `clup report`,
+  come riga su **stderr** stampata dopo il corpo del report — mai su stdout, così
+  `clup report --format json` resta interpretabile dagli strumenti a valle.
+- **Disattivarlo** con `CLUP_NO_UPDATE_CHECK=1` (qualsiasi valore non vuoto) oppure
+  con `update_check: false` nel config; la variabile d'ambiente vince sempre sul
+  config. Omettere la chiave lascia il controllo attivo.
 
 ## Contribuire
 
