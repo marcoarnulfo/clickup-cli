@@ -12,10 +12,11 @@
 
 ## Funzionalità
 
-- 📊 **Report ore mensile** (self o intero team), raggruppabile per totale / task / lista / giorno.
-- 💶 **Importo da fatturare** da una tariffa oraria di default, con **tariffe per-lista**.
+- 📊 **Report ore mensile** (self o intero team), raggruppabile per totale / task / lista / giorno / membro / tag.
+- 💶 **Motore di fatturazione**: tariffe orarie di default, per-lista, per-membro e per-(lista,membro), split billable/non billable, arrotondamento configurabile e subtotali per valuta (multi-valuta, senza FX).
+- 🎯 **Budget per lista** con vista burn-down, per vedere a colpo d'occhio quanto budget di ogni progetto è già fatturato.
 - ⏱️ **Log ore** su ClickUp dalla TUI: guidato (lista → task), da ID/URL del task, o con timer start/stop.
-- 📤 **Export** in CSV / JSON / Markdown.
+- 📤 **Export** in CSV / JSON / Markdown / HTML self-contained (stampabile in PDF) / fattura CSV riga per riga.
 - ⌨️ TUI interattiva, guidata da tastiera (basata su [Charm](https://charm.sh) bubbletea).
 - 🔒 Il token resta in locale (file di config o variabile `CLICKUP_TOKEN`).
 
@@ -24,8 +25,10 @@
 ![clup demo](docs/demo.gif)
 
 Provala senza account ClickUp: **`CLICKUP_DEMO=1 clup`** avvia una modalità demo con dati
-fittizi. Il GIF è registrato con [vhs](https://github.com/charmbracelet/vhs) da
-[`docs/demo.tape`](docs/demo.tape) (lancia `vhs docs/demo.tape` per rigenerarlo).
+fittizi — che include anche il modello di fatturazione: split billable/non billable, due
+valute di fatturazione, voci taggate e un budget per lista. Il GIF è registrato con
+[vhs](https://github.com/charmbracelet/vhs) da [`docs/demo.tape`](docs/demo.tape) (lancia
+`vhs docs/demo.tape` per rigenerarlo).
 
 ## Requisiti
 
@@ -56,7 +59,7 @@ go build -o clup ./cmd/clup
 
 1. **Installa** (vedi sopra) e lancia `clup`.
 2. Al primo avvio, il **wizard di setup** chiede token API, workspace, tariffa oraria opzionale e valuta — salvati nel file di config (vedi [Configurazione](#configurazione) per il percorso esatto).
-3. Scegli un **periodo** (`d`) e lo **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le tariffe per lista.
+3. Scegli un **periodo** (`d`) e lo **scope** (`me`/`team`) nella home, premi `Enter` → il report. Premi `n` per loggare ore, `e` per esportare, `p` per le impostazioni di fatturazione (tariffe, valute, budget, arrotondamento), `b` per la vista burn-down dei budget.
 
 ## Uso
 
@@ -85,12 +88,13 @@ di setup.
 | `t` | Home | Alterna scope `me` / `team` |
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
 | `Enter` | Home | Genera il report per il periodo/scope selezionati |
-| `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → membro (team) → totale |
+| `g` | Report | Cicla il raggruppamento: totale → task → lista → giorno → tag → membro (team) → totale |
 | `e` | Report | Apre il menu di export (CSV/JSON/Markdown) |
 | `m` / `s` | Report | Torna alla home per cambiare range/scope |
 | `r` | Report | Ricarica le voci ore dall'API per lo stesso periodo/scope |
-| `p` | Report | Apre la schermata **Tariffe per lista** |
-| `f` | Report | Apre la schermata **Filtri** (lista/tag/status) |
+| `p` | Report | Apre la schermata **Impostazioni di fatturazione** (tariffe, valute, budget, arrotondamento, timezone) |
+| `b` | Report | Apre la vista **Burn-down budget** |
+| `f` | Report | Apre la schermata **Filtri** (lista/tag/status/billable) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (`<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
@@ -101,40 +105,62 @@ di setup.
 Nella schermata di setup non è previsto `q` per uscire, per evitare di
 premerlo per errore durante l'inserimento del token: usa `Ctrl+C`.
 
-#### Schermata Tariffe per lista
+#### Schermata Impostazioni di fatturazione
 
-Dalla schermata del report, premendo `p` si apre la schermata **Tariffe per lista**,
-dove è possibile configurare una tariffa specifica per ogni lista (diverse dal default).
-I comandi disponibili sono:
+Dalla schermata del report, premendo `p` si apre la schermata **Impostazioni di
+fatturazione**, con quattro tab (`Tab`/`Shift+Tab` per cambiare): **Lists** (tariffa,
+valuta e budget per lista), **Members** (tariffa per membro), **Overrides** (tariffa
+per coppia lista,membro — il livello più specifico della precedenza) e **Rules**
+(valuta di default, arrotondamento increment/mode/scope, e timezone). Precedenza
+delle tariffe, dalla più specifica: **(lista, membro) > membro > lista > default**.
+Comandi disponibili:
 
-- `↑` / `↓` (anche `k` / `j`): naviga tra le liste
-- `Enter`: modifica la tariffa della lista selezionata (solo cifre e separatore decimale)
-- `b`: apre il **browser workspace liste** per aggiungere una lista non ancora tracciata
-- `d`: ripristina la lista alla tariffa di default
+- `Tab` / `Shift+Tab`: cambia tab
+- `↑` / `↓` (anche `k` / `j`): naviga tra le righe
+- `Enter`: modifica la tariffa della riga selezionata (in Rules: modifica il campo, o
+  ne alterna il valore per mode/scope dell'arrotondamento)
+- `c` (Lists): modifica la valuta della lista; `g` (Lists): modifica il budget della
+  lista (invia un valore vuoto per cancellare entrambi)
+- `n` (Overrides): crea un nuovo override (lista,membro) — scegli la lista, poi il
+  membro, poi digita la tariffa
+- `d`: cancella il valore selezionato, tornando al livello successivo della
+  precedenza (una valuta o un budget di lista si cancellano invece riaprendo il
+  proprio campo con `c`/`g` e inviando un valore vuoto)
+- `b` (Lists): apre il **browser workspace liste** per aggiungere una lista non
+  ancora tracciata
 - `s`: salva le modifiche e torna al report
 - `Esc`: annulla (scarta le modifiche non salvate) e torna al report
 
-Dalla v1.1, ogni importo è calcolato dalle ore reali della lista moltiplicato per la sua
-tariffa specifica (non dalle ore arrotondate), quindi il singolo importo può differire di
-qualche centesimo dal prodotto `ore_mostrate × tariffa_lista`; tuttavia, il totale della
-fatturazione resta sempre la somma esatta degli importi mostrati.
+Dalla v1.1, ogni importo è calcolato dalla durata esatta fatturata moltiplicata per la
+tariffa effettiva, mai da un valore di ore già arrotondato — vedi
+[Come vengono calcolati gli importi fatturati](#come-vengono-calcolati-gli-importi-fatturati)
+per la regola completa.
+
+#### Vista burn-down budget
+
+Premendo `b` dalla schermata del report si apre la vista **Burn-down budget**: una
+barra di progresso testuale per ogni lista con un budget configurato in
+`billing.budgets`, ordinate dalla più consumata. Ogni barra mostra l'importo
+fatturato rispetto al budget, nella valuta della lista (importo, non ore). Premi
+`b` o `Esc` per tornare al report.
 
 #### Schermata Filtri
 
-Dalla schermata del report, premendo `f` si apre la schermata **Filtri**, con tre
-sezioni: Liste, Tag e Status. Ogni sezione elenca i valori distinti presenti nelle
-voci caricate; selezionando uno o più valori in una sezione si mantengono solo le
-voci corrispondenti (OR all'interno della sezione, AND tra sezioni diverse);
-lasciare una sezione vuota equivale a "nessun filtro" per quella dimensione. Gli
-status dei task non fanno parte del caricamento iniziale dall'API, quindi la
-prima volta che apri Filtri in una sessione l'app recupera lo status corrente di
-ogni task caricato da ClickUp (mostrando "Loading statuses…"); da quel momento
-resta in cache per il resto della sessione. I filtri si compongono con la
-selezione membri e con il periodo attivo: restringono solo ciò che è già stato
-caricato. Quando il periodo cambia, le selezioni dei filtri si adattano
-automaticamente alle nuove voci: ogni valore selezionato che non compare più
-viene scartato, così il report non resta mai bloccato vuoto per un filtro
-ormai obsoleto. Comandi disponibili:
+Dalla schermata del report, premendo `f` si apre la schermata **Filtri**, con quattro
+sezioni: Liste, Tag, Status e Billable. Le prime tre elencano i valori distinti
+presenti nelle voci caricate; selezionando uno o più valori in una sezione si
+mantengono solo le voci corrispondenti (OR all'interno della sezione, AND tra sezioni
+diverse); lasciare una sezione vuota equivale a "nessun filtro" per quella dimensione.
+Billable è diversa — un toggle a scelta singola (**All** / **Billable only** /
+**Non-billable only**), un solo valore attivo alla volta. Gli status dei task non
+fanno parte del caricamento iniziale dall'API, quindi la prima volta che apri Filtri
+in una sessione l'app recupera lo status corrente di ogni task caricato da ClickUp
+(mostrando "Loading statuses…"); da quel momento resta in cache per il resto della
+sessione. I filtri si compongono con la selezione membri e con il periodo attivo:
+restringono solo ciò che è già stato caricato. Quando il periodo cambia, le selezioni
+dei filtri si adattano automaticamente alle nuove voci: ogni valore selezionato che
+non compare più viene scartato, così il report non resta mai bloccato vuoto per un
+filtro ormai obsoleto. Comandi disponibili:
 
 - `Tab` / `Shift+Tab`: cambia sezione
 - `↑` / `↓` (anche `k` / `j`): naviga all'interno della sezione
@@ -168,7 +194,7 @@ ore. Si registrano sempre **le proprie** ore.
 #### Browser workspace liste
 
 Il browser workspace liste (aperto dalla modalità **Log ore** guidata o dalla schermata
-**Tariffe per lista**) mostra tutti gli spazi, le cartelle e le liste del tuo workspace
+**Impostazioni di fatturazione**) mostra tutti gli spazi, le cartelle e le liste del tuo workspace
 come navigazione gerarchica drill-down: parti dalla radice del workspace → seleziona uno
 spazio → naviga nelle cartelle di quello spazio → scegli una lista. I contenuti di ogni
 spazio (cartelle e liste) sono caricati al primo accesso e messi in cache per la sessione;
@@ -192,21 +218,33 @@ titolo del report).
 ### Report headless
 
 `clup report` stampa un report ore su stdout senza avviare la TUI — pensato per script,
-cron job e agent. Riusa la stessa logica di periodo/scope/raggruppamento/tariffe del
-report interattivo, ma non tocca mai l'interfaccia a terminale.
+cron job e agent. Riusa la stessa logica di periodo/scope/raggruppamento/fatturazione
+del report interattivo, ma non tocca mai l'interfaccia a terminale.
 
 ```sh
 clup report --month 2026-06 --scope me --format json
+clup report --week 2026-W30 --billable --format csv-invoice > invoice.csv
 ```
 
 Flag:
 
 - `--month YYYY-MM` — report su un mese di calendario (default: mese corrente se non viene dato nessun altro flag di periodo).
+- `--week YYYY-Www` — report su una settimana ISO-8601 (es. `2026-W30`); rifiuta un
+  valore malformato o un numero di settimana fuori da 1–53.
 - `--from YYYY-MM-DD --to YYYY-MM-DD` — periodo personalizzato, inclusivo (da usare insieme).
 - `--preset this_month|last_month|last_7d|last_30d|this_week` — gli stessi preset del selettore periodo della TUI.
+- Priorità del periodo quando ne viene passato più di uno: `--month` > `--week` >
+  `--from`/`--to` > `--preset` > mese corrente (default).
 - `--scope me|team` (default `me`).
-- `--group total|task|list|day|member` (default `total`).
-- `--format json|csv|md` (default `json`).
+- `--group total|task|list|day|member|tag` (default `total`).
+- `--billable` — filtra solo le voci billable; passa `--billable=false` per tenere
+  solo le voci non billable. Se il flag non viene passato non applica nessun filtro.
+- `--tag TAG` — filtra le voci che portano questo tag; ripetibile (`--tag a --tag b`
+  seleziona le voci che portano *uno qualsiasi* dei tag dati).
+- `--tz IANA` — timezone per i confini del periodo e per il campo `timezone` del
+  report (default: la `timezone` della config, altrimenti UTC — vedi
+  [Configurazione](#configurazione)).
+- `--format json|csv|md|html|csv-invoice` (default `json`).
 
 Tutti i formati scrivono su stdout — usa la redirezione della shell per salvare
 (es. `clup report --format csv > report.csv`).
@@ -215,7 +253,26 @@ Nota: `CLICKUP_DEMO=1` viene **ignorato** da `report` — carica sempre la confi
 chiama la vera API; la demo mode è solo per la TUI.
 
 L'output di `--format json` è uno **schema di scripting stabile** (chiavi snake_case,
-timestamp RFC3339) — parsabile in sicurezza con `jq` e fissabile negli script.
+timestamp RFC3339) — parsabile in sicurezza con `jq` e fissabile negli script. È
+additivo e non-breaking: i campi pre-v1.7 `rate` e `currency` restano, ora
+**deprecati**, insieme alle aggiunte v1.7 `schema_version`, `timezone`,
+`currency_subtotals`, `billable_hours`, `non_billable_hours`, `billed_hours` e
+`lines` (le righe fattura per singola unità di fatturazione). I nuovi script
+dovrebbero leggere `currency_subtotals`/`lines` invece dei campi singolo-valore
+deprecati `rate`/`currency`.
+
+`--format html` scrive un report self-contained: CSS inline, nessun foglio di
+stile, font, script o immagine esterna. Aprilo in un browser e stampalo in PDF
+per un documento condivisibile.
+
+`--format csv-invoice` scrive una riga per ogni unità di fatturazione (non per
+bucket), con le colonne
+`date, list_id, client, user, description, qty_hours, rate, amount, currency, billable`
+— `client` contiene il nome della lista ClickUp (l'equivalente più vicino a un campo
+cliente/progetto che uno strumento basato su liste possa avere). `qty_hours` è
+espresso con 6 decimali di proposito, così che `qty_hours × rate` di ogni riga
+riconcili con `amount` alla precisione del centesimo — un'unità di 20 minuti a 30/h
+fattura esattamente 10.00, non 9.90.
 
 ## Configurazione
 
@@ -228,6 +285,7 @@ l'aggiornamento da una vecchia installazione `clickup` non perde le
 impostazioni.
 
 ```yaml
+schema_version: 2
 token: pk_xxx...
 workspace_id: "123456"
 currency: EUR
@@ -235,6 +293,24 @@ rate: 45
 rates:
   "111": 60
   "222": 30
+timezone: Europe/Rome
+billing:
+  default_currency: EUR
+  rates_by_member:
+    42: 60
+  rate_overrides:
+    - list: "111"
+      member: 42
+      rate: 70
+  currencies:
+    "111": EUR
+    "222": USD
+  budgets:
+    "111": 2000
+  rounding:
+    increment: 15m
+    mode: up
+    scope: day
 ```
 
 - `token`: token API personale ClickUp.
@@ -243,7 +319,60 @@ rates:
 - `rate`: tariffa oraria di default usata per calcolare l'importo da fatturare.
 - `rates` (opzionale): mappa `list_id: tariffa` con tariffe orarie specifiche per
   singola lista. Le liste non elencate usano la tariffa di default `rate`. La mappa
-  si compila comodamente dalla TUI premendo `p` nella schermata del report.
+  si compila comodamente dalla schermata **Impostazioni di fatturazione** della TUI
+  (`p` nella schermata del report).
+- `schema_version`: scritto automaticamente al salvataggio — non va mai modificato a
+  mano. Un file di config precedente alla v1.7 (schema v1) viene comunque letto
+  così com'è, con i valori esistenti di `rate`/`rates`/`currency` intatti, e viene
+  aggiornato a v2 al salvataggio successivo.
+- `timezone` (opzionale): nome di zona IANA (es. `Europe/Rome`) che ancora i confini
+  di giorno/settimana/mese del report. Due binari: la **TUI** la usa, ricadendo sulla
+  zona locale della macchina se non impostata (e in quel caso mostra la propria zona
+  come `Local`, non come nome IANA); il `clup report` headless usa sempre **UTC** di
+  default, a meno che non venga sovrascritto da `--tz` o da questo campo. È
+  consigliato impostarla esplicitamente; è modificabile anche dalla schermata
+  **Impostazioni di fatturazione** della TUI.
+- `billing` (opzionale, v1.7): additivo rispetto a `rate`/`rates`/`currency` sopra —
+  nessuno di quei campi cambia significato.
+  - `default_currency`: valuta ISO di fallback per le liste non presenti in
+    `currencies` (ricade ulteriormente sulla `currency` di primo livello se non
+    impostata).
+  - `rates_by_member`: `user_id: tariffa` — una tariffa oraria per membro.
+  - `rate_overrides`: una lista di `{list, member, rate}` — la tariffa più specifica,
+    per un membro su una lista. Precedenza delle tariffe, dalla più specifica:
+    **(lista, membro) > membro > lista > default**.
+  - `currencies`: `list_id: codice ISO` — fattura ogni lista nella sua valuta. I
+    subtotali sono sempre per valuta e non vengono mai sommati tra valute diverse
+    (nessun FX); un totale complessivo unico viene mostrato solo quando l'intero
+    report è in una sola valuta.
+  - `budgets`: `list_id: importo` — un budget in valuta per lista, confrontato con
+    gli **importi fatturati** (non le ore) e mostrato come barra burn-down nella TUI
+    (`b` dalla schermata del report).
+  - `rounding`: arrotonda le ore billable prima della fatturazione; le ore non
+    billable non vengono mai arrotondate.
+    - `increment`: una durata in formato umano (`15m`, `1h`, `2h30`); vuoto (default)
+      significa arrotondamento disattivato. **Un valore non vuoto che non si riesce a
+      interpretare è un errore bloccante**, non un "disattivato" silenzioso — un
+      refuso qui non deve mai sotto-arrotondare in silenzio e sovra-fatturare.
+    - `mode`: `up` arrotonda per eccesso; qualsiasi altro valore (incluso
+      vuoto/omesso) arrotonda al valore più vicino.
+    - `scope`: `day` arrotonda il totale per (giorno, lista, membro) invece che per
+      singola voce; qualsiasi altro valore arrotonda ogni voce singolarmente.
+
+### Come vengono calcolati gli importi fatturati
+
+L'importo di un'unità di fatturazione — una voce billable, oppure un gruppo
+(giorno, lista, membro) quando `rounding.scope: day` — è arrotondato a 2 decimali a
+partire dalla sua durata fatturata *esatta* moltiplicata per la tariffa, mai da un
+valore di ore già arrotondato. Ogni totale (un bucket, un subtotale valuta, una riga
+fattura) è poi la somma di importi di unità già arrotondati, così il CSV fattura, i
+`currency_subtotals` del JSON e l'export HTML concordano sempre al centesimo. L'unico
+caso in cui questo non vale è un report raggruppato più *fine* dell'unità di
+fatturazione (es. per-task con arrotondamento per giorno): l'importo di un bucket in
+quel caso è una ripartizione proporzionale **indicativa** delle sue unità e può
+scostarsi di qualche centesimo — i subtotali valuta e le righe fattura
+(`--format csv-invoice`, o il campo `lines` nell'output JSON) restano sempre gli
+importi autoritativi.
 
 La variabile d'ambiente `CLICKUP_TOKEN`, se impostata, sovrascrive sempre il
 `token` letto dal file di config (comodo per CI o per non salvare il token su
@@ -274,7 +403,7 @@ e organizzato in milestone:
 | Milestone | Focus |
 |---|---|
 | [v1.6 — Rebrand & fondamenta](https://github.com/marcoarnulfo/clickup-cli/milestone/4) | rebrand a `clup`, service layer, rate limiter, `report --json` |
-| [v1.7 — Billing depth](https://github.com/marcoarnulfo/clickup-cli/milestone/5) | split billable, tariffe per-membro, budget & burn-down, export HTML/PDF |
+| [v1.7 — Billing depth](https://github.com/marcoarnulfo/clickup-cli/milestone/5) | split billable, tariffe per-membro e per-coppia, arrotondamento, multi-valuta, budget & burn-down, export HTML/fattura CSV |
 | [v1.8 — Live time tracking](https://github.com/marcoarnulfo/clickup-cli/milestone/6) | timer live, edit/delete entry |
 | [v1.9 — TUI design system](https://github.com/marcoarnulfo/clickup-cli/milestone/7) | temi, tabelle, command palette, accessibilità |
 | [v1.10 — Task context & account](https://github.com/marcoarnulfo/clickup-cli/milestone/8) | search, my-tasks, dettaglio task, keychain, profili |
