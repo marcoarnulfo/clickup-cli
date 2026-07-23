@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,6 +132,121 @@ func runReportCapture(t *testing.T, args []string) (string, error) {
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 	return buf.String(), runErr
+}
+
+// fakeUpdateServer answers like GitHub's releases/latest endpoint with tag,
+// and counts how many requests it received — the counter is what lets
+// TestReportNoNoticeWhenDisabled prove the server was never even hit.
+func fakeUpdateServer(t *testing.T, tag string) (*httptest.Server, *int32) {
+	t.Helper()
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		fmt.Fprintf(w, `{"tag_name":%q}`, tag)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &calls
+}
+
+// withUpdateSeams overrides currentVersion/updateAPIURL/updateCachePath for
+// the duration of the test, restoring the originals on cleanup — the same
+// pattern withSeams already uses for loadConfig/newClient. Without this
+// cleanup, one test would leave its endpoint (and fake current version) live
+// for whichever test in the package runs next.
+func withUpdateSeams(t *testing.T, current, apiURL, cachePath string) {
+	t.Helper()
+	origCurrent, origAPIURL, origCachePath := currentVersion, updateAPIURL, updateCachePath
+	t.Cleanup(func() {
+		currentVersion = origCurrent
+		updateAPIURL = origAPIURL
+		updateCachePath = origCachePath
+	})
+	currentVersion = func() string { return current }
+	updateAPIURL = apiURL
+	updateCachePath = cachePath
+}
+
+// runReportCaptureBoth is runReportCapture's sibling for tests that must also
+// inspect stderr: the update notice never touches stdout, so proving that
+// requires both streams.
+func runReportCaptureBoth(t *testing.T, args []string) (stdout, stderr string, err error) {
+	t.Helper()
+	origStdout, origStderr := os.Stdout, os.Stderr
+	outR, outW, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("os.Pipe (stdout): %v", pipeErr)
+	}
+	errR, errW, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatalf("os.Pipe (stderr): %v", pipeErr)
+	}
+	os.Stdout = outW
+	os.Stderr = errW
+
+	cmd := reportCmd()
+	cmd.SetArgs(args)
+	runErr := cmd.Execute()
+
+	outW.Close()
+	errW.Close()
+	os.Stdout = origStdout
+	os.Stderr = origStderr
+
+	var outBuf, errBuf bytes.Buffer
+	io.Copy(&outBuf, outR)
+	io.Copy(&errBuf, errR)
+	return outBuf.String(), errBuf.String(), runErr
+}
+
+// TestReportNoticeGoesToStderrAndStdoutStaysJSON is the load-bearing test for
+// this task: `clup report --json` feeds scripts, so a notice line on stdout
+// would break every jq pipeline downstream.
+func TestReportNoticeGoesToStderrAndStdoutStaysJSON(t *testing.T) {
+	t.Setenv("CLUP_NO_UPDATE_CHECK", "")
+	reportSrv := fakeReportServer(t)
+	withSeams(t, fixtureConfig(), reportSrv)
+	updateSrv, _ := fakeUpdateServer(t, "v99.0.0")
+	withUpdateSeams(t, "v1.0.0", updateSrv.URL, filepath.Join(t.TempDir(), "update.json"))
+
+	stdout, stderr, err := runReportCaptureBoth(t, []string{"--month", "2026-06", "--format", "json"})
+	if err != nil {
+		t.Fatalf("report --format json: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout)
+	}
+	if strings.Contains(stdout, "is available") {
+		t.Error("the update notice leaked into stdout")
+	}
+	if !strings.Contains(stderr, "is available") {
+		t.Errorf("no notice on stderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "CLUP_NO_UPDATE_CHECK") {
+		t.Error("the notice must tell the user how to turn it off")
+	}
+}
+
+// TestReportNoNoticeWhenDisabled confirms CLUP_NO_UPDATE_CHECK=1 not only
+// suppresses the notice but skips the network call entirely.
+func TestReportNoNoticeWhenDisabled(t *testing.T) {
+	t.Setenv("CLUP_NO_UPDATE_CHECK", "1")
+	reportSrv := fakeReportServer(t)
+	withSeams(t, fixtureConfig(), reportSrv)
+	updateSrv, calls := fakeUpdateServer(t, "v99.0.0")
+	withUpdateSeams(t, "v1.0.0", updateSrv.URL, filepath.Join(t.TempDir(), "update.json"))
+
+	_, stderr, err := runReportCaptureBoth(t, []string{"--month", "2026-06", "--format", "json"})
+	if err != nil {
+		t.Fatalf("report --format json: %v", err)
+	}
+	if strings.Contains(stderr, "is available") {
+		t.Errorf("notice printed despite CLUP_NO_UPDATE_CHECK=1:\n%s", stderr)
+	}
+	if got := atomic.LoadInt32(calls); got != 0 {
+		t.Errorf("update server was called %d times despite CLUP_NO_UPDATE_CHECK=1", got)
+	}
 }
 
 func TestReportJSONAgainstFakeServer(t *testing.T) {

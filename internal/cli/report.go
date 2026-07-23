@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -15,11 +16,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// loadConfig and newClient are package-level seams so tests can swap in a
-// fixture config and a client pointed at an httptest server without ever
-// touching the real config file or the real ClickUp API.
+// loadConfig, newClient, and currentVersion are package-level seams so tests
+// can swap in a fixture config, a client pointed at an httptest server, and a
+// fake release version, without ever touching the real config file, the real
+// ClickUp API, or requiring a `go install`-built release binary (in a `go
+// test` binary service.CurrentVersion reports "(devel)", which is not a
+// release version and would make CheckForUpdate a permanent no-op in tests).
 var loadConfig = config.Load
 var newClient = func(token string) *clickup.Client { return clickup.New(token) }
+var currentVersion = service.CurrentVersion
 
 // rangePrecedence documents (and is quoted by) every range flag's help text,
 // so the priority order is discoverable from --help alone rather than only
@@ -94,6 +99,10 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("run 'clup' to configure, or set CLICKUP_TOKEN")
 	}
 
+	// Start the update check alongside the report fetch. Running it serially
+	// would add up to two seconds to a `clup report` once a day.
+	updates := startUpdateCheck(cmd.Context(), cfg)
+
 	// Timezone two-track (global constraint): headless defaults to UTC and
 	// never changes silently. Resolution order: --tz flag, then config
 	// timezone, then UTC.
@@ -139,20 +148,66 @@ func runReport(cmd *cobra.Command, args []string) error {
 	r := report.Build(entries, group, p, start, end, loc)
 	r.Scope = scope
 
+	var writeErr error
 	switch format {
 	case "json":
-		return export.JSON(os.Stdout, r)
+		writeErr = export.JSON(os.Stdout, r)
 	case "csv":
-		return export.CSV(os.Stdout, r)
+		writeErr = export.CSV(os.Stdout, r)
 	case "md":
-		return export.Markdown(os.Stdout, r)
+		writeErr = export.Markdown(os.Stdout, r)
 	case "html":
-		return export.HTML(os.Stdout, r)
+		writeErr = export.HTML(os.Stdout, r)
 	case "csv-invoice":
-		return export.InvoiceCSV(os.Stdout, r)
+		writeErr = export.InvoiceCSV(os.Stdout, r)
 	default:
 		return fmt.Errorf("unsupported --format %q, want \"json\", \"csv\", \"md\", \"html\" or \"csv-invoice\"", format)
 	}
+
+	// Collect the update check started above. The channel is always closed,
+	// so this receive never blocks the command from exiting even if the
+	// check is disabled, failed, or found nothing newer.
+	if latest, ok := <-updates; ok {
+		fmt.Fprintf(os.Stderr, "\nclup %s is available (you have %s)\n"+
+			"  go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest\n"+
+			"  disable: CLUP_NO_UPDATE_CHECK=1\n", latest, currentVersion())
+	}
+
+	return writeErr
+}
+
+// updateAPIURL and updateCachePath are empty in production; tests set them to
+// point the check at a local server and a temporary cache.
+var (
+	updateAPIURL    string
+	updateCachePath string
+)
+
+// startUpdateCheck runs the update check in the background and returns a
+// channel yielding the newer version, if any. The channel is always closed, so
+// a receive never blocks the command from finishing.
+//
+// It passes demo=false to service.UpdateCheckEnabled deliberately: the
+// headless path ignores CLICKUP_DEMO (see runReport's doc comment and
+// TestReportIgnoresDemoEnv). Demo mode only applies to the TUI.
+func startUpdateCheck(ctx context.Context, cfg config.Config) <-chan string {
+	out := make(chan string, 1)
+	if !service.UpdateCheckEnabled(cfg, false) {
+		close(out)
+		return out
+	}
+	go func() {
+		defer close(out)
+		latest, newer := service.CheckForUpdate(ctx, service.UpdateOptions{
+			Current:   currentVersion(),
+			APIURL:    updateAPIURL,
+			CachePath: updateCachePath,
+		})
+		if newer {
+			out <- latest
+		}
+	}()
+	return out
 }
 
 // tagSet converts a repeatable --tag flag's values into the map
