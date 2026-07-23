@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -54,7 +55,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		m.report = report.Build(m.visibleEntries(), g, pricingFromConfig(m.cfg), start, end, nil)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 	case "m", "s":
@@ -97,9 +98,22 @@ func (m *Model) applyReport() {
 		g = report.GroupByTotal
 	}
 	start, end := m.currentRange()
-	m.report = report.Build(m.visibleEntries(), g, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+	m.report = report.Build(m.visibleEntries(), g, pricingFromConfig(m.cfg), start, end, nil)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+}
+
+// formatAmounts renders a bucket's per-currency amounts on one line, e.g.
+// "150.00 EUR + 90.00 USD". An empty slice renders as a zero in fallback.
+func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
+	if len(amounts) == 0 {
+		return fmt.Sprintf("%.2f %s", 0.0, fallback)
+	}
+	parts := make([]string, 0, len(amounts))
+	for _, a := range amounts {
+		parts = append(parts, fmt.Sprintf("%.2f %s", a.Amount, a.Currency))
+	}
+	return strings.Join(parts, " + ")
 }
 
 func (rm reportModel) view() string {
@@ -108,15 +122,29 @@ func (rm reportModel) view() string {
 		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
-		fmt.Sprintf("%-32s %8s %10s %s", "Item", "Hours", "Amount", "Cur"))
+		fmt.Sprintf("%-32s %8s %8s %s", "Item", "Hours", "Billed", "Amount"))
 	rows := header + "\n"
 	for _, b := range r.Buckets {
-		rows += fmt.Sprintf("%-32s %8.2f %10.2f %s\n",
-			truncate(b.Label, 32), b.Hours, b.Amount, r.Currency)
+		rows += fmt.Sprintf("%-32s %8.2f %8.2f %s\n",
+			truncate(b.Label, 32), b.Hours, b.BilledHours, formatAmounts(b.Amounts, r.DefaultCurrency))
 	}
 
-	total := styleOK.Render(fmt.Sprintf("%-32s %8.2f %10.2f %s",
-		"TOTAL", r.TotalHours, r.TotalAmount, r.Currency))
+	// Totals: one line when the report is single-currency, otherwise a TOTAL
+	// hours line plus one authoritative subtotal line per currency (no FX).
+	var total string
+	if len(r.CurrencySubtotals) <= 1 {
+		total = styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
+			"TOTAL", r.TotalHours, r.BilledHours, r.TotalAmount, r.DefaultCurrency))
+	} else {
+		total = styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f", "TOTAL", r.TotalHours, r.BilledHours))
+		for _, s := range r.CurrencySubtotals {
+			total += "\n" + styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
+				"  subtotal "+s.Currency, s.Hours, s.BilledHours, s.Amount, s.Currency))
+		}
+	}
+	if r.NonBillableHours > 0 {
+		total += "\n" + styleHelp.Render(fmt.Sprintf("%-32s %8.2f", "  non-billable", r.NonBillableHours))
+	}
 
 	body := styleBox.Render(rows + total)
 	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")

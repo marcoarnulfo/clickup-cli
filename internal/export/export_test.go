@@ -13,12 +13,17 @@ func sample() report.Report {
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	return report.Report{
 		Start: start, End: start.AddDate(0, 1, 0),
-		Scope: "me", GroupBy: "list", Currency: "EUR", Rate: 50,
+		Scope: "me", GroupBy: "list", DefaultCurrency: "EUR", DefaultRate: 50,
 		Buckets: []report.Bucket{
-			{Label: "Client A", Hours: 3, Amount: 150},
-			{Label: "Client B", Hours: 3, Amount: 150},
+			{Label: "Client A", Key: "l1", Hours: 3, BillableHours: 3, BilledHours: 3,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 150}}},
+			{Label: "Client B", Key: "l2", Hours: 3, BillableHours: 3, BilledHours: 3,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 150}}},
 		},
-		TotalHours: 6, TotalAmount: 300,
+		CurrencySubtotals: []report.CurrencySubtotal{
+			{Currency: "EUR", Hours: 6, BillableHours: 6, BilledHours: 6, Amount: 300},
+		},
+		TotalHours: 6, BillableHours: 6, BilledHours: 6, TotalAmount: 300,
 	}
 }
 

@@ -26,9 +26,9 @@ func newTestModelOnReport() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
 	m := New(cfg)
 	m.screen = screenReport
-	m.entries = []report.TimeEntry{{ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1"}}
+	m.entries = []report.TimeEntry{{ID: "e1", ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1", Billable: true}}
 	start, end := report.MonthRange(m.year, m.month, nil)
-	m.report = report.Build(m.entries, report.GroupByTotal, ratesFromConfig(cfg), "EUR", start, end)
+	m.report = report.Build(m.entries, report.GroupByTotal, pricingFromConfig(cfg), start, end, nil)
 	m.rep = newReport(m.report, "")
 	return m
 }

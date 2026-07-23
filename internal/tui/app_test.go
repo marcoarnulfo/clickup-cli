@@ -418,7 +418,7 @@ func TestReportCycleGroupBy(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}})
 	mm := updated.(Model)
 	if mm.report.GroupBy != report.GroupByTotal {
@@ -473,8 +473,8 @@ func TestExportWritesFile(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
-	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), Currency: "EUR",
-		Buckets: []report.Bucket{{Label: "A", Hours: 1, Amount: 0}}, TotalHours: 1}
+	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "A", Key: "l1", Hours: 1}}, TotalHours: 1}
 	m.export = newExport(m.report)
 	m.screen = screenExport
 
@@ -506,7 +506,7 @@ func TestRatesScreenOpensFromReport(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -529,7 +529,7 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -567,7 +567,7 @@ func TestRatesScreenEscCancelsEdit(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -593,7 +593,7 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -621,7 +621,7 @@ func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -640,7 +640,7 @@ func TestRatesScreenEscDiscardsAndReturns(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -673,7 +673,7 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -697,8 +697,8 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 func TestVisibleEntriesAppliesFilter(t *testing.T) {
 	m := Model{
 		entries: []report.TimeEntry{
-			{ListName: "A", Duration: time.Hour},
-			{ListName: "B", Duration: time.Hour},
+			{ListName: "A", Duration: time.Hour, Billable: true},
+			{ListName: "B", Duration: time.Hour, Billable: true},
 		},
 		filterLists: map[string]bool{"A": true},
 	}
@@ -724,8 +724,8 @@ func TestEntriesMsgBuildsFilteredReport(t *testing.T) {
 		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
-		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
+		{ListName: "B", Duration: 2 * time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.report.TotalHours != 1 {
@@ -743,7 +743,7 @@ func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 		now:            time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{TaskID: "t1", ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.report.TotalHours != 1 {
@@ -814,7 +814,7 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
-		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour},
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
 	}
 	u, _ := m.Update(entriesMsg{entries: entries})
 	m = u.(Model)
@@ -842,7 +842,7 @@ func TestEntriesMsgPrunesStaleFilterSelections(t *testing.T) {
 		now:         time.Now,
 	}
 	u, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
-		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)},
+		{ListName: "A", Duration: time.Hour, Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Billable: true},
 	}})
 	m = u.(Model)
 	if m.filterLists["Gone"] {

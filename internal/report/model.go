@@ -34,20 +34,37 @@ type Bucket struct {
 	BillableHours float64          `json:"billable_hours"` // raw, billable only
 	BilledHours   float64          `json:"billed_hours"`   // billable after rounding
 	Amounts       []CurrencyAmount `json:"amounts"`        // per-currency subtotals inside the bucket
-	Amount        float64          `json:"amount"`         // Deprecated: single-currency amount, removed in the Build rewrite
 }
 
 // Report is the aggregated result ready for presentation/export.
+//
+// Money: CurrencySubtotals (and Lines) are the authoritative totals. TotalAmount
+// is populated ONLY when the report is single-currency, otherwise it stays 0 —
+// amounts in different currencies are never summed (no FX).
 type Report struct {
-	Start       time.Time // period [Start, End)
-	End         time.Time
-	Scope       string // "me" | "team"
-	GroupBy     string
-	Currency    string
-	Rate        float64
-	Buckets     []Bucket
-	TotalHours  float64
-	TotalAmount float64
+	Start   time.Time `json:"start"` // period [Start, End)
+	End     time.Time `json:"end"`
+	Scope   string    `json:"scope"` // "me" | "team"
+	GroupBy string    `json:"group_by"`
+
+	// Timezone is loc.String(): "UTC", an IANA name, or "Local".
+	Timezone string `json:"timezone"`
+	// DefaultCurrency / DefaultRate mirror the Pricing used to build the report.
+	// They exist so presentation layers (and the CLI's deprecated JSON "currency"
+	// and "rate" keys) keep working now that per-list currencies and rates are
+	// the real model.
+	DefaultCurrency string  `json:"default_currency"`
+	DefaultRate     float64 `json:"default_rate"`
+
+	Buckets           []Bucket           `json:"buckets"`
+	Lines             []InvoiceLine      `json:"lines"`
+	CurrencySubtotals []CurrencySubtotal `json:"currency_subtotals"`
+
+	TotalHours       float64 `json:"total_hours"`        // all entries, raw
+	BillableHours    float64 `json:"billable_hours"`     // billable entries, raw
+	NonBillableHours float64 `json:"non_billable_hours"` // never rounded
+	BilledHours      float64 `json:"billed_hours"`       // billable after rounding
+	TotalAmount      float64 `json:"total_amount"`       // 0 unless single-currency
 }
 
 // ListMember identifies a (list, member) pair, the most specific rate override.
@@ -104,6 +121,15 @@ type Pricing struct {
 	Currencies      map[string]string // listID -> ISO currency (e.g. "EUR")
 	DefaultCurrency string            // fallback when the list is not in Currencies
 	Rounding        RoundRule
+}
+
+// currencyFor resolves the currency billed for a list: its per-list override, or
+// DefaultCurrency when the list has none.
+func (p Pricing) currencyFor(listID string) string {
+	if c, ok := p.Currencies[listID]; ok && c != "" {
+		return c
+	}
+	return p.DefaultCurrency
 }
 
 // CurrencyAmount is an amount expressed in a given currency.

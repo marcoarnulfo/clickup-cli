@@ -180,9 +180,13 @@ func (m Model) selectedAssignees() []int {
 	return ids
 }
 
-// ratesFromConfig builds the report rates from config (default + overrides).
-func ratesFromConfig(cfg config.Config) report.Rates {
-	return report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+// pricingFromConfig builds the report pricing from config (default rate +
+// per-list overrides + the report currency).
+func pricingFromConfig(cfg config.Config) report.Pricing {
+	return report.Pricing{
+		Rates:           report.Rates{Default: cfg.Rate, ByList: cfg.Rates},
+		DefaultCurrency: cfg.Currency,
+	}
 }
 
 // filterCriteria assembles the active client-side filter from session state.
@@ -480,7 +484,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			groupBy = report.GroupByTotal
 		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), groupBy, ratesFromConfig(m.cfg), m.cfg.Currency, start, end)
+		m.report = report.Build(m.visibleEntries(), groupBy, pricingFromConfig(m.cfg), start, end, nil)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport

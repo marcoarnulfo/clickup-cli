@@ -43,6 +43,9 @@ func demoEntries(year int, month time.Month) []report.TimeEntry {
 			UserID: uid, UserName: user,
 			Tags: tags, Status: status,
 			Start: start, Duration: dur,
+			// The demo is a billing showcase: every fake entry is billable, so
+			// the demo report shows non-zero amounts.
+			Billable: true,
 		}
 	}
 	return []report.TimeEntry{

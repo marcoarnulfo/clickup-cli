@@ -10,8 +10,8 @@ import (
 
 func filtersFixture() Model {
 	entries := []report.TimeEntry{
-		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress"},
-		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done"},
+		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress", Billable: true},
+		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: true},
 	}
 	m := Model{screen: screenFilters, entries: entries, now: time.Now}
 	m.filtersScreen = newFilters(entries, nil, nil, nil)

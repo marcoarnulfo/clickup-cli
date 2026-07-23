@@ -8,23 +8,21 @@
   "buckets": [
     {
       "label": "Client A",
-      "key": "",
+      "key": "55",
       "hours": 2,
       "billable_hours": 0,
       "billed_hours": 0,
-      "amounts": null,
-      "amount": 160
+      "amounts": null
     },
     {
       "label": "Client B",
-      "key": "",
+      "key": "66",
       "hours": 1,
       "billable_hours": 0,
       "billed_hours": 0,
-      "amounts": null,
-      "amount": 50
+      "amounts": null
     }
   ],
   "total_hours": 3,
-  "total_amount": 210
+  "total_amount": 0
 }

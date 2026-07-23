@@ -90,12 +90,18 @@ func runReport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Rates construction mirrors internal/tui's ratesFromConfig exactly; this
-	// is intentionally inlined rather than importing tui, to avoid coupling a
-	// headless command to the TUI package for a two-line struct literal.
-	rates := report.Rates{Default: cfg.Rate, ByList: cfg.Rates}
+	// Pricing construction mirrors internal/tui's pricingFromConfig exactly; it
+	// is intentionally inlined rather than importing tui — a headless command
+	// must never depend on the TUI package. Centralizing both in
+	// internal/service is a later step.
+	pricing := report.Pricing{
+		Rates:           report.Rates{Default: cfg.Rate, ByList: cfg.Rates},
+		DefaultCurrency: cfg.Currency,
+	}
 
-	r := report.Build(entries, group, rates, cfg.Currency, start, end)
+	// The headless command's ranges are UTC (see resolveRange), so the report
+	// calendar is UTC too.
+	r := report.Build(entries, group, pricing, start, end, nil)
 	r.Scope = scope
 
 	switch format {
