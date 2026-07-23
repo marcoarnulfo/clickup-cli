@@ -94,6 +94,14 @@ type Model struct {
 	// injectable clock (default: time.Now)
 	now func() time.Time
 
+	// live timer (#91): the running timer surfaced globally on Home. ticking
+	// guards against arming a second 1s tick chain; tickCount paces the periodic
+	// re-poll. userID is the authenticated user (ownership gating, #94/#98).
+	runningTimer *clickup.RunningTimer
+	ticking      bool
+	tickCount    int
+	userID       int
+
 	// loc is the resolved location for range computation and report building
 	// (#83): the configured timezone, falling back to time.Local. Set once at
 	// New() and re-resolved (with error surfacing) by locOrErr at each report
@@ -177,7 +185,9 @@ func defaultYearMonth(now time.Time, loc *time.Location) (int, time.Month) {
 	return t.Year(), t.Month()
 }
 
-func (m Model) Init() tea.Cmd { return m.updateCheckCmd() }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(m.updateCheckCmd(), m.runningTimerProbeCmd(), m.currentUserCmd())
+}
 
 // updateCheckCmd checks GitHub for a newer release in the background and
 // returns updateAvailableMsg when one exists. It returns nil (issuing no
@@ -527,6 +537,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
+
+	case runningTimerMsg:
+		m.runningTimer = msg.timer
+		if msg.timer != nil && !m.ticking {
+			m.ticking = true
+			return m, tickCmd() // arm exactly one chain on nil -> non-nil
+		}
+		if msg.timer == nil {
+			m.ticking = false // let any in-flight tick chain die on its next fire
+		}
+		return m, nil
+
+	case userMsg:
+		m.userID = msg.id
+		return m, nil
+
+	case tickMsg:
+		if m.runningTimer == nil {
+			m.ticking = false
+			return m, nil // no timer: stop the chain
+		}
+		m.tickCount++
+		if m.tickCount%repollTickInterval == 0 && !m.demo {
+			// periodic re-poll (real mode only: re-issuing the demo probe would
+			// reset the fake Start and make the demo stopwatch sawtooth).
+			return m, tea.Batch(tickCmd(), m.runningTimerProbeCmd())
+		}
+		return m, tickCmd()
 
 	case tea.KeyMsg:
 		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser {

@@ -232,3 +232,17 @@ func demoStopTimerCmd() tea.Cmd {
 func demoCurrentTimerCmd() tea.Cmd {
 	return func() tea.Msg { return timerMsg{timer: nil} }
 }
+
+// demoRunningTimerProbeCmd reports a fake running timer for the global Home
+// indicator, started 25 minutes before now so the stopwatch is visibly ticking.
+// It is SEPARATE from demoCurrentTimerCmd (which returns nil — load-bearing for
+// the log timer flow, where nil means "no timer, pick a task").
+func demoRunningTimerProbeCmd(now time.Time) tea.Cmd {
+	return func() tea.Msg {
+		return runningTimerMsg{timer: &clickup.RunningTimer{
+			TaskID:   "demo-t1",
+			TaskName: "Fix login bug",
+			Start:    now.Add(-25 * time.Minute),
+		}}
+	}
+}
