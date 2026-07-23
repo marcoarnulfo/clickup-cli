@@ -118,7 +118,7 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 
 // TestReportViewShowsSummaryAndBillableSplit drives Update to build a report
 // from a mixed-currency fixture and asserts the rendered view carries the
-// shared export.SummaryLine ("N entries · Xh · amounts"), an explicit
+// shared export.SummaryLine ("N billing lines · Xh · amounts"), an explicit
 // billable/non-billable split, and per-currency subtotals — all formatted
 // with FormatHours/%.2f, never a second summary formatter.
 func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
@@ -144,7 +144,7 @@ func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 	// billable: 2h @ 100 EUR/h = 200 EUR, 1h @ 90 USD/h = 90 USD.
 	out := mm.rep.view()
 	for _, want := range []string{
-		"2 entries · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
+		"2 billing lines · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
 		"subtotal EUR", "200.00 EUR",
 		"subtotal USD", "90.00 USD",
 		// The explicit split line, as one contiguous substring: billable 3h

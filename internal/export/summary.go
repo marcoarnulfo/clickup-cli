@@ -22,5 +22,9 @@ func SummaryLine(r report.Report) string {
 		amounts = append(amounts, fmt.Sprintf("%.2f %s", cs.Amount, cs.Currency))
 	}
 
-	return fmt.Sprintf("%d entries · %s · %s", len(r.Lines), hours, strings.Join(amounts, ", "))
+	// "billing lines", not "entries": Lines holds one row per billing unit, so
+	// it drops non-billable entries and collapses a day's entries into one
+	// under rounding.scope: day. Calling them entries misreports what the user
+	// logged.
+	return fmt.Sprintf("%d billing lines · %s · %s", len(r.Lines), hours, strings.Join(amounts, ", "))
 }
