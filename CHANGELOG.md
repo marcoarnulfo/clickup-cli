@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-23
+
 ### Added
 - Billing engine: per-list, per-member and per-(list, member) hourly rate overrides,
   with precedence (list, member) > member > list > default.
