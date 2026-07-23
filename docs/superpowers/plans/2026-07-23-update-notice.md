@@ -48,8 +48,8 @@
 - Produces:
 ```go
 const Dev = "dev"
-func IsRelease(v string) bool                       // true solo per "vX.Y.Z" puro
-func Newer(current, latest string) bool             // true se latest > current; false se uno dei due non è release
+func IsRelease(v string) bool                       // true only for a plain "vX.Y.Z"
+func Newer(current, latest string) bool             // true if latest > current; false if either is not a release
 func Resolve(ldflagsVersion, mainVersion string) string
 ```
 
@@ -71,14 +71,14 @@ func TestIsRelease(t *testing.T) {
 		{"dev", false},
 		{"(devel)", false},
 		{"", false},
-		{"1.7.0", false},                                  // manca la v
-		{"v1.7", false},                                   // due componenti
-		{"v1.7.0.1", false},                               // quattro componenti
+		{"1.7.0", false},                                  // missing the v
+		{"v1.7", false},                                   // two components
+		{"v1.7.0.1", false},                               // four components
 		{"v1.7.0-rc1", false},                             // prerelease
 		{"v1.7.0+dirty", false},                           // build metadata
-		{"v1.6.1-0.20260723143812-50d39f89c2fe", false},   // pseudo-version (go build da Go 1.24)
+		{"v1.6.1-0.20260723143812-50d39f89c2fe", false},   // pseudo-version (go build, Go 1.24+)
 		{"v1.7.x", false},
-		{"v1.+7.0", false},                                // Atoi accetterebbe "+7": va rifiutato
+		{"v1.+7.0", false},                                // Atoi would accept "+7": must be rejected
 		{"v1..0", false},
 		{"v-1.7.0", false},
 	}
@@ -414,7 +414,7 @@ type updateCache struct {
 	Latest    string    `json:"latest"`
 }
 func defaultCachePath() (string, error)          // os.UserCacheDir()/clup/update.json
-func readCache(path string) (updateCache, bool)  // ok=false se manca/illeggibile/corrotta
+func readCache(path string) (updateCache, bool)  // ok=false when missing, unreadable or malformed
 func writeCache(path string, c updateCache) error // atomica: temp + rename
 func cacheFresh(c updateCache, now time.Time) bool
 ```
@@ -601,7 +601,7 @@ Import da aggiungere: `encoding/json`, `os`, `path/filepath`, `time`.
 func UpdateCheckEnabled(cfg config.Config, demo bool) bool
 
 type UpdateOptions struct {
-	Current   string        // versione corrente; se non è una release il controllo non parte
+	Current   string        // current version; the check does not run unless it is a release
 	CachePath string        // "" => defaultCachePath()
 	APIURL    string        // "" => endpoint GitHub
 	Now       time.Time     // zero => time.Now()
@@ -918,11 +918,11 @@ Import da aggiungere: `context`, `fmt`, `io`, `net/http`, e `internal/config`.
 func TestReportNoticeGoesToStderrAndStdoutStaysJSON(t *testing.T) {
 	// The whole point of putting the notice on stderr: `clup report --json`
 	// feeds scripts, and a line on stdout would break every jq downstream.
-	// ... avviare il fake server del report già usato in questo file ...
-	// ... impostare CLUP_NO_UPDATE_CHECK="" e puntare la cache e l'API di
-	//     update a un server di test che risponde v99.0.0 ...
-	// ... catturare stdout E stderr con os.Pipe, come già fa
-	//     TestReportJSONSchemaGolden per il solo stdout ...
+	// ... start the fake report server already used in this file ...
+	// ... set CLUP_NO_UPDATE_CHECK="" and point the cache and the update API
+	//     at a test server answering v99.0.0 ...
+	// ... capture stdout AND stderr with os.Pipe, the way
+	//     TestReportJSONSchemaGolden already captures stdout alone ...
 
 	var parsed map[string]any
 	if err := json.Unmarshal(stdout, &parsed); err != nil {
@@ -941,8 +941,8 @@ func TestReportNoticeGoesToStderrAndStdoutStaysJSON(t *testing.T) {
 
 func TestReportNoNoticeWhenDisabled(t *testing.T) {
 	t.Setenv("CLUP_NO_UPDATE_CHECK", "1")
-	// ... stesso setup; asserire che stderr NON contenga "is available"
-	//     e che il server di update non sia mai stato chiamato ...
+	// ... same setup; assert stderr does NOT contain "is available"
+	//     and that the update server was never called ...
 }
 ```
 
@@ -1157,3 +1157,14 @@ Contenuto obbligatorio, in inglese: che `clup` controlla **una volta al giorno**
 - **Coerenza dei tipi:** `UpdateOptions`, `CheckForUpdate`, `UpdateCheckEnabled`, `CurrentVersion`, `updateCache`, `updateAvailableMsg` usati con la stessa firma in tutti i task. ✓
 - **Segnaposto:** nessuno. Nei tre punti in cui il codice dipende da come è scritto oggi il repo — il nome del costruttore del comando radice (T2), l'helper del percorso di config nei test (T3), la firma della view della home (T7) — il piano dice esplicitamente di allinearsi all'esistente invece di inventare un secondo modo.
 - **YAGNI:** niente ordinamento dei prerelease, nessuna dipendenza nuova, nessun comando `clup version --check`, nessun self-update.
+
+---
+
+## Nota sulla lingua degli snippet (vincolante)
+
+I blocchi di codice di questo piano sono codice vero da copiare, quindi **ogni commento al
+loro interno è in inglese**, come impone `CLAUDE.md`. Le righe `// ... descrizione ...` che
+compaiono in alcuni test sono **istruzioni per l'implementatore**, non codice: vanno
+sostituite con il setup reale, mai lasciate nel file.
+
+Il testo in italiano vive solo nella prosa del piano, fuori dai blocchi di codice.
