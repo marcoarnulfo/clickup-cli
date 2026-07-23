@@ -81,7 +81,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ratesScreen = newRates(m.entries, m.cfg)
 		m.screen = screenRates
 	case "n":
-		m.logScreen = newLog(m.entries, m.cfg)
+		m.logScreen = newLog(m.entries, m.cfg, screenReport)
 		m.screen = screenLog
 	case "f":
 		missing := m.tasksMissingStatus()

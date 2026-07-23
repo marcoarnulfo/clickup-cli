@@ -648,6 +648,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenLog
 		return m, nil
 
+	case timerStoppedMsg:
+		m.runningTimer = nil
+		m.ticking = false
+		m.logScreen.timer = nil
+		m.logScreen.step = logDone
+		m.logScreen.msg = msg.summary
+		m.screen = screenLog
+		return m, nil
+
 	case taskListMsg:
 		m.logScreen.tasks = msg.tasks
 		m.logScreen.taskIdx = 0
@@ -656,15 +665,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case timerMsg:
+		// Update global state first, unconditionally: a timer started from the
+		// log flow must surface on Home's live indicator and start ticking even
+		// though (unlike runningTimerMsg) this msg is otherwise scoped to the
+		// log screen.
+		m.runningTimer = msg.timer
+		var tick tea.Cmd
+		if msg.timer != nil && !m.ticking {
+			m.ticking = true
+			tick = tickCmd()
+		}
 		if m.screen != screenLog && m.screen != screenLoading {
-			return m, nil // stale timer message: the user left the screen
+			return m, tick // stale for the log screen, but global state is updated
 		}
 		m.logScreen.timer = msg.timer
 		if msg.timer != nil {
 			m.logScreen.step = logTimerRunning
 		}
 		m.screen = screenLog
-		return m, nil
+		return m, tick
 
 	case membersMsg:
 		m.teamMembers = msg.members
@@ -768,7 +787,13 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion)
+		timerLine := ""
+		if m.runningTimer != nil {
+			if label := elapsedLabel(m.runningTimer.Start, m.now()); label != "" {
+				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label + "   (c: manage)"
+			}
+		}
+		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
@@ -778,6 +803,7 @@ func (m Model) View() string {
 	case screenRates:
 		return m.ratesScreen.view()
 	case screenLog:
+		m.logScreen.now = m.now()
 		return m.logScreen.view()
 	case screenMembers:
 		return m.membersScreen.view()

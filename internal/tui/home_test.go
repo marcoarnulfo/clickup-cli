@@ -54,7 +54,7 @@ func TestHomeFUsesCache(t *testing.T) {
 // #38: an inline error routed back to Home must be visible in the view...
 func TestHomeViewRendersErrText(t *testing.T) {
 	m := homeModel{errText: "Error: boom"}
-	out := m.view("This month", "me", "", "")
+	out := m.view("This month", "me", "", "", "")
 	if !strings.Contains(out, "Error: boom") {
 		t.Fatalf("home view should render errText, got:\n%s", out)
 	}

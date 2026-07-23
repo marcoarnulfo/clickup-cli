@@ -210,12 +210,13 @@ func demoCreateEntryCmd(tid string, dur time.Duration) tea.Cmd {
 	}
 }
 
-// demoStartTimerCmd returns a fake running timer for tid (no I/O). Start is
-// left zero, mirroring the real startTimerCmd's own fallback when the server
-// doesn't echo back a start time.
-func demoStartTimerCmd(tid string) tea.Cmd {
+// demoStartTimerCmd returns a fake running timer for tid (no I/O), started
+// one minute before now. A non-zero Start is load-bearing: with a zero Start
+// the demo timer screen's stopwatch would show "started just now" forever
+// instead of ticking (see elapsedLabel).
+func demoStartTimerCmd(tid string, now time.Time) tea.Cmd {
 	return func() tea.Msg {
-		return timerMsg{timer: &clickup.RunningTimer{TaskID: tid, TaskName: tid}}
+		return timerMsg{timer: &clickup.RunningTimer{TaskID: tid, TaskName: tid, Start: now.Add(-1 * time.Minute)}}
 	}
 }
 
@@ -223,7 +224,7 @@ func demoStartTimerCmd(tid string) tea.Cmd {
 // duration, without ever calling the API.
 func demoStopTimerCmd() tea.Cmd {
 	return func() tea.Msg {
-		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(45*time.Minute))}
+		return timerStoppedMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(45*time.Minute))}
 	}
 }
 

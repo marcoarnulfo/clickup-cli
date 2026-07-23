@@ -63,8 +63,15 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.scope = "me"
 		}
 	case "n":
-		m.logScreen = newLog(m.entries, m.cfg)
+		m.logScreen = newLog(m.entries, m.cfg, screenHome)
 		m.screen = screenLog
+	case "c":
+		if m.runningTimer != nil {
+			m.logScreen = newLog(m.entries, m.cfg, screenHome)
+			m.logScreen.timer = m.runningTimer
+			m.logScreen.step = logTimerRunning
+			m.screen = screenLog
+		}
 	case "f":
 		if m.scope != "team" {
 			break
@@ -108,7 +115,7 @@ func (m Model) rangeLabel() string {
 	return report.PeriodLabel(start, end)
 }
 
-func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion string) string {
+func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion, timerLine string) string {
 	title := styleTitle.Render("ClickUp Hours — Report")
 	scopeStr := styleAccent.Render(scope)
 	if membersNote != "" {
@@ -120,7 +127,11 @@ func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion string) st
 	if scope == "team" {
 		help += "f: select members · " // only active in team scope
 	}
-	help += "Enter: generate report · n: log hours · q: quit"
+	help += "Enter: generate report · n: log hours · "
+	if timerLine != "" {
+		help += "c: manage timer · "
+	}
+	help += "q: quit"
 	out := title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
 	if m.errText != "" {
 		out += "\n\n" + styleErr.Render(m.errText)
@@ -131,6 +142,9 @@ func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion string) st
 		out += "\n\n" + styleHelp.Render(fmt.Sprintf(
 			"clup %s available — go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest",
 			latestVersion))
+	}
+	if timerLine != "" {
+		out += "\n\n" + styleHelp.Render(timerLine)
 	}
 	return out
 }
