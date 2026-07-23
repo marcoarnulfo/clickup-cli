@@ -621,10 +621,10 @@ func TestBuildLinesSumMatchesCurrencySubtotals(t *testing.T) {
 	}
 }
 
-// The amount bills the EXACT billed duration, and InvoiceLine.Hours carries 4
+// The amount bills the EXACT billed duration, and InvoiceLine.Hours carries 6
 // decimals so the row still reconciles at cent precision:
 // round2(Hours * Rate) == Amount, even for increments whose hour value is not
-// exact to 2 decimals (5m -> 0.0833h).
+// exact to 2 decimals (5m -> 0.083333h).
 func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 	loc := time.UTC
 	at := time.Date(2026, 6, 1, 9, 0, 0, 0, loc)
@@ -648,9 +648,9 @@ func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 		}
 		sum = round2(sum + l.Amount)
 	}
-	// 7m -> 5m (0.0833h) at 60/h bills the exact 5 minutes: 5.00, not 4.80.
-	if r.Lines[0].Hours != 0.0833 || r.Lines[0].Amount != 5 {
-		t.Errorf("line[0] = %+v, want 0.0833h / 5.00", r.Lines[0])
+	// 7m -> 5m (0.083333h) at 60/h bills the exact 5 minutes: 5.00, not 4.80.
+	if r.Lines[0].Hours != 0.083333 || r.Lines[0].Amount != 5 {
+		t.Errorf("line[0] = %+v, want 0.083333h / 5.00", r.Lines[0])
 	}
 	// The ledger identity still holds: sum(lines) == currency subtotal.
 	if len(r.CurrencySubtotals) != 1 || sum != r.CurrencySubtotals[0].Amount {
@@ -662,7 +662,7 @@ func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 }
 
 // Regression guard: with no rounding configured, a 20-minute unit at 30/h must
-// bill the exact 20 minutes (10.00) and report 0.3333 h — never 0.33 h / 9.90.
+// bill the exact 20 minutes (10.00) and report 0.333333 h — never 0.33 h / 9.90.
 func TestBuildLineUnroundedKeepsExactAmount(t *testing.T) {
 	loc := time.UTC
 	entries := []TimeEntry{
@@ -675,8 +675,8 @@ func TestBuildLineUnroundedKeepsExactAmount(t *testing.T) {
 		t.Fatalf("want 1 line, got %d", len(r.Lines))
 	}
 	l := r.Lines[0]
-	if l.Hours != 0.3333 {
-		t.Errorf("line hours = %v, want 0.3333 (4 decimals)", l.Hours)
+	if l.Hours != 0.333333 {
+		t.Errorf("line hours = %v, want 0.333333 (6 decimals)", l.Hours)
 	}
 	if l.Amount != 10 {
 		t.Errorf("line amount = %v, want 10 (exact billed duration * rate)", l.Amount)
@@ -693,20 +693,49 @@ func TestBuildLineUnroundedKeepsExactAmount(t *testing.T) {
 	}
 }
 
-func TestRound4(t *testing.T) {
+// TestBuildLineReconcilesAtHighRates pins the case that 4-decimal hours got
+// wrong: a 20-minute unit at 200/h. With 4 decimals the row stored 0.3333 h and
+// round2(0.3333 * 200) = 66.66 contradicted its own Amount of 66.67. Rates of
+// 150-200/h are ordinary, so the invariant must hold there.
+func TestBuildLineReconcilesAtHighRates(t *testing.T) {
+	loc := time.UTC
+	for _, rate := range []float64{30, 60, 100, 150, 200, 500, 1000} {
+		entries := []TimeEntry{
+			{ID: "1", ListID: "A", ListName: "Alpha", UserID: 1,
+				Start: time.Date(2026, 6, 1, 9, 0, 0, 0, loc), Duration: 20 * time.Minute, Billable: true},
+		}
+		p := Pricing{Rates: Rates{Default: rate}, DefaultCurrency: "EUR"}
+		r := Build(entries, GroupByTotal, p, junStart, junEnd, loc)
+		l := r.Lines[0]
+		if got := round2(l.Hours * l.Rate); got != l.Amount {
+			t.Errorf("rate %v: round2(%v * %v) = %v, Amount = %v", rate, l.Hours, l.Rate, got, l.Amount)
+		}
+	}
+	// The exact figures of the case that used to fail.
+	entries := []TimeEntry{
+		{ID: "1", ListID: "A", ListName: "Alpha", UserID: 1,
+			Start: time.Date(2026, 6, 1, 9, 0, 0, 0, loc), Duration: 20 * time.Minute, Billable: true},
+	}
+	r := Build(entries, GroupByTotal, Pricing{Rates: Rates{Default: 200}, DefaultCurrency: "EUR"}, junStart, junEnd, loc)
+	if r.Lines[0].Hours != 0.333333 || r.Lines[0].Amount != 66.67 {
+		t.Errorf("20m at 200/h = %+v, want 0.333333 h / 66.67", r.Lines[0])
+	}
+}
+
+func TestRound6(t *testing.T) {
 	cases := []struct {
 		in   float64
 		want float64
 	}{
-		{1.0 / 3.0, 0.3333},
-		{1.0 / 12.0, 0.0833}, // 5 minutes
-		{2.0 / 3.0, 0.6667},
+		{1.0 / 3.0, 0.333333},
+		{1.0 / 12.0, 0.083333}, // 5 minutes
+		{2.0 / 3.0, 0.666667},
 		{1, 1},
 		{0, 0},
 	}
 	for _, c := range cases {
-		if got := round4(c.in); got != c.want {
-			t.Errorf("round4(%v) = %v, want %v", c.in, got, c.want)
+		if got := round6(c.in); got != c.want {
+			t.Errorf("round6(%v) = %v, want %v", c.in, got, c.want)
 		}
 	}
 }

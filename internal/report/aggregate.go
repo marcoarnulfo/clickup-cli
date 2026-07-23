@@ -33,11 +33,12 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-// round4 rounds to 4 decimal places. It is used for InvoiceLine.Hours, which
+// round6 rounds to 6 decimal places. It is used for InvoiceLine.Hours, which
 // needs more precision than the 2 decimals of the displayed aggregates so that
-// an invoice row reconciles to its own amount at cent precision.
-func round4(v float64) float64 {
-	return math.Round(v*10000) / 10000
+// an invoice row reconciles to its own amount at cent precision for any
+// realistic hourly rate (see Build).
+func round6(v float64) float64 {
+	return math.Round(v*1000000) / 1000000
 }
 
 // MonthRange returns the half-open interval [start, end) of the month in loc.
@@ -170,15 +171,15 @@ func sortBuckets(buckets []Bucket, groupBy string) {
 //
 // Precision: the displayed aggregates (Bucket.BilledHours,
 // CurrencySubtotal.BilledHours, Report.BilledHours) carry 2 decimals, but
-// InvoiceLine.Hours carries 4, so that an invoice row reconciles to its own
-// amount at cent precision — round2(Hours × Rate) == Amount. Exporters must
-// therefore render InvoiceLine.Hours with 4 decimals, not 2.
+// InvoiceLine.Hours carries 6, so that an invoice row reconciles to its own
+// amount at cent precision — round2(Hours × Rate) == Amount — for any hourly
+// rate up to 1000. (round6's half-step is 0.0000005 h; it only reaches half a
+// cent past a rate of 10000. Four decimals were not enough: they already drift
+// by a cent at 150/h.)
 //
-// That reconciliation is exact for hourly rates up to about 120: round4's
-// half-step is 0.00005 h, so above ~100/h it can exceed half a cent and a row
-// may differ by one cent from a hand recomputation (measured: clean through
-// 120/h, drifting from 150/h up). Amount remains the authoritative figure, and
-// the ledger identity sum(Lines) == CurrencySubtotals holds regardless.
+// Exporters must render InvoiceLine.Hours at that precision and must NOT
+// re-round it to 2 decimals: doing so breaks the row's own arithmetic, which is
+// the whole point of storing it this way.
 //
 // Caveat (indicative bucket allocation): when the grouping is finer than the
 // billing unit (PerDay rounding with GroupByTask or GroupByTag), a unit's billed
@@ -302,9 +303,9 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 		// misbill every unit whose hour value is not exact to 2 decimals — a
 		// 20-minute unit at 30/h must bill 10.00, not 0.33 × 30 = 9.90.
 		// The aggregates (bucket and currency BilledHours) display 2 decimals,
-		// but the invoice line stores its hours at 4 decimals so the row still
+		// but the invoice line stores its hours at 6 decimals so the row still
 		// reconciles to its own amount at cent precision: 20m is stored as
-		// 0.3333 and round2(0.3333 × 30) == 10.00.
+		// 0.333333 and round2(0.333333 × 30) == 10.00.
 		billedH := round2(billed.Hours())
 		amt := round2(billed.Hours() * rate)
 		curBilled[cur] += billedH
@@ -317,7 +318,7 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 		r.Lines = append(r.Lines, InvoiceLine{
 			Date: u.day, ListID: u.listID, ListName: u.listName,
 			UserID: u.userID, UserName: u.userName,
-			Description: desc, Hours: round4(billed.Hours()), Rate: rate,
+			Description: desc, Hours: round6(billed.Hours()), Rate: rate,
 			Amount: amt, Currency: cur, Billable: true,
 		})
 

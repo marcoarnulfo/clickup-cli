@@ -156,11 +156,12 @@ type InvoiceLine struct {
 	UserID      int    `json:"user_id"`
 	UserName    string `json:"user_name"`
 	Description string `json:"description"`
-	// Hours is the unit's billed (post-rounding) hours at 4 decimals — more
+	// Hours is the unit's billed (post-rounding) hours at 6 decimals — more
 	// precision than the 2-decimal aggregates elsewhere, so that the row
 	// reconciles to its own amount at cent precision:
-	// round2(Hours × Rate) == Amount for rates up to about 120/h (see Build).
-	// Exporters must render it with 4 decimals, not 2.
+	// round2(Hours × Rate) == Amount for any rate up to 1000/h (see Build).
+	// Exporters must render it at this precision and must not re-round it to 2
+	// decimals, which would break the row's arithmetic.
 	Hours float64 `json:"hours"`
 	Rate  float64 `json:"rate"`
 	// Amount is round2(exact billed hours × Rate) — the money base is the exact
