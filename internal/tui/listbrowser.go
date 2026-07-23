@@ -146,6 +146,7 @@ func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
 			found = len(rt.rows) - 1
 		}
 		rt.idx = found
+		rt.sec = secLists // the browsed list is a row of the Lists section
 		m.ratesScreen = rt
 		m.screen = screenRates
 		return nil

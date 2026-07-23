@@ -637,14 +637,13 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	}
 }
 
-// #57: saving rates with an unparseable billing.rounding.increment must
-// route to screenError (config still saves fine; only the pricing/report
-// recompute fails) instead of showing a stale or incorrectly-priced report.
-// The bad increment is injected onto m.cfg right before pressing 's', after
-// reaching the rates screen with a good config — loading entries with a
-// bad rounding rule from the start would already fail at entriesMsg, before
-// ever reaching the rates screen this test targets.
-func TestRatesScreenSaveWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+// #57: an unparseable billing.rounding.increment must never reach the disk —
+// the next load would fail on it (PricingFromConfig rejects it) and a silent
+// fallback to "rounding off" would over-bill. The billing editor now owns
+// that field, so the save path re-validates it: pressing 's' with a bad
+// increment in the editor's state stays on screenRates with an inline message
+// and writes nothing.
+func TestRatesScreenSaveWithBadRoundingIsRejected(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -659,14 +658,17 @@ func TestRatesScreenSaveWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 	m = u.(Model)
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	m = u.(Model)
-	m.cfg.Billing.Rounding.Increment = "not-a-duration"
+	m.ratesScreen.rounding.Increment = "not-a-duration"
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
 	m = u.(Model)
-	if m.screen != screenError {
-		t.Fatalf("screen = %v, want screenError", m.screen)
+	if m.screen != screenRates {
+		t.Fatalf("screen = %v, want screenRates (the save must be refused)", m.screen)
 	}
-	if m.err == nil || !strings.Contains(m.err.Error(), "not-a-duration") {
-		t.Fatalf("err = %v, want it to name the offending increment", m.err)
+	if !strings.Contains(m.ratesScreen.msg, "increment") {
+		t.Fatalf("msg = %q, want an inline complaint about the rounding increment", m.ratesScreen.msg)
+	}
+	if m.cfg.Billing.Rounding.Increment != "" {
+		t.Fatalf("a rejected increment must not be persisted, got %q", m.cfg.Billing.Rounding.Increment)
 	}
 }
 
