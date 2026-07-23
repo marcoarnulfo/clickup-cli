@@ -8,12 +8,20 @@
   "buckets": [
     {
       "label": "Client A",
+      "key": "",
       "hours": 2,
+      "billable_hours": 0,
+      "billed_hours": 0,
+      "amounts": null,
       "amount": 160
     },
     {
       "label": "Client B",
+      "key": "",
       "hours": 1,
+      "billable_hours": 0,
+      "billed_hours": 0,
+      "amounts": null,
       "amount": 50
     }
   ],

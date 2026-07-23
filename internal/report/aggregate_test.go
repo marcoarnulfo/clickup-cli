@@ -95,11 +95,11 @@ func TestRoundingTwoDecimals(t *testing.T) {
 
 func TestRatesFor(t *testing.T) {
 	r := Rates{Default: 30, ByList: map[string]float64{"1": 50}}
-	if r.For("1") != 50 {
-		t.Fatalf("override for list 1 should be 50, got %v", r.For("1"))
+	if r.For("1", 0) != 50 {
+		t.Fatalf("override for list 1 should be 50, got %v", r.For("1", 0))
 	}
-	if r.For("999") != 30 {
-		t.Fatalf("list without override should use default 30, got %v", r.For("999"))
+	if r.For("999", 0) != 30 {
+		t.Fatalf("list without override should use default 30, got %v", r.For("999", 0))
 	}
 }
 

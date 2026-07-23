@@ -70,7 +70,7 @@ func Build(entries []TimeEntry, groupBy string, rates Rates, currency string, st
 		}
 		h := e.Duration.Hours()
 		sumsH[k] += h
-		sumsA[k] += h * rates.For(e.ListID)
+		sumsA[k] += h * rates.For(e.ListID, e.UserID)
 	}
 
 	for _, k := range order {
