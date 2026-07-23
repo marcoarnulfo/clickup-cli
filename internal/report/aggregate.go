@@ -33,6 +33,13 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
+// round4 rounds to 4 decimal places. It is used for InvoiceLine.Hours, which
+// needs more precision than the 2 decimals of the displayed aggregates so that
+// an invoice row reconciles to its own amount at cent precision.
+func round4(v float64) float64 {
+	return math.Round(v*10000) / 10000
+}
+
 // MonthRange returns the half-open interval [start, end) of the month in loc.
 // loc == nil is treated as UTC.
 func MonthRange(year int, month time.Month, loc *time.Location) (start, end time.Time) {
@@ -152,12 +159,26 @@ func sortBuckets(buckets []Bucket, groupBy string) {
 // and priced by p. loc == nil is treated as UTC; it defines the calendar day used
 // for day buckets and for PerDay rounding (DST days are 23/25h, not a fixed 24h).
 //
-// Money ledger rule: the amount is rounded to 2 decimals at the smallest
-// rate-homogeneous *billing unit* (PerEntry: each billable entry; PerDay: each
-// (day-in-loc, listID, userID) group). Every aggregate — bucket, currency
-// subtotal, total — is a sum of already-rounded unit amounts, so
+// Money ledger rule: the amount of a billing unit is round2(exact billed hours ×
+// rate), computed at the smallest rate-homogeneous *billing unit* (PerEntry:
+// each billable entry; PerDay: each (day-in-loc, listID, userID) group). The
+// money base is the exact billed duration, never a pre-rounded hours value, so a
+// 20-minute unit at 30/h bills 10.00 rather than 9.90. Every aggregate — bucket,
+// currency subtotal, total — is a sum of already-rounded unit amounts, so
 // sum(Lines) == CurrencySubtotals exactly. Only billable entries are billed and
 // only billable hours are rounded; non-billable hours stay raw.
+//
+// Precision: the displayed aggregates (Bucket.BilledHours,
+// CurrencySubtotal.BilledHours, Report.BilledHours) carry 2 decimals, but
+// InvoiceLine.Hours carries 4, so that an invoice row reconciles to its own
+// amount at cent precision — round2(Hours × Rate) == Amount. Exporters must
+// therefore render InvoiceLine.Hours with 4 decimals, not 2.
+//
+// That reconciliation is exact for hourly rates up to about 120: round4's
+// half-step is 0.00005 h, so above ~100/h it can exceed half a cent and a row
+// may differ by one cent from a hand recomputation (measured: clean through
+// 120/h, drifting from 150/h up). Amount remains the authoritative figure, and
+// the ledger identity sum(Lines) == CurrencySubtotals holds regardless.
 //
 // Caveat (indicative bucket allocation): when the grouping is finer than the
 // billing unit (PerDay rounding with GroupByTask or GroupByTag), a unit's billed
@@ -276,15 +297,16 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 		billed := duration.Round(u.raw, p.Rounding.Increment, p.Rounding.Mode)
 		rate := p.Rates.For(u.listID, u.userID)
 		cur := p.currencyFor(u.listID)
-		// The amount is computed from the hours the unit actually reports, not
-		// from the unrounded duration: an invoice line must reconcile with its
-		// own arithmetic (Hours × Rate == Amount) for whoever receives it. The
-		// two agree exactly for the usual increments (15m, 30m, 1h); for
-		// increments whose hour value is not exact to 2 decimals (5m, 10m, 20m,
-		// 40m — and for unrounded reports) this deliberately bills the displayed
-		// hours rather than the raw duration.
+		// The money base is the EXACT billed duration: amt = round2(exact billed
+		// hours × rate). Deriving it from a 2-decimal hours value instead would
+		// misbill every unit whose hour value is not exact to 2 decimals — a
+		// 20-minute unit at 30/h must bill 10.00, not 0.33 × 30 = 9.90.
+		// The aggregates (bucket and currency BilledHours) display 2 decimals,
+		// but the invoice line stores its hours at 4 decimals so the row still
+		// reconciles to its own amount at cent precision: 20m is stored as
+		// 0.3333 and round2(0.3333 × 30) == 10.00.
 		billedH := round2(billed.Hours())
-		amt := round2(billedH * rate)
+		amt := round2(billed.Hours() * rate)
 		curBilled[cur] += billedH
 		curAmt[cur] += amt
 
@@ -295,7 +317,7 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 		r.Lines = append(r.Lines, InvoiceLine{
 			Date: u.day, ListID: u.listID, ListName: u.listName,
 			UserID: u.userID, UserName: u.userName,
-			Description: desc, Hours: billedH, Rate: rate,
+			Description: desc, Hours: round4(billed.Hours()), Rate: rate,
 			Amount: amt, Currency: cur, Billable: true,
 		})
 

@@ -147,18 +147,25 @@ type CurrencySubtotal struct {
 	Amount        float64 `json:"amount"`
 }
 
-// InvoiceLine is one billing unit (see the money-ledger rule). Emitted by Build in
-// Task 3b; defined here so later tasks share one definition.
+// InvoiceLine is one billing unit (see the money-ledger rule on Build). Emitted
+// by Build; defined here so later tasks share one definition.
 type InvoiceLine struct {
-	Date        string  `json:"date"` // the unit's day in loc, "2006-01-02"
-	ListID      string  `json:"list_id"`
-	ListName    string  `json:"list_name"`
-	UserID      int     `json:"user_id"`
-	UserName    string  `json:"user_name"`
-	Description string  `json:"description"`
-	Hours       float64 `json:"hours"`
-	Rate        float64 `json:"rate"`
-	Amount      float64 `json:"amount"`
-	Currency    string  `json:"currency"`
-	Billable    bool    `json:"billable"`
+	Date        string `json:"date"` // the unit's day in loc, "2006-01-02"
+	ListID      string `json:"list_id"`
+	ListName    string `json:"list_name"`
+	UserID      int    `json:"user_id"`
+	UserName    string `json:"user_name"`
+	Description string `json:"description"`
+	// Hours is the unit's billed (post-rounding) hours at 4 decimals — more
+	// precision than the 2-decimal aggregates elsewhere, so that the row
+	// reconciles to its own amount at cent precision:
+	// round2(Hours × Rate) == Amount for rates up to about 120/h (see Build).
+	// Exporters must render it with 4 decimals, not 2.
+	Hours float64 `json:"hours"`
+	Rate  float64 `json:"rate"`
+	// Amount is round2(exact billed hours × Rate) — the money base is the exact
+	// billed duration, not the 4-decimal Hours above.
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+	Billable bool    `json:"billable"`
 }

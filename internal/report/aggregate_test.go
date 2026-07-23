@@ -123,13 +123,10 @@ func TestRoundingTwoDecimals(t *testing.T) {
 	if r.Buckets[0].Hours != 0.33 {
 		t.Fatalf("hours should round to 0.33, got %v", r.Buckets[0].Hours)
 	}
-	// 9.90, not 10.00: the amount bills the hours the unit reports (0.33 * 30),
-	// so the invoice line reconciles with its own arithmetic. See Build.
-	if r.TotalAmount != 9.9 {
-		t.Fatalf("amount should be 9.9, got %v", r.TotalAmount)
-	}
-	if r.Lines[0].Hours*r.Lines[0].Rate != r.Lines[0].Amount {
-		t.Fatalf("line must reconcile: %+v", r.Lines[0])
+	// 10.00: the money base is the exact billed duration (1/3 h * 30), never the
+	// 2-decimal display value, which would misbill this as 0.33 * 30 = 9.90.
+	if r.TotalAmount != 10 {
+		t.Fatalf("amount should be 10, got %v", r.TotalAmount)
 	}
 }
 
@@ -624,9 +621,10 @@ func TestBuildLinesSumMatchesCurrencySubtotals(t *testing.T) {
 	}
 }
 
-// Every emitted invoice line must reconcile with its own arithmetic: the amount
-// is computed from the hours the line reports, so Hours * Rate == Amount even
-// for increments whose hour value is not exact to 2 decimals (5m -> 0.08h).
+// The amount bills the EXACT billed duration, and InvoiceLine.Hours carries 4
+// decimals so the row still reconciles at cent precision:
+// round2(Hours * Rate) == Amount, even for increments whose hour value is not
+// exact to 2 decimals (5m -> 0.0833h).
 func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 	loc := time.UTC
 	at := time.Date(2026, 6, 1, 9, 0, 0, 0, loc)
@@ -646,13 +644,13 @@ func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 	var sum float64
 	for _, l := range r.Lines {
 		if got := round2(l.Hours * l.Rate); got != l.Amount {
-			t.Errorf("line %+v does not reconcile: %v * %v = %v, Amount = %v", l, l.Hours, l.Rate, got, l.Amount)
+			t.Errorf("line %+v does not reconcile: round2(%v * %v) = %v, Amount = %v", l, l.Hours, l.Rate, got, l.Amount)
 		}
 		sum = round2(sum + l.Amount)
 	}
-	// 7m -> 5m (0.08h), 23m -> 25m (0.42h), 41m -> 40m (0.67h), all at 60/h.
-	if r.Lines[0].Hours != 0.08 || r.Lines[0].Amount != 4.8 {
-		t.Errorf("line[0] = %+v, want 0.08h / 4.80", r.Lines[0])
+	// 7m -> 5m (0.0833h) at 60/h bills the exact 5 minutes: 5.00, not 4.80.
+	if r.Lines[0].Hours != 0.0833 || r.Lines[0].Amount != 5 {
+		t.Errorf("line[0] = %+v, want 0.0833h / 5.00", r.Lines[0])
 	}
 	// The ledger identity still holds: sum(lines) == currency subtotal.
 	if len(r.CurrencySubtotals) != 1 || sum != r.CurrencySubtotals[0].Amount {
@@ -660,6 +658,56 @@ func TestBuildLinesReconcileHoursTimesRate(t *testing.T) {
 	}
 	if sum != r.TotalAmount {
 		t.Errorf("sum(lines) = %v, TotalAmount = %v", sum, r.TotalAmount)
+	}
+}
+
+// Regression guard: with no rounding configured, a 20-minute unit at 30/h must
+// bill the exact 20 minutes (10.00) and report 0.3333 h — never 0.33 h / 9.90.
+func TestBuildLineUnroundedKeepsExactAmount(t *testing.T) {
+	loc := time.UTC
+	entries := []TimeEntry{
+		{ID: "1", ListID: "A", ListName: "Alpha", UserID: 1,
+			Start: time.Date(2026, 6, 1, 9, 0, 0, 0, loc), Duration: 20 * time.Minute, Billable: true},
+	}
+	p := Pricing{Rates: Rates{Default: 30}, DefaultCurrency: "EUR"} // no RoundRule
+	r := Build(entries, GroupByTotal, p, junStart, junEnd, loc)
+	if len(r.Lines) != 1 {
+		t.Fatalf("want 1 line, got %d", len(r.Lines))
+	}
+	l := r.Lines[0]
+	if l.Hours != 0.3333 {
+		t.Errorf("line hours = %v, want 0.3333 (4 decimals)", l.Hours)
+	}
+	if l.Amount != 10 {
+		t.Errorf("line amount = %v, want 10 (exact billed duration * rate)", l.Amount)
+	}
+	if got := round2(l.Hours * l.Rate); got != l.Amount {
+		t.Errorf("line must reconcile: round2(%v * %v) = %v, Amount = %v", l.Hours, l.Rate, got, l.Amount)
+	}
+	if r.TotalAmount != 10 {
+		t.Errorf("TotalAmount = %v, want 10", r.TotalAmount)
+	}
+	// The 2-decimal aggregates keep their coarser display precision.
+	if r.BilledHours != 0.33 {
+		t.Errorf("BilledHours = %v, want 0.33 (2 decimals)", r.BilledHours)
+	}
+}
+
+func TestRound4(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want float64
+	}{
+		{1.0 / 3.0, 0.3333},
+		{1.0 / 12.0, 0.0833}, // 5 minutes
+		{2.0 / 3.0, 0.6667},
+		{1, 1},
+		{0, 0},
+	}
+	for _, c := range cases {
+		if got := round4(c.in); got != c.want {
+			t.Errorf("round4(%v) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }
 
