@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
 func TestHomeFOpensMembersInTeam(t *testing.T) {
@@ -66,6 +67,42 @@ func TestHomeEnterClearsErrText(t *testing.T) {
 	m = u.(Model)
 	if m.home.errText != "" {
 		t.Fatalf("home.errText should be cleared before dispatching a new load, got %q", m.home.errText)
+	}
+}
+
+// #4: 'w' switches Home's period to the current ISO week, computed from the
+// injected clock via ISOWeek() and the Model's single resolved location —
+// never time.Now() and never a second location (binding note).
+func TestHomeWTogglesToCurrentISOWeek(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	m := Model{scope: "me", screen: screenHome, now: func() time.Time { return fixedNow }, loc: time.UTC}
+	u, _ := m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	m = u.(Model)
+
+	wantY, wantW := fixedNow.ISOWeek()
+	wantStart, wantEnd := report.WeekRange(wantY, wantW, time.UTC)
+	gotStart, gotEnd := m.currentRange()
+	if !gotStart.Equal(wantStart) || !gotEnd.Equal(wantEnd) {
+		t.Errorf("currentRange after w = [%v,%v), want [%v,%v)", gotStart, gotEnd, wantStart, wantEnd)
+	}
+}
+
+// Pressing 'w' again returns to the month period.
+func TestHomeWTogglesBackToMonth(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	m := Model{
+		scope: "me", screen: screenHome, preset: report.PresetThisMonth,
+		year: 2026, month: time.July, now: func() time.Time { return fixedNow }, loc: time.UTC,
+	}
+	u, _ := m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	m = u.(Model)
+	u, _ = m.updateHome(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w")})
+	m = u.(Model)
+
+	wantStart, wantEnd := report.MonthRange(2026, time.July, time.UTC)
+	gotStart, gotEnd := m.currentRange()
+	if !gotStart.Equal(wantStart) || !gotEnd.Equal(wantEnd) {
+		t.Errorf("currentRange after w,w = [%v,%v), want month range [%v,%v)", gotStart, gotEnd, wantStart, wantEnd)
 	}
 }
 

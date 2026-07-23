@@ -18,10 +18,18 @@ type homeModel struct {
 
 func newHome() homeModel { return homeModel{} }
 
+// periodMode values (#4): periodModeMonth (the zero value) follows the active
+// preset/month-year as before; periodModeWeek overrides it with the current
+// ISO week (see Model.currentRange).
+const (
+	periodModeMonth = ""
+	periodModeWeek  = "week"
+)
+
 func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "left", "h":
-		if m.preset != report.PresetThisMonth {
+		if m.preset != report.PresetThisMonth || m.periodMode == periodModeWeek {
 			break
 		}
 		m.month--
@@ -30,13 +38,19 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.year--
 		}
 	case "right", "l":
-		if m.preset != report.PresetThisMonth {
+		if m.preset != report.PresetThisMonth || m.periodMode == periodModeWeek {
 			break
 		}
 		m.month++
 		if m.month > time.December {
 			m.month = time.January
 			m.year++
+		}
+	case "w":
+		if m.periodMode == periodModeWeek {
+			m.periodMode = periodModeMonth
+		} else {
+			m.periodMode = periodModeWeek
 		}
 	case "d":
 		m.rangeScreen = newRange(m.preset)
@@ -102,7 +116,7 @@ func (m homeModel) view(rangeLabel, scope, membersNote string) string {
 	}
 	sel := styleBox.Render(fmt.Sprintf("Range: %s    Scope: %s",
 		styleAccent.Render(rangeLabel), scopeStr))
-	help := "d: range · ◂/▸ change month (this_month only) · t: me/team · "
+	help := "d: range · ◂/▸ change month (this_month only) · w: this week/month · t: me/team · "
 	if scope == "team" {
 		help += "f: select members · " // only active in team scope
 	}

@@ -13,10 +13,10 @@ import (
 func filtersFixture() Model {
 	entries := []report.TimeEntry{
 		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress", Billable: true},
-		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: true},
+		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: false},
 	}
 	m := Model{screen: screenFilters, entries: entries, now: time.Now}
-	m.filtersScreen = newFilters(entries, nil, nil, nil)
+	m.filtersScreen = newFilters(entries, nil, nil, nil, nil)
 	return m
 }
 
@@ -74,6 +74,72 @@ func TestFiltersEscDiscards(t *testing.T) {
 	}
 	if len(m.filterLists) != 0 {
 		t.Error("esc must not write filters to root")
+	}
+}
+
+// #51: the Billable dimension is a tri-state radio (All/Billable only/
+// Non-billable only) built on top of the existing report.FilterCriteria.Billable
+// field — not a private pre-filter (A3, binding).
+func TestFiltersBillableDefaultsToAll(t *testing.T) {
+	m := filtersFixture()
+	sec := m.filtersScreen.sections[3]
+	if sec.title != "Billable" {
+		t.Fatalf("section 3 = %q, want Billable", sec.title)
+	}
+	if !sec.selected[billableOptAll] {
+		t.Error("with no prior filter, 'All' should be preselected")
+	}
+}
+
+func TestFiltersBillableRestrictsVisibleEntries(t *testing.T) {
+	m := filtersFixture()
+	// Tab to the Billable section (index 3).
+	for i := 0; i < 3; i++ {
+		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
+		m = u.(Model)
+	}
+	// Row 1 = "Billable only".
+	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyDown})
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.filterBillable == nil || !*m.filterBillable {
+		t.Fatalf("filterBillable = %v, want *true", m.filterBillable)
+	}
+	got := m.visibleEntries()
+	if len(got) != 1 || !got[0].Billable {
+		t.Fatalf("visibleEntries = %+v, want only the billable entry", got)
+	}
+}
+
+func TestFiltersBillableRadioIsExclusive(t *testing.T) {
+	m := filtersFixture()
+	for i := 0; i < 3; i++ {
+		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
+		m = u.(Model)
+	}
+	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyDown}) // row 1: Billable only
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyDown}) // row 2: Non-billable only
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = u.(Model)
+	sec := m.filtersScreen.sections[3]
+	n := 0
+	for _, v := range sec.selected {
+		if v {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("radio section should keep exactly one selection, got %d", n)
+	}
+	if !sec.selected[billableOptNo] {
+		t.Error("expected Non-billable only to be the selected option")
 	}
 }
 

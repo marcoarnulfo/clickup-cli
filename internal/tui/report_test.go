@@ -11,9 +11,20 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
+// #53: the group cycle grows a "tag" stop between "day" and the team-only
+// "member" stop, for both scopes.
+func TestNextGroupByCycleIncludesTag(t *testing.T) {
+	if got := nextGroupBy(report.GroupByDay, "me"); got != report.GroupByTag {
+		t.Errorf("me: day -> %q, want tag", got)
+	}
+	if got := nextGroupBy(report.GroupByDay, "team"); got != report.GroupByTag {
+		t.Errorf("team: day -> %q, want tag", got)
+	}
+}
+
 func TestNextGroupByTeamIncludesMember(t *testing.T) {
-	if got := nextGroupBy(report.GroupByDay, "team"); got != report.GroupByMember {
-		t.Errorf("team: day -> %q, want member", got)
+	if got := nextGroupBy(report.GroupByTag, "team"); got != report.GroupByMember {
+		t.Errorf("team: tag -> %q, want member", got)
 	}
 	if got := nextGroupBy(report.GroupByMember, "team"); got != report.GroupByTotal {
 		t.Errorf("team: member -> %q, want total", got)
@@ -21,21 +32,21 @@ func TestNextGroupByTeamIncludesMember(t *testing.T) {
 }
 
 func TestNextGroupByMeSkipsMember(t *testing.T) {
-	if got := nextGroupBy(report.GroupByDay, "me"); got != report.GroupByTotal {
-		t.Errorf("me: day -> %q, want total", got)
+	if got := nextGroupBy(report.GroupByTag, "me"); got != report.GroupByTotal {
+		t.Errorf("me: tag -> %q, want total", got)
 	}
 }
 
 // TestReportCycleGroupByTeamViaUpdate drives the 'g' key through Update() to
-// verify the team cycle reaches the member grouping.
+// verify the team cycle reaches the tag grouping right after day.
 func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
 	m := Model{scope: "team", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByDay}
 	m.rep = newReport(m.report, "")
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	m = u.(Model)
-	if m.report.GroupBy != report.GroupByMember {
-		t.Errorf("team g from day -> %q, want member", m.report.GroupBy)
+	if m.report.GroupBy != report.GroupByTag {
+		t.Errorf("team g from day -> %q, want tag", m.report.GroupBy)
 	}
 }
 
@@ -146,6 +157,53 @@ func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q; got:\n%s", want, out)
 		}
+	}
+}
+
+// #64: billedByListFromBuckets must pick the amount matching the list's own
+// currency and never sum across currencies, even if a bucket somehow carries
+// more than one (see the binding note on Budget inputs).
+func TestBilledByListFromBucketsPicksListCurrencyNotSum(t *testing.T) {
+	buckets := []report.Bucket{
+		{Key: "list-1", Label: "Website", Amounts: []report.CurrencyAmount{
+			{Currency: "EUR", Amount: 100},
+			{Currency: "USD", Amount: 40},
+		}},
+	}
+	currencies := map[string]string{"list-1": "EUR"}
+	got := billedByListFromBuckets(buckets, currencies, "USD")
+	if got["list-1"] != 100 {
+		t.Errorf("billedByList[list-1] = %v, want 100 (EUR only, not summed with USD)", got["list-1"])
+	}
+}
+
+// #64: pressing 'b' on the Report screen builds a per-list report
+// independently of the active grouping and opens the budget burn-down view.
+func TestReportBOpensBudgetView(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR", Rate: 50}
+	cfg.Billing.Budgets = map[string]float64{"list-1": 100}
+	cfg.Billing.Currencies = map[string]string{"list-1": "EUR"}
+	m := New(cfg)
+	m.screen = screenReport
+	m.entries = []report.TimeEntry{
+		{ListID: "list-1", ListName: "Website", Start: time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC),
+			Duration: 2 * time.Hour, Billable: true},
+	}
+	m.year, m.month = 2026, time.July
+
+	u, _ := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	mm := u.(Model)
+	if mm.screen != screenBudget {
+		t.Fatalf("b should open budget view, got %v (err %v)", mm.screen, mm.err)
+	}
+	if len(mm.budgetScreen.lines) != 1 {
+		t.Fatalf("expected 1 budget line, got %d", len(mm.budgetScreen.lines))
+	}
+	if mm.budgetScreen.lines[0].ListID != "list-1" {
+		t.Errorf("budget line ListID = %q, want list-1", mm.budgetScreen.lines[0].ListID)
+	}
+	if mm.budgetScreen.lines[0].PercentUsed != 100 {
+		t.Errorf("budget line PercentUsed = %v, want 100 (2h @ 50/h == the 100 budget)", mm.budgetScreen.lines[0].PercentUsed)
 	}
 }
 

@@ -29,6 +29,7 @@ const (
 	screenRange
 	screenFilters
 	screenListBrowser
+	screenBudget
 )
 
 // Async messages.
@@ -74,6 +75,10 @@ type Model struct {
 	preset      string    // report.Preset* ; default report.PresetThisMonth
 	customStart time.Time // used when preset == report.PresetCustom
 	customEnd   time.Time
+	// periodMode overrides preset with the current ISO week when set to
+	// periodModeWeek (#4); "" (periodModeMonth) is the default month/preset
+	// behavior. Toggled from Home with 'w'.
+	periodMode string
 
 	// injectable clock (default: time.Now)
 	now func() time.Time
@@ -90,10 +95,11 @@ type Model struct {
 	selectedMembers map[int]bool     // selected member ids; empty = all (no filter)
 	teamMembers     []clickup.Member // workspace members (session cache)
 
-	// client-side report filter (list/tag/status); empty = no filter
+	// client-side report filter (list/tag/status/billable); empty/nil = no filter
 	filterLists    map[string]bool
 	filterTags     map[string]bool
 	filterStatuses map[string]bool
+	filterBillable *bool             // nil = no constraint; see report.FilterCriteria.Billable
 	taskStatus     map[string]string // task id -> current status (session cache)
 
 	// sub-models
@@ -106,6 +112,7 @@ type Model struct {
 	membersScreen membersModel
 	rangeScreen   rangeModel
 	filtersScreen filtersModel
+	budgetScreen  budgetModel
 
 	// shared Space→Folder→List browser (log/rates entry points)
 	browserScreen   listBrowserModel
@@ -145,9 +152,21 @@ func New(cfg config.Config) Model {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-// currentRange returns the [start, end) period the report should cover, from the
+// currentRange returns the [start, end) period the report should cover.
+// periodMode == periodModeWeek overrides everything else with the current
+// ISO week, derived from the injected clock (m.now()) and the Model's single
+// resolved location (m.loc) — never time.Now() and never a second location
+// (see the task's binding note on the week toggle). Otherwise it follows the
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
+	if m.periodMode == periodModeWeek {
+		loc := m.loc
+		if loc == nil { // same nil-means-UTC convention as the report package (#83)
+			loc = time.UTC
+		}
+		isoYear, isoWeek := m.now().In(loc).ISOWeek()
+		return report.WeekRange(isoYear, isoWeek, loc)
+	}
 	if m.preset == report.PresetCustom {
 		return report.CustomRange(m.customStart, m.customEnd, m.loc)
 	}
@@ -223,7 +242,10 @@ func (m *Model) locOrErr() (*time.Location, bool) {
 
 // filterCriteria assembles the active client-side filter from session state.
 func (m Model) filterCriteria() report.FilterCriteria {
-	return report.FilterCriteria{Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses}
+	return report.FilterCriteria{
+		Lists: m.filterLists, Tags: m.filterTags, Statuses: m.filterStatuses,
+		Billable: m.filterBillable,
+	}
 }
 
 // visibleEntries applies the active filter to the loaded entries.
@@ -579,7 +601,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.taskStatus[id] = st
 		}
 		m.assignStatuses()
-		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
 		m.screen = screenFilters
 		return m, nil
 
@@ -638,6 +660,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateFilters(msg)
 	case screenListBrowser:
 		return m.updateListBrowser(msg)
+	case screenBudget:
+		return m.updateBudget(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -674,6 +698,8 @@ func (m Model) View() string {
 		return m.filtersScreen.view()
 	case screenListBrowser:
 		return m.browserScreen.view()
+	case screenBudget:
+		return m.budgetScreen.view()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}

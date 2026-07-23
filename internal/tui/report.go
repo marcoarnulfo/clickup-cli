@@ -10,6 +10,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
 type reportModel struct {
@@ -19,7 +20,7 @@ type reportModel struct {
 
 func newReport(r report.Report, note string) reportModel { return reportModel{r: r, note: note} }
 
-// nextGroupBy cycles total -> task -> list -> day -> [member] -> total.
+// nextGroupBy cycles total -> task -> list -> day -> tag -> [member] -> total.
 // The member grouping is only offered for the team scope.
 func nextGroupBy(g, scope string) string {
 	switch g {
@@ -30,6 +31,8 @@ func nextGroupBy(g, scope string) string {
 	case report.GroupByList:
 		return report.GroupByDay
 	case report.GroupByDay:
+		return report.GroupByTag
+	case report.GroupByTag:
 		if scope == "team" {
 			return report.GroupByMember
 		}
@@ -84,7 +87,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		missing := m.tasksMissingStatus()
 		if len(missing) == 0 {
 			m.assignStatuses()
-			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses)
+			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
 			m.screen = screenFilters
 			return m, nil
 		}
@@ -94,8 +97,73 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, demoStatusEnrichCmd(m.entries)
 		}
 		return m, statusEnrichCmd(m.client, missing)
+	case "b":
+		if !m.openBudgetView() {
+			return m, nil
+		}
 	}
 	return m, nil
+}
+
+// openBudgetView builds the budget burn-down view (#64) and opens
+// screenBudget. It computes billedByList from a report grouped by list
+// independently of the currently selected grouping — report.BudgetLines
+// needs Bucket.Key to be the listID, which only GroupByList guarantees.
+// Budgets/currencies come from the same config the rest of the report uses
+// (service.BudgetsFromConfig / the resolved Pricing); no I/O is involved, so
+// there's no demo-mode branch to guard. It returns false when the config's
+// pricing rules or timezone failed to parse, in which case locOrErr/
+// pricingOrErr have already routed the model to screenError.
+func (m *Model) openBudgetView() bool {
+	if _, ok := m.locOrErr(); !ok {
+		return false
+	}
+	p, ok := m.pricingOrErr()
+	if !ok {
+		return false
+	}
+	start, end := m.currentRange()
+	perList := report.Build(m.visibleEntries(), report.GroupByList, p, start, end, m.loc)
+	billed := billedByListFromBuckets(perList.Buckets, p.Currencies, p.DefaultCurrency)
+	budgets := service.BudgetsFromConfig(m.cfg)
+	lines := report.BudgetLines(billed, budgets, p.Currencies, p.DefaultCurrency, listNamesFromBuckets(perList.Buckets))
+	m.budgetScreen = newBudget(lines)
+	m.screen = screenBudget
+	return true
+}
+
+// billedByListFromBuckets derives report.BudgetLines' billedByList input from
+// a report built with report.GroupByList, where Bucket.Key is the listID. A
+// bucket may in principle carry more than one currency (Bucket.Amounts is a
+// per-currency slice); this picks the amount matching the list's own resolved
+// currency and never sums across currencies (see the task's binding note on
+// budget inputs).
+func billedByListFromBuckets(buckets []report.Bucket, currencies map[string]string, defaultCurrency string) map[string]float64 {
+	out := make(map[string]float64, len(buckets))
+	for _, b := range buckets {
+		cur := currencies[b.Key]
+		if cur == "" {
+			cur = defaultCurrency
+		}
+		for _, a := range b.Amounts {
+			if a.Currency == cur {
+				out[b.Key] = a.Amount
+				break
+			}
+		}
+	}
+	return out
+}
+
+// listNamesFromBuckets derives report.BudgetLines' listNames input from a
+// report built with report.GroupByList: Bucket.Key is the listID, Bucket.Label
+// the list name.
+func listNamesFromBuckets(buckets []report.Bucket) map[string]string {
+	out := make(map[string]string, len(buckets))
+	for _, b := range buckets {
+		out[b.Key] = b.Label
+	}
+	return out
 }
 
 // applyReport rebuilds m.report from the visible entries over the current
@@ -177,7 +245,7 @@ func (rm reportModel) view() string {
 	total += "\n" + styleHelp.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
 
 	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")
+	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("No hours to show.")

@@ -7,23 +7,66 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// filterSection is one dimension of the Filters screen.
+// filterSection is one dimension of the Filters screen. radio marks a
+// single-choice dimension (exactly one option selected at a time), as opposed
+// to the default independent-checkboxes behavior.
 type filterSection struct {
 	title    string
 	options  []string
 	selected map[string]bool
+	radio    bool
+}
+
+// Billable dimension option labels (#51). This maps onto the existing
+// report.FilterCriteria.Billable *bool field: "All" -> nil, "Billable only"
+// -> &true, "Non-billable only" -> &false. It is deliberately not a private
+// pre-filter — see the task's binding note A3.
+const (
+	billableOptAll = "All"
+	billableOptYes = "Billable only"
+	billableOptNo  = "Non-billable only"
+)
+
+// billableSelection preselects the Billable section from the current
+// criteria value, nil meaning "All".
+func billableSelection(cur *bool) map[string]bool {
+	sel := map[string]bool{billableOptAll: false, billableOptYes: false, billableOptNo: false}
+	switch {
+	case cur == nil:
+		sel[billableOptAll] = true
+	case *cur:
+		sel[billableOptYes] = true
+	default:
+		sel[billableOptNo] = true
+	}
+	return sel
+}
+
+// billableFromSelection reads the Billable section's selection back into a
+// report.FilterCriteria.Billable value.
+func billableFromSelection(sel map[string]bool) *bool {
+	if sel[billableOptYes] {
+		b := true
+		return &b
+	}
+	if sel[billableOptNo] {
+		b := false
+		return &b
+	}
+	return nil
 }
 
 type filtersModel struct {
-	sections        []filterSection // [Lists, Tags, Statuses]
+	sections        []filterSection // [Lists, Tags, Statuses, Billable]
 	sec             int             // active section index
 	row             int             // active row within the section
 	loadingStatuses bool
 }
 
 // newFilters builds the screen from the entries' lists/tags/statuses, preselecting
-// from the current criteria (copied defensively so Esc can discard).
-func newFilters(entries []report.TimeEntry, lists, tags, statuses map[string]bool) filtersModel {
+// from the current criteria (copied defensively so Esc can discard). billable
+// preselects the fourth (radio) section; nil means "All".
+func newFilters(entries []report.TimeEntry, lists, tags, statuses map[string]bool, billable *bool) filtersModel {
 	listOpts := map[string]bool{}
 	tagOpts := map[string]bool{}
 	statusOpts := map[string]bool{}
@@ -43,6 +86,8 @@ func newFilters(entries []report.TimeEntry, lists, tags, statuses map[string]boo
 			{title: "Lists", options: sortedKeys(listOpts), selected: copyBool(lists)},
 			{title: "Tags", options: sortedKeys(tagOpts), selected: copyBool(tags)},
 			{title: "Statuses", options: sortedKeys(statusOpts), selected: copyBool(statuses)},
+			{title: "Billable", options: []string{billableOptAll, billableOptYes, billableOptNo},
+				selected: billableSelection(billable), radio: true},
 		},
 	}
 }
@@ -88,9 +133,20 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ", "space":
 		if len(cur.options) > 0 {
 			opt := cur.options[fs.row]
-			cur.selected[opt] = !cur.selected[opt]
+			if cur.radio {
+				// Exactly one option selected at a time: clear the others.
+				for _, o := range cur.options {
+					cur.selected[o] = false
+				}
+				cur.selected[opt] = true
+			} else {
+				cur.selected[opt] = !cur.selected[opt]
+			}
 		}
 	case "a":
+		if cur.radio {
+			break // "all/none" doesn't apply to a single-choice dimension
+		}
 		all := allChosen(*cur)
 		for _, o := range cur.options {
 			cur.selected[o] = !all
@@ -99,6 +155,7 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterLists = fs.sections[0].selected
 		m.filterTags = fs.sections[1].selected
 		m.filterStatuses = fs.sections[2].selected
+		m.filterBillable = billableFromSelection(fs.sections[3].selected)
 		m.filtersScreen = fs
 		if m.applyReport() {
 			m.screen = screenReport
