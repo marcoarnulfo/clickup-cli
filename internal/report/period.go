@@ -12,12 +12,19 @@ const (
 	PresetCustom    = "custom"
 )
 
+// normLoc returns loc, or time.UTC if loc is nil. This is the package's
+// nil-means-UTC convention, applied everywhere a *time.Location is accepted.
+func normLoc(loc *time.Location) *time.Location {
+	if loc == nil {
+		return time.UTC
+	}
+	return loc
+}
+
 // midnightIn returns the start-of-day of t's calendar date in loc.
 // loc == nil is treated as UTC.
 func midnightIn(t time.Time, loc *time.Location) time.Time {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	t = t.In(loc)
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 }
@@ -30,9 +37,7 @@ func midnightIn(t time.Time, loc *time.Location) time.Time {
 // out-of-range value simply lands in the neighbouring year. Callers must pass a
 // week they obtained from time.ISOWeek or otherwise validated.
 func WeekRange(isoYear, isoWeek int, loc *time.Location) (start, end time.Time) {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	// Jan 4 is always in ISO week 1; walk back to that week's Monday, then add weeks.
 	jan4 := time.Date(isoYear, 1, 4, 0, 0, 0, 0, loc)
 	wd := int(jan4.Weekday())
@@ -49,9 +54,7 @@ func WeekRange(isoYear, isoWeek int, loc *time.Location) (start, end time.Time) 
 // range, where the "to" date is inclusive. Specifically, end = to + 1 day.
 // from and to are taken as calendar dates in loc; loc == nil is treated as UTC.
 func CustomRange(from, to time.Time, loc *time.Location) (start, end time.Time) {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	return midnightIn(from, loc), midnightIn(to, loc).AddDate(0, 0, 1)
 }
 
@@ -59,9 +62,7 @@ func CustomRange(from, to time.Time, loc *time.Location) (start, end time.Time) 
 // preset. this_month uses the given year/month; the relative presets use now.
 // An unknown preset falls back to this_month. loc == nil is treated as UTC.
 func RangeForPreset(preset string, year int, month time.Month, now time.Time, loc *time.Location) (start, end time.Time) {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	switch preset {
 	case PresetLastMonth:
 		n := now.In(loc)

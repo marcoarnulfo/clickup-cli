@@ -440,8 +440,10 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		rt = rt.clearSelected()
 	case "b":
-		m.ratesScreen = rt
-		return m.openListBrowser(screenRates)
+		if rt.sec == secLists {
+			m.ratesScreen = rt
+			return m.openListBrowser(screenRates)
+		}
 	case "s":
 		return m.saveRates(rt)
 	case "esc":

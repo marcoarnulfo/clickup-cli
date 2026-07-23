@@ -21,6 +21,27 @@ func TestRatesBOpensBrowser(t *testing.T) {
 	}
 }
 
+// TestRatesBIsGatedToListsSection ensures 'b' behaves like 'c' and 'g': a
+// no-op outside the Lists tab, and still opens the list browser inside it.
+func TestRatesBIsGatedToListsSection(t *testing.T) {
+	m := Model{screen: screenRates, demo: true}
+	m.ratesScreen = newRates(nil, config.Config{})
+	m.ratesScreen.sec = secMembers // any non-Lists tab
+
+	u, _ := m.updateRates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("'b' outside Lists should be a no-op; got screen=%v", m.screen)
+	}
+
+	m.ratesScreen.sec = secLists
+	u, _ = m.updateRates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	m = u.(Model)
+	if m.screen != screenListBrowser || m.browserScreen.origin != screenRates {
+		t.Fatalf("'b' inside Lists should open the browser; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	}
+}
+
 // billingEntries are the entries every editor test starts from: two lists and
 // two members, so per-list, per-member and (list,member) rows all exist.
 func billingEntries() []report.TimeEntry {
