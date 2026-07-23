@@ -26,7 +26,7 @@ func CSV(w io.Writer, r report.Report) error {
 	}
 	num := func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 	for _, b := range r.Buckets {
-		for _, a := range b.Amounts {
+		for _, a := range bucketAmounts(b, r.DefaultCurrency) {
 			row := []string{b.Label, num(b.Hours), num(b.BillableHours), num(b.BilledHours), num(a.Amount), a.Currency}
 			if err := cw.Write(row); err != nil {
 				return err
@@ -41,6 +41,20 @@ func CSV(w io.Writer, r report.Report) error {
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// bucketAmounts returns a bucket's per-currency amounts to render, one row
+// each. A bucket whose entries are all non-billable never populates Amounts
+// (see currencyAmounts in internal/report/aggregate.go) — without this
+// fallback it would vanish entirely from CSV/Markdown, hours included, which
+// is wrong for a hours-reporting tool as much as a billing one. In that case
+// render a single zero-amount row in the report's DefaultCurrency so the
+// bucket's hours stay visible.
+func bucketAmounts(b report.Bucket, defaultCurrency string) []report.CurrencyAmount {
+	if len(b.Amounts) == 0 {
+		return []report.CurrencyAmount{{Currency: defaultCurrency, Amount: 0}}
+	}
+	return b.Amounts
 }
 
 // reportSchemaVersion identifies the shape of the JSON emitted by JSON below.
@@ -101,7 +115,7 @@ func Markdown(w io.Writer, r report.Report) error {
 	fmt.Fprintln(w, "| Label | Hours | Billable | Billed | Amount | Currency |")
 	fmt.Fprintln(w, "|---|---:|---:|---:|---:|---|")
 	for _, b := range r.Buckets {
-		for _, a := range b.Amounts {
+		for _, a := range bucketAmounts(b, r.DefaultCurrency) {
 			fmt.Fprintf(w, "| %s | %.2f | %.2f | %.2f | %.2f | %s |\n",
 				b.Label, b.Hours, b.BillableHours, b.BilledHours, a.Amount, a.Currency)
 		}

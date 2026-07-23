@@ -107,6 +107,22 @@ func TestInvoiceCSVRowReconciles(t *testing.T) {
 	}
 }
 
+// TestInvoiceCSVEmptyReport pins that a report with no billing units renders
+// just the header, never an error and never a phantom row.
+func TestInvoiceCSVEmptyReport(t *testing.T) {
+	var b bytes.Buffer
+	if err := InvoiceCSV(&b, report.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(&b).ReadAll()
+	if err != nil {
+		t.Fatalf("re-parsing invoice CSV: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want header-only output for an empty report, got %d rows: %v", len(rows), rows)
+	}
+}
+
 // round2 mirrors the report package's private rounding rule; tests live
 // outside that package and must not depend on its unexported helpers.
 func round2(v float64) float64 { return math.Round(v*100) / 100 }

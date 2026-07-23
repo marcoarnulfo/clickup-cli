@@ -19,6 +19,17 @@ func TestSummaryLine(t *testing.T) {
 	}
 }
 
+// TestSummaryLineEmptyReport pins the shape for a report with no lines and no
+// currency subtotals: no panic, a "0 entries" count, and a trailing empty
+// amounts list rather than a placeholder like "0.00 " with an invented currency.
+func TestSummaryLineEmptyReport(t *testing.T) {
+	got := SummaryLine(report.Report{})
+	want := "0 entries · 0.00h · "
+	if got != want {
+		t.Errorf("SummaryLine(empty) = %q, want %q", got, want)
+	}
+}
+
 func TestSummaryLineMultiCurrency(t *testing.T) {
 	r := report.Report{
 		Lines:       make([]report.InvoiceLine, 4),

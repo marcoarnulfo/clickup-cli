@@ -103,6 +103,95 @@ func TestMarkdownTable(t *testing.T) {
 	}
 }
 
+// sampleWithNonBillableBucket adds a third bucket whose entries are entirely
+// non-billable (Amounts stays nil, as report.Build leaves it — see
+// currencyAmounts in internal/report/aggregate.go). This is a regression
+// fixture: a bucket like this must still render a row (hours only, amount 0
+// in DefaultCurrency), not vanish from the export.
+func sampleWithNonBillableBucket() report.Report {
+	r := sample()
+	r.Buckets = append(r.Buckets, report.Bucket{
+		Label: "Internal", Key: "l3", Hours: 2, BillableHours: 0, BilledHours: 0, Amounts: nil,
+	})
+	r.TotalHours += 2
+	r.NonBillableHours += 2
+	return r
+}
+
+func TestCSVIncludesFullyNonBillableBucket(t *testing.T) {
+	var b bytes.Buffer
+	if err := CSV(&b, sampleWithNonBillableBucket()); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "Internal,2,0,0,0,EUR") {
+		t.Fatalf("a fully non-billable bucket must still render a row (hours only, amount 0 in DefaultCurrency); got:\n%s", out)
+	}
+}
+
+func TestMarkdownIncludesFullyNonBillableBucket(t *testing.T) {
+	var b bytes.Buffer
+	if err := Markdown(&b, sampleWithNonBillableBucket()); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "| Internal | 2.00 | 0.00 | 0.00 | 0.00 | EUR |") {
+		t.Fatalf("a fully non-billable bucket must still render a row (hours only, amount 0 in DefaultCurrency); got:\n%s", out)
+	}
+}
+
+func TestCSVEmptyReport(t *testing.T) {
+	var b bytes.Buffer
+	if err := CSV(&b, report.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	want := "label,hours,billable_hours,billed_hours,amount,currency\n"
+	if b.String() != want {
+		t.Fatalf("CSV(empty report) = %q, want just the header %q", b.String(), want)
+	}
+}
+
+func TestMarkdownEmptyReport(t *testing.T) {
+	var b bytes.Buffer
+	if err := Markdown(&b, report.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "| Label | Hours | Billable | Billed | Amount | Currency |") {
+		t.Fatalf("missing md header: %q", out)
+	}
+	if strings.Contains(out, "Total") {
+		t.Fatalf("an empty report must not render any total row: %q", out)
+	}
+}
+
+// TestMarkdownMultiCurrencyNeverSums pins the Markdown output for a real,
+// multi-currency report: one row (and one bold total row) per currency,
+// never a combined cross-currency total.
+func TestMarkdownMultiCurrencyNeverSums(t *testing.T) {
+	r := buildMultiCurrencyFixture()
+	var b bytes.Buffer
+	if err := Markdown(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "| Client A | 3.00 | 3.00 | 3.00 | 150.00 | EUR |") {
+		t.Fatalf("missing Client A row: %q", out)
+	}
+	if !strings.Contains(out, "| Client B | 1.33 | 1.33 | 1.33 | 106.67 | USD |") {
+		t.Fatalf("missing Client B row: %q", out)
+	}
+	if !strings.Contains(out, "| **Total** | **3.00** | **3.00** | **3.00** | **150.00** | **EUR** |") {
+		t.Fatalf("missing EUR total row: %q", out)
+	}
+	if !strings.Contains(out, "| **Total** | **1.33** | **1.33** | **1.33** | **106.67** | **USD** |") {
+		t.Fatalf("missing USD total row: %q", out)
+	}
+	if n := strings.Count(out, "**Total**"); n != 2 {
+		t.Fatalf("want exactly 2 total rows (one per currency), never a cross-currency sum; got %d in:\n%s", n, out)
+	}
+}
+
 func TestToFileUnknownFormat(t *testing.T) {
 	if err := ToFile("pdf", sample(), t.TempDir()+"/x"); err == nil {
 		t.Fatal("expected error on unknown format")

@@ -72,6 +72,23 @@ func TestHTMLDeclaresAuthoritativeTotals(t *testing.T) {
 	}
 }
 
+// TestHTMLEmptyReport pins that a zero-value report renders without error and
+// still produces a well-formed document with the (empty) summary line.
+func TestHTMLEmptyReport(t *testing.T) {
+	r := report.Report{}
+	var b bytes.Buffer
+	if err := HTML(&b, r); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if !strings.Contains(out, "<html") {
+		t.Fatalf("empty report did not render a document: %q", out)
+	}
+	if !strings.Contains(out, SummaryLine(r)) {
+		t.Fatalf("empty report's HTML is missing its own summary line; got:\n%s", out)
+	}
+}
+
 func TestHTMLContainsSummaryAndPeriod(t *testing.T) {
 	r := buildMultiCurrencyFixture()
 	var b bytes.Buffer
