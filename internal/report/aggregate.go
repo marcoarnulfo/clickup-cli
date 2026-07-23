@@ -44,9 +44,7 @@ func round6(v float64) float64 {
 // MonthRange returns the half-open interval [start, end) of the month in loc.
 // loc == nil is treated as UTC.
 func MonthRange(year int, month time.Month, loc *time.Location) (start, end time.Time) {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	start = time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	end = start.AddDate(0, 1, 0)
 	return start, end
@@ -123,22 +121,6 @@ func currencyAmounts(m map[string]float64) []CurrencyAmount {
 	return out
 }
 
-// sortedKeys returns the sorted union of the given maps' keys.
-func sortedKeys(ms ...map[string]float64) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, m := range ms {
-		for k := range m {
-			if !seen[k] {
-				seen[k] = true
-				out = append(out, k)
-			}
-		}
-	}
-	slices.Sort(out)
-	return out
-}
-
 // sortBuckets orders the report rows: chronological/alphabetical for day and tag
 // groupings, otherwise billed hours desc (then raw hours desc, then label asc).
 func sortBuckets(buckets []Bucket, groupBy string) {
@@ -192,9 +174,7 @@ func sortBuckets(buckets []Bucket, groupBy string) {
 // tag buckets, so per-tag hours and amounts can exceed the report total. The
 // CurrencySubtotals stay the unique-entry truth.
 func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time, loc *time.Location) Report {
-	if loc == nil {
-		loc = time.UTC
-	}
+	loc = normLoc(loc)
 	r := Report{
 		Start: start, End: end, GroupBy: groupBy,
 		Timezone:        loc.String(),
@@ -348,7 +328,7 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 	}
 
 	// --- assemble the report ---
-	for _, cur := range sortedKeys(curHours, curBillable, curBilled, curAmt) {
+	for _, cur := range slices.Sorted(maps.Keys(curHours)) {
 		r.CurrencySubtotals = append(r.CurrencySubtotals, CurrencySubtotal{
 			Currency:      cur,
 			Hours:         round2(curHours[cur]),
