@@ -1,4 +1,5 @@
-// Package export serializes a report.Report into CSV, JSON, or Markdown.
+// Package export serializes a report.Report into CSV, JSON, Markdown, HTML,
+// or a CSV invoice.
 package export
 
 import (
@@ -13,74 +14,102 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-// bucketAmount collapses a bucket's per-currency amounts into a single number.
-// It is a stop-gap for the single-currency shape these exporters still assume:
-// the multi-currency-aware exports arrive with the invoice/HTML formats.
-func bucketAmount(b report.Bucket) float64 {
-	var total float64
-	for _, a := range b.Amounts {
-		total += a.Amount
-	}
-	return total
-}
-
-// CSV writes the report as CSV with a header row and a total row.
+// CSV writes the report as CSV: one row per (bucket, per-currency amount),
+// plus one TOTAL row per currency subtotal. CurrencySubtotals is the
+// authoritative source for the totals — the per-bucket amounts are an
+// indicative proportional allocation (see report.Build's caveat) and are
+// never summed here to produce a total.
 func CSV(w io.Writer, r report.Report) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write([]string{"label", "hours", "amount", "currency"}); err != nil {
+	if err := cw.Write([]string{"label", "hours", "billable_hours", "billed_hours", "amount", "currency"}); err != nil {
 		return err
 	}
 	num := func(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
 	for _, b := range r.Buckets {
-		if err := cw.Write([]string{b.Label, num(b.Hours), num(bucketAmount(b)), r.DefaultCurrency}); err != nil {
-			return err
+		for _, a := range b.Amounts {
+			row := []string{b.Label, num(b.Hours), num(b.BillableHours), num(b.BilledHours), num(a.Amount), a.Currency}
+			if err := cw.Write(row); err != nil {
+				return err
+			}
 		}
 	}
-	if err := cw.Write([]string{"TOTAL", num(r.TotalHours), num(r.TotalAmount), r.DefaultCurrency}); err != nil {
-		return err
+	for _, cs := range r.CurrencySubtotals {
+		row := []string{"TOTAL", num(cs.Hours), num(cs.BillableHours), num(cs.BilledHours), num(cs.Amount), cs.Currency}
+		if err := cw.Write(row); err != nil {
+			return err
+		}
 	}
 	cw.Flush()
 	return cw.Error()
 }
 
+// reportSchemaVersion identifies the shape of the JSON emitted by JSON below.
+// It is independent of the config file's schema; bump it only on a breaking
+// change to this report-output JSON.
+const reportSchemaVersion = 1
+
 // jsonReport is the serialized (snake_case) form of the report.
 type jsonReport struct {
-	Start   string `json:"start"`
-	End     string `json:"end"`
-	Scope   string `json:"scope"`
-	GroupBy string `json:"group_by"`
-	// Currency and Rate are deprecated single-value fields kept so existing
-	// scripts parsing this schema keep working; the real model is per-list
-	// currencies and rates (see report.Pricing).
-	Currency    string          `json:"currency"`
-	Rate        float64         `json:"rate"`
-	Buckets     []report.Bucket `json:"buckets"`
-	TotalHours  float64         `json:"total_hours"`
-	TotalAmount float64         `json:"total_amount"`
+	SchemaVersion int    `json:"schema_version"`
+	Start         string `json:"start"`
+	End           string `json:"end"`
+	Scope         string `json:"scope"`
+	GroupBy       string `json:"group_by"`
+	Timezone      string `json:"timezone"`
+
+	// Currency and Rate are DEPRECATED (A6): kept only so existing scripts
+	// parsing this schema keep working. The real model is per-list currencies
+	// and rates (report.Pricing); new consumers should use CurrencySubtotals
+	// and Lines below instead of these two single-value fields.
+	Currency string  `json:"currency"`
+	Rate     float64 `json:"rate"`
+
+	Buckets           []report.Bucket           `json:"buckets"`
+	Lines             []report.InvoiceLine      `json:"lines"`
+	CurrencySubtotals []report.CurrencySubtotal `json:"currency_subtotals"`
+
+	TotalHours       float64 `json:"total_hours"`
+	BillableHours    float64 `json:"billable_hours"`
+	NonBillableHours float64 `json:"non_billable_hours"`
+	BilledHours      float64 `json:"billed_hours"`
+	// TotalAmount is 0 unless the report is single-currency; see
+	// report.Report's doc comment for the "no cross-currency totals" rule.
+	TotalAmount float64 `json:"total_amount"`
 }
 
 // JSON writes the report as indented JSON.
 func JSON(w io.Writer, r report.Report) error {
 	jr := jsonReport{
-		Start: r.Start.Format(time.RFC3339), End: r.End.Format(time.RFC3339),
-		Scope: r.Scope, GroupBy: r.GroupBy,
-		Currency: r.DefaultCurrency, Rate: r.DefaultRate, Buckets: r.Buckets,
-		TotalHours: r.TotalHours, TotalAmount: r.TotalAmount,
+		SchemaVersion: reportSchemaVersion,
+		Start:         r.Start.Format(time.RFC3339), End: r.End.Format(time.RFC3339),
+		Scope: r.Scope, GroupBy: r.GroupBy, Timezone: r.Timezone,
+		Currency: r.DefaultCurrency, Rate: r.DefaultRate,
+		Buckets: r.Buckets, Lines: r.Lines, CurrencySubtotals: r.CurrencySubtotals,
+		TotalHours: r.TotalHours, BillableHours: r.BillableHours,
+		NonBillableHours: r.NonBillableHours, BilledHours: r.BilledHours,
+		TotalAmount: r.TotalAmount,
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(jr)
 }
 
-// Markdown writes the report as a Markdown table.
+// Markdown writes the report as a Markdown table: one row per (bucket,
+// per-currency amount), plus one bold total row per currency subtotal.
 func Markdown(w io.Writer, r report.Report) error {
 	fmt.Fprintf(w, "# Hours report %s\n\n", report.PeriodLabel(r.Start, r.End))
-	fmt.Fprintln(w, "| Label | Hours | Amount |")
-	fmt.Fprintln(w, "|---|---:|---:|")
+	fmt.Fprintln(w, "| Label | Hours | Billable | Billed | Amount | Currency |")
+	fmt.Fprintln(w, "|---|---:|---:|---:|---:|---|")
 	for _, b := range r.Buckets {
-		fmt.Fprintf(w, "| %s | %.2f | %.2f %s |\n", b.Label, b.Hours, bucketAmount(b), r.DefaultCurrency)
+		for _, a := range b.Amounts {
+			fmt.Fprintf(w, "| %s | %.2f | %.2f | %.2f | %.2f | %s |\n",
+				b.Label, b.Hours, b.BillableHours, b.BilledHours, a.Amount, a.Currency)
+		}
 	}
-	fmt.Fprintf(w, "| **Total** | **%.2f** | **%.2f %s** |\n", r.TotalHours, r.TotalAmount, r.DefaultCurrency)
+	for _, cs := range r.CurrencySubtotals {
+		fmt.Fprintf(w, "| **Total** | **%.2f** | **%.2f** | **%.2f** | **%.2f** | **%s** |\n",
+			cs.Hours, cs.BillableHours, cs.BilledHours, cs.Amount, cs.Currency)
+	}
 	return nil
 }
 
@@ -96,6 +125,10 @@ func ToFile(format string, r report.Report, path string) error {
 		fn = JSON
 	case "markdown":
 		fn = Markdown
+	case "html":
+		fn = HTML
+	case "csv-invoice":
+		fn = InvoiceCSV
 	default:
 		return fmt.Errorf("unsupported format: %q", format)
 	}

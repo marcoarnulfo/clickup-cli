@@ -166,12 +166,12 @@ func TestReportCSVFormat(t *testing.T) {
 		t.Fatalf("report --format csv: %v", err)
 	}
 
-	if !strings.HasPrefix(out, "label,hours,amount,currency\n") {
+	if !strings.HasPrefix(out, "label,hours,billable_hours,billed_hours,amount,currency\n") {
 		t.Errorf("CSV header missing/wrong; got:\n%s", out)
 	}
 	// 210 (2h*80 + 1h*50): the fixture entries are billable and the client
 	// now decodes that flag, so the real CSV money row lands here too.
-	if !strings.Contains(out, "TOTAL,3,210,EUR") {
+	if !strings.Contains(out, "TOTAL,3,3,3,210,EUR") {
 		t.Errorf("CSV total row missing; got:\n%s", out)
 	}
 }
@@ -223,10 +223,10 @@ func TestReportMoneyPipeline(t *testing.T) {
 	if err := export.CSV(&csvBuf, r); err != nil {
 		t.Fatalf("export.CSV: %v", err)
 	}
-	if !strings.HasPrefix(csvBuf.String(), "label,hours,amount,currency\n") {
+	if !strings.HasPrefix(csvBuf.String(), "label,hours,billable_hours,billed_hours,amount,currency\n") {
 		t.Errorf("CSV header missing/wrong; got:\n%s", csvBuf.String())
 	}
-	if !strings.Contains(csvBuf.String(), "TOTAL,3,210,EUR") {
+	if !strings.Contains(csvBuf.String(), "TOTAL,3,3,3,210,EUR") {
 		t.Errorf("CSV total row missing; got:\n%s", csvBuf.String())
 	}
 }
