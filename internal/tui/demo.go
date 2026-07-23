@@ -17,7 +17,11 @@ import (
 // useful for trying the app without an account and for generating the README GIF.
 func demoEnabled() bool { return os.Getenv("CLICKUP_DEMO") != "" }
 
-// demoConfig is a fake config for demo mode (no real token).
+// demoConfig is a fake config for demo mode (no real token). It fills in the
+// v1.7 billing fields too (#51,#6,#53,#64) so the billable split,
+// per-currency subtotals, member rate and budget burn-down all have
+// something real to show; see demoEntries for the fixture they're billed
+// against.
 func demoConfig() config.Config {
 	return config.Config{
 		Token:       "DEMO",
@@ -25,6 +29,21 @@ func demoConfig() config.Config {
 		Currency:    "EUR",
 		Rate:        50,
 		Rates:       map[string]float64{"web": 65, "mobile": 45},
+		// Pinned (M6): without it the TUI falls back to time.Local, and the
+		// rendered report (and the README GIF recorded from it) would differ
+		// per machine.
+		Timezone: "UTC",
+		Billing: config.Billing{
+			DefaultCurrency: "EUR",
+			// Carol is the senior on the mobile project: a flat per-member
+			// rate that overrides the mobile list rate for her entries.
+			RatesByMember: map[int]float64{3: 60},
+			// Two clients, two invoicing currencies: the Website project
+			// bills in EUR, the Mobile app project in USD.
+			Currencies: map[string]string{"web": "EUR", "mobile": "USD"},
+			// One budget so the burn-down view (#64) has something to show.
+			Budgets: map[string]float64{"web": 450},
+		},
 	}
 }
 
@@ -36,25 +55,29 @@ const demoSelfID = 1
 // users so the member selection and per-member grouping are meaningful in demo.
 func demoEntries(year int, month time.Month) []report.TimeEntry {
 	at := func(d, h, m int) time.Time { return time.Date(year, month, d, h, m, 0, 0, time.UTC) }
-	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration) report.TimeEntry {
+	mk := func(id, taskID, task, listID, list string, uid int, user string, tags []string, status string, start time.Time, dur time.Duration, billable bool) report.TimeEntry {
 		return report.TimeEntry{
 			ID: id, TaskID: taskID, TaskName: task,
 			ListID: listID, ListName: list,
 			UserID: uid, UserName: user,
 			Tags: tags, Status: status,
 			Start: start, Duration: dur,
-			// The demo is a billing showcase: every fake entry is billable, so
-			// the demo report shows non-zero amounts.
-			Billable: true,
+			Billable: billable,
 		}
 	}
 	return []report.TimeEntry{
-		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute),
-		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour),
-		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute),
-		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour),
-		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute),
-		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute),
+		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute, true),
+		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour, true),
+		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute, true),
+		mk("4", "t4", "Onboarding screens", "mobile", "Mobile app", 3, "carol", []string{"frontend"}, "in progress", at(6, 9, 30), 4*time.Hour, true),
+		mk("5", "t5", "Push notifications", "mobile", "Mobile app", 2, "bob", []string{"backend"}, "done", at(7, 11, 0), 2*time.Hour+45*time.Minute, true),
+		mk("6", "t6", "Release QA", "mobile", "Mobile app", 3, "carol", []string{"qa"}, "done", at(10, 15, 0), 1*time.Hour+30*time.Minute, true),
+		// Alice also has a foot in the mobile project, billed in USD: her own
+		// ("me" scope) report shows both currencies, not just Website's EUR.
+		mk("7", "t7", "Cross-platform sync", "mobile", "Mobile app", 1, "alice", []string{"frontend"}, "in progress", at(9, 11, 0), 2*time.Hour, true),
+		// Internal, unbilled work: the billable/non-billable split (#51) needs
+		// at least one non-billable entry to be visibly non-trivial.
+		mk("8", "t8", "Sprint planning", "web", "Website", 1, "alice", []string{"planning"}, "done", at(2, 9, 0), 1*time.Hour, false),
 	}
 }
 
