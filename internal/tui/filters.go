@@ -100,8 +100,9 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterTags = fs.sections[1].selected
 		m.filterStatuses = fs.sections[2].selected
 		m.filtersScreen = fs
-		m.applyReport()
-		m.screen = screenReport
+		if m.applyReport() {
+			m.screen = screenReport
+		}
 		return m, nil
 	case "esc":
 		m.screen = screenReport

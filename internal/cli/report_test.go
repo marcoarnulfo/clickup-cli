@@ -15,6 +15,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
 // update regenerates the golden file for TestReportJSONSchemaGolden:
@@ -175,8 +176,8 @@ func TestReportCSVFormat(t *testing.T) {
 	}
 }
 
-// TestReportMoneyPipeline constrains the command's money path — its own
-// pricingFor() plus report.Build plus the export writers — with billable
+// TestReportMoneyPipeline constrains the command's money path — service's
+// PricingFromConfig plus report.Build plus the export writers — with billable
 // entries. It bypasses exactly one link of the chain, the ClickUp client's
 // entry decoding, which does not read the billable flag yet; every other
 // component is the one runReport uses. Without this, the end-to-end tests above
@@ -195,7 +196,11 @@ func TestReportMoneyPipeline(t *testing.T) {
 			UserID: 1, UserName: "marco", Start: time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC),
 			Duration: time.Hour, Billable: true},
 	}
-	r := report.Build(entries, report.GroupByTotal, pricingFor(cfg), start, end, nil)
+	p, err := service.PricingFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("PricingFromConfig: %v", err)
+	}
+	r := report.Build(entries, report.GroupByTotal, p, start, end, nil)
 	r.Scope = "me"
 
 	var jsonBuf bytes.Buffer

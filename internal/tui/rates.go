@@ -169,16 +169,20 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		rt.rates = toSave // update the working copy only after a successful save
+		m.ratesScreen = rt
 		g := m.report.GroupBy
 		if g == "" {
 			g = report.GroupByTotal
 		}
+		p, ok := m.pricingOrErr()
+		if !ok {
+			return m, nil
+		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), g, pricingFromConfig(m.cfg), start, end, nil)
+		m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
-		m.ratesScreen = rt
 		return m, nil
 	case "esc":
 		// Discard unsaved changes and return to the report.

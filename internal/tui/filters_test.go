@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -30,6 +32,25 @@ func TestFiltersToggleAndApply(t *testing.T) {
 	}
 	if len(m.filterLists) == 0 {
 		t.Fatal("expected a list filter written to root")
+	}
+}
+
+// #57: applying filters with an unparseable billing.rounding.increment must
+// route to screenError instead of switching to screenReport with a stale
+// (unfiltered) report — applyReport's false return must not be papered over.
+func TestFiltersApplyWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+	m := filtersFixture()
+	m.cfg = config.Config{}
+	m.cfg.Billing.Rounding.Increment = "not-a-duration"
+	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = u.(Model)
+	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyEnter})
+	m = u.(Model)
+	if m.screen != screenError {
+		t.Fatalf("screen = %v, want screenError", m.screen)
+	}
+	if m.err == nil || !strings.Contains(m.err.Error(), "not-a-duration") {
+		t.Fatalf("err = %v, want it to name the offending increment", m.err)
 	}
 }
 

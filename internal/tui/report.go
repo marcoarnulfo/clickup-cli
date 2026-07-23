@@ -55,9 +55,11 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), g, pricingFromConfig(m.cfg), start, end, nil)
-		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+		if p, ok := m.pricingOrErr(); ok {
+			m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
+			m.report.Scope = m.scope
+			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+		}
 	case "m", "s":
 		m.screen = screenHome
 	case "r":
@@ -90,17 +92,24 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applyReport rebuilds m.report from the visible entries over the current range,
-// keeping the active grouping.
-func (m *Model) applyReport() {
+// applyReport rebuilds m.report from the visible entries over the current
+// range, keeping the active grouping. It returns false when the config's
+// pricing rules failed to parse, in which case pricingOrErr has already
+// routed the model to screenError and the caller must not overwrite that.
+func (m *Model) applyReport() bool {
 	g := m.report.GroupBy
 	if g == "" {
 		g = report.GroupByTotal
 	}
+	p, ok := m.pricingOrErr()
+	if !ok {
+		return false
+	}
 	start, end := m.currentRange()
-	m.report = report.Build(m.visibleEntries(), g, pricingFromConfig(m.cfg), start, end, nil)
+	m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+	return true
 }
 
 // formatAmounts renders a bucket's per-currency amounts on one line, e.g.

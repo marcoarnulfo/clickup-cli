@@ -180,13 +180,18 @@ func (m Model) selectedAssignees() []int {
 	return ids
 }
 
-// pricingFromConfig builds the report pricing from config (default rate +
-// per-list overrides + the report currency).
-func pricingFromConfig(cfg config.Config) report.Pricing {
-	return report.Pricing{
-		Rates:           report.Rates{Default: cfg.Rate, ByList: cfg.Rates},
-		DefaultCurrency: cfg.Currency,
+// pricingOrErr builds report.Pricing from config via the shared
+// service.PricingFromConfig. On error (an unparseable billing.rounding
+// increment, see #57) it routes to screenError exactly like the errMsg case
+// in Update, and ok is false so the caller must skip the report rebuild.
+func (m *Model) pricingOrErr() (report.Pricing, bool) {
+	p, err := service.PricingFromConfig(m.cfg)
+	if err != nil {
+		m.err = err
+		m.screen = screenError
+		return report.Pricing{}, false
 	}
+	return p, true
 }
 
 // filterCriteria assembles the active client-side filter from session state.
@@ -484,7 +489,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			groupBy = report.GroupByTotal
 		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), groupBy, pricingFromConfig(m.cfg), start, end, nil)
+		p, ok := m.pricingOrErr()
+		if !ok {
+			return m, nil
+		}
+		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, nil)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport

@@ -390,6 +390,24 @@ func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
 	}
 }
 
+// #57: an unparseable billing.rounding.increment must route to screenError
+// exactly like errMsg (never silently fall back to unrounded billing), and
+// must not leave a stale report screen in place.
+func TestEntriesMsgWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}
+	cfg.Billing.Rounding.Increment = "not-a-duration"
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
+	mm := updated.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("entriesMsg with an unparseable rounding increment should switch to screenError, got %v", mm.screen)
+	}
+	if mm.err == nil || !strings.Contains(mm.err.Error(), "not-a-duration") {
+		t.Fatalf("err = %v, want it to name the offending increment", mm.err)
+	}
+}
+
 func TestQuitKey(t *testing.T) {
 	m := New(config.Config{Token: "t", WorkspaceID: "1"})
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -560,6 +578,39 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	}
 	if m.report.TotalAmount != 100 { // 2h * 50
 		t.Fatalf("report not recalculated: TotalAmount %v, want 100", m.report.TotalAmount)
+	}
+}
+
+// #57: saving rates with an unparseable billing.rounding.increment must
+// route to screenError (config still saves fine; only the pricing/report
+// recompute fails) instead of showing a stale or incorrectly-priced report.
+// The bad increment is injected onto m.cfg right before pressing 's', after
+// reaching the rates screen with a good config — loading entries with a
+// bad rounding rule from the start would already fail at entriesMsg, before
+// ever reaching the rates screen this test targets.
+func TestRatesScreenSaveWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("CLICKUP_TOKEN", "")
+
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m.year, m.month = 2026, 7
+	entries := []report.TimeEntry{
+		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
+	}
+	u, _ := m.Update(entriesMsg{entries: entries})
+	m = u.(Model)
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = u.(Model)
+	m.cfg.Billing.Rounding.Increment = "not-a-duration"
+	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	m = u.(Model)
+	if m.screen != screenError {
+		t.Fatalf("screen = %v, want screenError", m.screen)
+	}
+	if m.err == nil || !strings.Contains(m.err.Error(), "not-a-duration") {
+		t.Fatalf("err = %v, want it to name the offending increment", m.err)
 	}
 }
 

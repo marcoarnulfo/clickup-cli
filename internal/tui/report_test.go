@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -35,6 +36,25 @@ func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
 	m = u.(Model)
 	if m.report.GroupBy != report.GroupByMember {
 		t.Errorf("team g from day -> %q, want member", m.report.GroupBy)
+	}
+}
+
+// #57: pressing 'g' with an unparseable billing.rounding.increment must
+// route to screenError instead of cycling the grouping with stale/wrong
+// pricing.
+func TestReportCycleGroupByWithBadRoundingRoutesToErrorScreen(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Billing.Rounding.Increment = "not-a-duration"
+	m := Model{cfg: cfg, scope: "me", screen: screenReport, now: time.Now}
+	m.report = report.Report{GroupBy: report.GroupByTotal}
+	m.rep = newReport(m.report, "")
+	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	mm := u.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("screen = %v, want screenError", mm.screen)
+	}
+	if mm.err == nil || !strings.Contains(mm.err.Error(), "not-a-duration") {
+		t.Fatalf("err = %v, want it to name the offending increment", mm.err)
 	}
 }
 
