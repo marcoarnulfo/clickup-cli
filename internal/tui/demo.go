@@ -83,7 +83,7 @@ func demoEntries(start, end time.Time) []report.TimeEntry {
 			Billable: billable,
 		}
 	}
-	return []report.TimeEntry{
+	entries := []report.TimeEntry{
 		mk("1", "t1", "Landing page redesign", "web", "Website", 1, "alice", []string{"frontend"}, "in progress", at(3, 9, 0), 3*time.Hour+30*time.Minute, true),
 		mk("2", "t2", "API integration", "web", "Website", 2, "bob", []string{"backend"}, "in progress", at(3, 14, 0), 2*time.Hour, true),
 		mk("3", "t3", "Bugfix checkout", "web", "Website", 1, "alice", []string{"frontend", "qa"}, "done", at(5, 10, 0), 1*time.Hour+15*time.Minute, true),
@@ -97,6 +97,12 @@ func demoEntries(start, end time.Time) []report.TimeEntry {
 		// at least one non-billable entry to be visibly non-trivial.
 		mk("8", "t8", "Sprint planning", "web", "Website", 1, "alice", []string{"planning"}, "done", at(2, 9, 0), 1*time.Hour, false),
 	}
+	// A self-owned (demoSelfID == alice) entry with time-tracking tags, so the
+	// tag picker (#125) seeds a selection and the row shows tags in demo mode.
+	// mk has no tags parameter (its "tags" arg is task Tags, not EntryTags), so
+	// this is post-assigned rather than added to the fixture helper's signature.
+	entries[0].EntryTags = []string{"focus"}
+	return entries
 }
 
 // filterByUsers keeps only entries whose UserID is in ids. An empty ids slice
@@ -186,6 +192,14 @@ func demoHistoryChanges() []clickup.HistoryChange {
 // demoHistoryCmd delivers the fake history as historyMsg (no I/O).
 func demoHistoryCmd() tea.Cmd {
 	return func() tea.Msg { return historyMsg{changes: demoHistoryChanges()} }
+}
+
+// demoTagsFetchCmd delivers a fixed set of workspace time-entry tags for the
+// tag picker (#125), no I/O.
+func demoTagsFetchCmd() tea.Cmd {
+	return func() tea.Msg {
+		return tagsMsg{tags: []string{"focus", "client-A", "review", "urgent"}}
+	}
 }
 
 // demoSpaces / demoSpaceContents are fake workspace data for demo mode.
