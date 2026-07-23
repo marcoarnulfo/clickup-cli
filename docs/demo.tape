@@ -41,13 +41,36 @@ Sleep 900ms
 Enter
 Sleep 2500ms
 
-# Cycle the grouping: total -> task -> list -> day
+# Cycle the grouping: total -> task -> list -> day -> tag (v1.7: the summary
+# line, billable/non-billable split and per-currency subtotals sit below the
+# bucket rows on every grouping — the pause after the last "g" lets a viewer
+# read them)
 Type "g"
 Sleep 1600ms
 Type "g"
 Sleep 1600ms
 Type "g"
 Sleep 1600ms
+Type "g"
+Sleep 2200ms
+
+# Budget burn-down view (v1.7, #64): 'b' from the report
+Type "b"
+Sleep 2200ms
+Escape
+Sleep 700ms
+
+# Billing settings editor (v1.7): 'p' from the report, glance at each tab
+Type "p"
+Sleep 1600ms
+Tab
+Sleep 1400ms
+Tab
+Sleep 1200ms
+Tab
+Sleep 1400ms
+Escape
+Sleep 700ms
 
 # Peek at Log hours: open, choose Guided, see the list picker, go back
 Type "n"
