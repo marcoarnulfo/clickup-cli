@@ -106,3 +106,17 @@ func Round(d, increment time.Duration, mode RoundMode) time.Duration {
 	}
 	return q * increment
 }
+
+// Clock renders a duration as a zero-padded stopwatch H:MM:SS. Hours are not
+// capped at 24 (a long-running timer shows "25:02:00"). A negative duration
+// (e.g. a server clock ahead of the client) clamps to "00:00:00".
+func Clock(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	total := int(d / time.Second)
+	h := total / 3600
+	m := (total % 3600) / 60
+	s := total % 60
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
