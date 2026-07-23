@@ -78,6 +78,12 @@ type Model struct {
 	// injectable clock (default: time.Now)
 	now func() time.Time
 
+	// loc is the resolved location for range computation and report building
+	// (#83): the configured timezone, falling back to time.Local. Set once at
+	// New() and re-resolved (with error surfacing) by locOrErr at each report
+	// build, mirroring pricingOrErr.
+	loc *time.Location
+
 	// data
 	report          report.Report
 	entries         []report.TimeEntry
@@ -121,6 +127,10 @@ func New(cfg config.Config) Model {
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
 	}
+	// Best-effort default so range/label display works before the first report
+	// build; a genuinely invalid configured zone is caught and surfaced by
+	// locOrErr the first time a report is actually built (see #83).
+	m.loc, _ = service.LoadLocation(cfg.Timezone, time.Local)
 	t := m.now()
 	m.year, m.month = t.Year(), t.Month()
 	if m.demo || m.cfg.Valid() {
@@ -139,9 +149,9 @@ func (m Model) Init() tea.Cmd { return nil }
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
 	if m.preset == report.PresetCustom {
-		return report.CustomRange(m.customStart, m.customEnd, nil)
+		return report.CustomRange(m.customStart, m.customEnd, m.loc)
 	}
-	return report.RangeForPreset(m.preset, m.year, m.month, m.now(), nil)
+	return report.RangeForPreset(m.preset, m.year, m.month, m.now(), m.loc)
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
@@ -192,6 +202,23 @@ func (m *Model) pricingOrErr() (report.Pricing, bool) {
 		return report.Pricing{}, false
 	}
 	return p, true
+}
+
+// locOrErr resolves and (re-)caches the TUI's location — the configured
+// timezone, falling back to time.Local — and mirrors pricingOrErr: an
+// invalid configured zone routes to screenError instead of silently falling
+// back. Call it right before currentRange/report.Build at every report-build
+// site (#83): a range computed in one zone and a report built in another
+// would mis-assign entries at day boundaries.
+func (m *Model) locOrErr() (*time.Location, bool) {
+	loc, err := service.LoadLocation(m.cfg.Timezone, time.Local)
+	if err != nil {
+		m.err = err
+		m.screen = screenError
+		return nil, false
+	}
+	m.loc = loc
+	return loc, true
 }
 
 // filterCriteria assembles the active client-side filter from session state.
@@ -488,12 +515,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
+		if _, ok := m.locOrErr(); !ok {
+			return m, nil
+		}
 		start, end := m.currentRange()
 		p, ok := m.pricingOrErr()
 		if !ok {
 			return m, nil
 		}
-		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, nil)
+		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport

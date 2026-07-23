@@ -105,6 +105,46 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 	}
 }
 
+// TestReportViewShowsSummaryAndBillableSplit drives Update to build a report
+// from a mixed-currency fixture and asserts the rendered view carries the
+// shared export.SummaryLine ("N entries · Xh · amounts"), an explicit
+// billable/non-billable split, and per-currency subtotals — all formatted
+// with FormatHours/%.2f, never a second summary formatter.
+func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}
+	cfg.Billing.Currencies = map[string]string{"eur-list": "EUR", "usd-list": "USD"}
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	start := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
+	entries := []report.TimeEntry{
+		{ID: "1", ListID: "eur-list", ListName: "Alpha", Start: start,
+			Duration: 2 * time.Hour, Billable: true},
+		{ID: "2", ListID: "usd-list", ListName: "Beta", Start: start.Add(time.Hour),
+			Duration: 1 * time.Hour, Billable: true},
+		{ID: "3", ListID: "eur-list", ListName: "Alpha", Start: start.Add(2 * time.Hour),
+			Duration: 30 * time.Minute, Billable: false},
+	}
+	m.cfg.Rates = map[string]float64{"eur-list": 100, "usd-list": 90}
+	updated, _ := m.Update(entriesMsg{entries: entries})
+	mm := updated.(Model)
+	if mm.screen != screenReport {
+		t.Fatalf("screen = %v, want screenReport (err: %v)", mm.screen, mm.err)
+	}
+	// billable: 2h @ 100 EUR/h = 200 EUR, 1h @ 90 USD/h = 90 USD.
+	out := mm.rep.view()
+	for _, want := range []string{
+		"2 entries · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
+		"subtotal EUR", "200.00 EUR",
+		"subtotal USD", "90.00 USD",
+		"billable", "0.50", // non-billable split: 0.50h non-billable
+		"non-billable",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("view missing %q; got:\n%s", want, out)
+		}
+	}
+}
+
 func TestMemberFilterNotePartial(t *testing.T) {
 	m := Model{
 		scope:           "team",

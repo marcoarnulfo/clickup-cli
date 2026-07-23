@@ -3,9 +3,12 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcoarnulfo/clickup-cli/internal/duration"
+	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -54,9 +57,12 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "g":
 		g := nextGroupBy(m.report.GroupBy, m.scope)
+		if _, ok := m.locOrErr(); !ok {
+			return m, nil
+		}
 		start, end := m.currentRange()
 		if p, ok := m.pricingOrErr(); ok {
-			m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
+			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 			m.report.Scope = m.scope
 			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		}
@@ -101,12 +107,15 @@ func (m *Model) applyReport() bool {
 	if g == "" {
 		g = report.GroupByTotal
 	}
+	if _, ok := m.locOrErr(); !ok {
+		return false
+	}
 	p, ok := m.pricingOrErr()
 	if !ok {
 		return false
 	}
 	start, end := m.currentRange()
-	m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
+	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 	return true
@@ -125,10 +134,21 @@ func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
 	return strings.Join(parts, " + ")
 }
 
+// hoursOf renders hours the same way export.SummaryLine does, via
+// duration.FormatHours — one hours formatter shared across TUI and export.
+func hoursOf(h float64) string {
+	return duration.FormatHours(time.Duration(h * float64(time.Hour)))
+}
+
 func (rm reportModel) view() string {
 	r := rm.r
-	title := styleTitle.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s",
-		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy))
+	// Timezone is surfaced here (#83): with no configured `timezone` it reads
+	// "Local" (time.Local.String()), not a portable IANA name — accepted, see
+	// the task's binding amendments. Users wanting a stable zone name across
+	// machines should set `timezone` in the config.
+	title := styleTitle.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s — tz %s",
+		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
+	summary := styleAccent.Render(export.SummaryLine(r))
 
 	header := lipgloss.NewStyle().Bold(true).Render(
 		fmt.Sprintf("%-32s %8s %8s %s", "Item", "Hours", "Billed", "Amount"))
@@ -140,6 +160,9 @@ func (rm reportModel) view() string {
 
 	// Totals: one line when the report is single-currency, otherwise a TOTAL
 	// hours line plus one authoritative subtotal line per currency (no FX).
+	// Per-bucket Amounts are indicative only (PerDay rounding can drift a few
+	// cents from these subtotals with a finer grouping) — CurrencySubtotals
+	// below is the authoritative total, never re-derived from the bucket rows.
 	var total string
 	if len(r.CurrencySubtotals) <= 1 {
 		total = styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
@@ -151,9 +174,7 @@ func (rm reportModel) view() string {
 				"  subtotal "+s.Currency, s.Hours, s.BilledHours, s.Amount, s.Currency))
 		}
 	}
-	if r.NonBillableHours > 0 {
-		total += "\n" + styleHelp.Render(fmt.Sprintf("%-32s %8.2f", "  non-billable", r.NonBillableHours))
-	}
+	total += "\n" + styleHelp.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
 
 	body := styleBox.Render(rows + total)
 	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · m/s: change range/scope · r: reload · q: quit")
@@ -161,7 +182,7 @@ func (rm reportModel) view() string {
 	if len(r.Buckets) == 0 {
 		body = styleBox.Render("No hours to show.")
 	}
-	return title + "\n\n" + body + "\n\n" + help
+	return title + "\n\n" + summary + "\n\n" + body + "\n\n" + help
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters

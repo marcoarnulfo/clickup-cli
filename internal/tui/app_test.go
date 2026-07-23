@@ -45,12 +45,15 @@ func TestCurrentRangeCustomIsInclusive(t *testing.T) {
 	}
 }
 
+// #83: a Model built via New() defaults to time.Local (no `timezone`
+// configured), not UTC — currentRange must reflect that, since it feeds the
+// same loc into report.Build (see TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild).
 func TestCurrentRangeUsesInjectedClock(t *testing.T) {
 	fixed := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
 	m := newWithClock(config.Config{Token: "t", WorkspaceID: "1"}, func() time.Time { return fixed })
 	m.preset = report.PresetLast7d
 	start, end := m.currentRange()
-	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed, nil)
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed, time.Local)
 	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
 		t.Fatalf("range = [%v,%v), want [%v,%v)", start, end, wantStart, wantEnd)
 	}
@@ -390,6 +393,42 @@ func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
 	}
 }
 
+// #83: the location used to compute the report's range and the location
+// used to build the report (day-bucketing) must be the same value, or a
+// boundary entry is mis-assigned to the wrong day/period. Europe/Rome is
+// UTC+2 in July (DST): this instant is 2026-06-30 23:00 UTC but
+// 2026-07-01 01:00 in Rome, so it belongs to the July "this_month" report
+// AND to the 2026-07-01 day bucket only if both the range and the
+// day-grouping are computed in Rome — never a mix of Rome and UTC.
+func TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Europe/Rome"}
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	m.preset = report.PresetThisMonth
+	m.report.GroupBy = report.GroupByDay // carried across the reload by entriesMsg
+
+	boundary := time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC)
+	entries := []report.TimeEntry{
+		{ID: "1", ListID: "l", ListName: "L", Start: boundary, Duration: time.Hour, Billable: true},
+	}
+	updated, _ := m.Update(entriesMsg{entries: entries})
+	mm := updated.(Model)
+
+	if mm.screen != screenReport {
+		t.Fatalf("screen = %v, want screenReport (err: %v)", mm.screen, mm.err)
+	}
+	if mm.report.Timezone != "Europe/Rome" {
+		t.Fatalf("report.Timezone = %q, want Europe/Rome — Build must receive the same loc as the range", mm.report.Timezone)
+	}
+	wantStart := time.Date(2026, 6, 30, 22, 0, 0, 0, time.UTC) // 2026-07-01T00:00:00 in Rome
+	if !mm.report.Start.Equal(wantStart) {
+		t.Fatalf("report.Start = %v, want %v (this_month range must be computed in Rome, not UTC)", mm.report.Start, wantStart)
+	}
+	if len(mm.report.Buckets) != 1 || mm.report.Buckets[0].Label != "2026-07-01" {
+		t.Fatalf("buckets = %+v, want a single 2026-07-01 bucket (the boundary entry is July 1st in Rome)", mm.report.Buckets)
+	}
+}
+
 // #57: an unparseable billing.rounding.increment must route to screenError
 // exactly like errMsg (never silently fall back to unrounded billing), and
 // must not leave a stale report screen in place.
@@ -405,6 +444,23 @@ func TestEntriesMsgWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 	}
 	if mm.err == nil || !strings.Contains(mm.err.Error(), "not-a-duration") {
 		t.Fatalf("err = %v, want it to name the offending increment", mm.err)
+	}
+}
+
+// #83: an invalid configured timezone must route to screenError exactly like
+// a bad rounding increment (see TestEntriesMsgWithBadRoundingRoutesToErrorScreen)
+// — never silently fall back to time.Local or UTC.
+func TestEntriesMsgWithBadTimezoneRoutesToErrorScreen(t *testing.T) {
+	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Not/AZone"}
+	m := New(cfg)
+	m.year, m.month = 2026, 7
+	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
+	mm := updated.(Model)
+	if mm.screen != screenError {
+		t.Fatalf("entriesMsg with an invalid timezone should switch to screenError, got %v", mm.screen)
+	}
+	if mm.err == nil || !strings.Contains(mm.err.Error(), "Not/AZone") {
+		t.Fatalf("err = %v, want it to name the offending zone", mm.err)
 	}
 }
 

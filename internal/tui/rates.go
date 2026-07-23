@@ -174,12 +174,15 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if g == "" {
 			g = report.GroupByTotal
 		}
+		if _, ok := m.locOrErr(); !ok {
+			return m, nil
+		}
 		p, ok := m.pricingOrErr()
 		if !ok {
 			return m, nil
 		}
 		start, end := m.currentRange()
-		m.report = report.Build(m.visibleEntries(), g, p, start, end, nil)
+		m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		m.screen = screenReport
