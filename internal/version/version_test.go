@@ -13,14 +13,14 @@ func TestIsRelease(t *testing.T) {
 		{"dev", false},
 		{"(devel)", false},
 		{"", false},
-		{"1.7.0", false},        // manca la v
-		{"v1.7", false},         // due componenti
-		{"v1.7.0.1", false},     // quattro componenti
+		{"1.7.0", false},        // missing the v
+		{"v1.7", false},         // two components
+		{"v1.7.0.1", false},     // four components
 		{"v1.7.0-rc1", false},   // prerelease
 		{"v1.7.0+dirty", false}, // build metadata
-		{"v1.6.1-0.20260723143812-50d39f89c2fe", false}, // pseudo-version (go build da Go 1.24)
+		{"v1.6.1-0.20260723143812-50d39f89c2fe", false}, // pseudo-version (go build, Go 1.24+)
 		{"v1.7.x", false},
-		{"v1.+7.0", false}, // Atoi accetterebbe "+7": va rifiutato
+		{"v1.+7.0", false}, // Atoi would accept "+7": must be rejected
 		{"v1..0", false},
 		{"v-1.7.0", false},
 	}
