@@ -26,5 +26,12 @@ func SummaryLine(r report.Report) string {
 	// it drops non-billable entries and collapses a day's entries into one
 	// under rounding.scope: day. Calling them entries misreports what the user
 	// logged.
-	return fmt.Sprintf("%d billing lines · %s · %s", len(r.Lines), hours, strings.Join(amounts, ", "))
+	line := fmt.Sprintf("%d billing lines · %s", len(r.Lines), hours)
+	// A genuinely empty period (no currency subtotals) has no amounts to
+	// list; suppress the trailing " · " separator rather than dangling it in
+	// front of nothing.
+	if len(amounts) > 0 {
+		line += " · " + strings.Join(amounts, ", ")
+	}
+	return line
 }

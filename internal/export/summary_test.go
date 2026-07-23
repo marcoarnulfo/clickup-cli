@@ -20,11 +20,12 @@ func TestSummaryLine(t *testing.T) {
 }
 
 // TestSummaryLineEmptyReport pins the shape for a report with no lines and no
-// currency subtotals: no panic, a "0 entries" count, and a trailing empty
-// amounts list rather than a placeholder like "0.00 " with an invented currency.
+// currency subtotals: no panic, a "0 billing lines" count, and no dangling
+// " · " separator before an empty amounts list (previously rendered as
+// "0 billing lines · 0.00h · ", trailing whitespace and all).
 func TestSummaryLineEmptyReport(t *testing.T) {
 	got := SummaryLine(report.Report{})
-	want := "0 billing lines · 0.00h · "
+	want := "0 billing lines · 0.00h"
 	if got != want {
 		t.Errorf("SummaryLine(empty) = %q, want %q", got, want)
 	}
