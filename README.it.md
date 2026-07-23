@@ -39,6 +39,45 @@ valute di fatturazione, voci taggate e un budget per lista. Il GIF è registrato
 
 ## Installazione
 
+### Binari precompilati
+
+Scarica l'archivio per il tuo OS/arch dalla
+[latest release](https://github.com/marcoarnulfo/clickup-cli/releases/latest)
+(darwin/linux/windows × amd64/arm64), estrailo e metti `clup` nel `PATH`.
+
+Ogni release include `checksums.txt`, firmato con cosign keyless — verifica con:
+
+```bash
+cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt
+```
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew install marcoarnulfo/tap/clup
+```
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add clup https://github.com/marcoarnulfo/scoop-bucket
+scoop install clup
+```
+
+### AUR (Arch Linux)
+
+```bash
+yay -S clup-bin   # o il tuo AUR helper preferito
+```
+
+_in attesa della registrazione della chiave AUR da parte del maintainer, tracciato in
+[#103](https://github.com/marcoarnulfo/clickup-cli/issues/103) — nel frattempo usa
+un binario precompilato._
+
+### go install (da sorgente)
+
+Richiede Go 1.26+:
+
 ```bash
 go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest
 ```

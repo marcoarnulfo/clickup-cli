@@ -13,3 +13,20 @@ jobs:
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
       - run: go test ./... -race
       - run: go build ./...
+  goreleaser:
+    # Keeps .goreleaser.yaml honest: a snapshot build on every push/PR, so a
+    # config regression is caught here instead of at tag time. Signing is
+    # skipped (keyless cosign needs a tag run's OIDC context).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --skip=sign

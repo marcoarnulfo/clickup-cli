@@ -4,3 +4,4 @@
 *.out
 .superpowers/
 CLAUDE.md
+dist/
