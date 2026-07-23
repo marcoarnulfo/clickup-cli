@@ -127,23 +127,35 @@ func Markdown(w io.Writer, r report.Report) error {
 	return nil
 }
 
+// toFileFormats is the single source of truth for ToFile's supported format
+// keys. Formats() exposes its keys so callers that must offer "every format
+// ToFile supports" (currently the TUI's export menu) can be tested against
+// this map directly instead of duplicating it by hand and drifting out of
+// sync (this branch already shipped that exact drift once: HTML and
+// CSV-invoice were unreachable from the TUI menu).
+var toFileFormats = map[string]func(io.Writer, report.Report) error{
+	"csv":         CSV,
+	"json":        JSON,
+	"markdown":    Markdown,
+	"html":        HTML,
+	"csv-invoice": InvoiceCSV,
+}
+
+// Formats returns the format keys ToFile accepts, in no particular order.
+func Formats() []string {
+	keys := make([]string, 0, len(toFileFormats))
+	for k := range toFileFormats {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // ToFile writes the report in the given format to the given path.
 // It validates the format BEFORE creating the file, so an unknown format
 // doesn't leave an empty file on disk.
 func ToFile(format string, r report.Report, path string) error {
-	var fn func(io.Writer, report.Report) error
-	switch format {
-	case "csv":
-		fn = CSV
-	case "json":
-		fn = JSON
-	case "markdown":
-		fn = Markdown
-	case "html":
-		fn = HTML
-	case "csv-invoice":
-		fn = InvoiceCSV
-	default:
+	fn, ok := toFileFormats[format]
+	if !ok {
 		return fmt.Errorf("unsupported format: %q", format)
 	}
 	f, err := os.Create(path)

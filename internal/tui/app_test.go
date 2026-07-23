@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -1234,20 +1235,35 @@ func newWithClock(cfg config.Config, now func() time.Time) Model {
 
 // TestExportFormatsCoverToFile pins that the TUI export menu offers every
 // format export.ToFile supports: HTML and the CSV invoice are v1.7
-// deliverables and were reachable only from `clup report --format`.
+// deliverables and were reachable only from `clup report --format`. Unlike
+// the hand-duplicated literal map this test used to pin (itself a comment-only
+// invariant that drifted once already), it checks against export.Formats(),
+// the package's own source of truth, and actually round-trips every
+// exportFormats key through export.ToFile — so a future format added on
+// either side without the other fails this test loudly instead of silently
+// drifting again.
 func TestExportFormatsCoverToFile(t *testing.T) {
-	want := map[string]string{"csv": "csv", "json": "json", "markdown": "md", "html": "html", "csv-invoice": "csv"}
-	got := map[string]string{}
+	r := report.Report{}
+	dir := t.TempDir()
+
+	seen := make(map[string]bool, len(exportFormats))
 	for _, f := range exportFormats {
-		got[f.key] = f.ext
-	}
-	for k, ext := range want {
-		if got[k] != ext {
-			t.Errorf("export format %q: ext = %q, want %q", k, got[k], ext)
+		seen[f.key] = true
+		path := filepath.Join(dir, f.key+"."+f.ext)
+		if err := export.ToFile(f.key, r, path); err != nil {
+			t.Errorf("exportFormats entry %q does not round-trip through export.ToFile: %v", f.key, err)
 		}
 	}
-	if len(got) != len(want) {
-		t.Errorf("export formats = %v, want exactly %v", got, want)
+
+	want := export.Formats()
+	if len(seen) != len(want) {
+		t.Errorf("exportFormats has %d distinct keys, export.ToFile supports %d; want the same size (exportFormats keys %v, export.Formats() %v)",
+			len(seen), len(want), seen, want)
+	}
+	for _, k := range want {
+		if !seen[k] {
+			t.Errorf("export.ToFile supports format %q but it is missing from the TUI's exportFormats menu", k)
+		}
 	}
 }
 

@@ -218,3 +218,19 @@ func TestToFileWritesInvoiceCSV(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestFormatsMatchesToFile pins Formats() as ToFile's actual source of truth:
+// every key it returns must be accepted by ToFile, and nothing else should be.
+// Callers (the TUI's export menu) rely on Formats() to stay in lockstep with
+// ToFile without hand-duplicating the format list.
+func TestFormatsMatchesToFile(t *testing.T) {
+	for _, k := range Formats() {
+		p := t.TempDir() + "/out"
+		if err := ToFile(k, sample(), p); err != nil {
+			t.Errorf("Formats() reports %q but ToFile rejected it: %v", k, err)
+		}
+	}
+	if err := ToFile("bogus-format-not-in-formats", sample(), t.TempDir()+"/x"); err == nil {
+		t.Error("a format outside Formats() should not be accepted by ToFile")
+	}
+}
