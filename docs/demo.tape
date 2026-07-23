@@ -28,14 +28,26 @@ Enter
 Sleep 2s
 Show
 
+# Home: demo mode always starts with a fake timer already running, so the
+# live ticking indicator (v1.8, #91) is visible on boot — pause to read it
+Sleep 1800ms
+
 # Home: pick an earlier month, toggle scope me/team
-Sleep 1s
 Left@450ms 2
 Sleep 900ms
 Type "t"
 Sleep 900ms
 Type "t"
 Sleep 900ms
+
+# Live timer (v1.8, #91): 'c' from Home jumps straight to the running timer,
+# ticking live; 's' stops it, and the summary screen returns to Home on Enter
+Type "c"
+Sleep 1800ms
+Type "s"
+Sleep 1400ms
+Enter
+Sleep 700ms
 
 # Generate the report
 Enter
@@ -69,6 +81,26 @@ Tab
 Sleep 1200ms
 Tab
 Sleep 1400ms
+Escape
+Sleep 700ms
+
+# Time-entry browser (v1.8, #94): 'v' from the report lists this range's
+# entries; glance at edit, at the delete confirm (declined, so nothing is
+# actually removed), and at the read-only history, then back to the report
+Type "v"
+Sleep 1400ms
+Type "e"
+Sleep 1400ms
+Escape
+Sleep 700ms
+Type "x"
+Sleep 1200ms
+Type "n"
+Sleep 700ms
+Type "h"
+Sleep 1400ms
+Escape
+Sleep 700ms
 Escape
 Sleep 700ms
 
