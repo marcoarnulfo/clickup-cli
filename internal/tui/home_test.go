@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -53,7 +54,7 @@ func TestHomeFUsesCache(t *testing.T) {
 // #38: an inline error routed back to Home must be visible in the view...
 func TestHomeViewRendersErrText(t *testing.T) {
 	m := homeModel{errText: "Error: boom"}
-	out := m.view("This month", "me", "")
+	out := m.view("This month", "me", "", "")
 	if !strings.Contains(out, "Error: boom") {
 		t.Fatalf("home view should render errText, got:\n%s", out)
 	}
@@ -176,5 +177,14 @@ func TestHomeMembersNote(t *testing.T) {
 	m.scope = "me"
 	if got := m.homeMembersNote(); got != "" {
 		t.Errorf("me scope note = %q, want empty", got)
+	}
+}
+
+func TestHomeShowsUpdateNotice(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.latestVersion = "v1.8.0"
+	out := m.View()
+	if !strings.Contains(out, "v1.8.0") {
+		t.Fatalf("home view does not mention the new version:\n%s", out)
 	}
 }
