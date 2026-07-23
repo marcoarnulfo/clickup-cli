@@ -63,8 +63,12 @@ versione dal VCS: una build locale a valle di un tag produce una **pseudo-versio
 (`v1.6.1-0.20260723143812-50d39f89c2fe`), non `(devel)`; con albero sporco compare
 `+dirty`; `(devel)` appare solo con `-buildvcs=false` o fuori da un checkout git.
 Elencare i casi da escludere sarebbe quindi incompleto per costruzione. La regola
-positiva copre in una condizione sola `dev`, `(devel)`, le pseudo-version e `+dirty`:
-chi compila da sorgente non viene mai avvisato.
+positiva copre in una condizione sola `dev`, `(devel)`, le pseudo-version e `+dirty`.
+
+Precisazione: una build pulita fatta esattamente su un commit taggato riporta il tag
+semplice (`v1.6.0`), supera quindi il controllo di forma e il controllo parte. È corretto
+così — quell'utente *è* su una release. La regola esclude chi sta a valle di un tag, non
+chiunque abbia compilato in proprio.
 
 Conseguenza gradita sullo scope: siccome `/releases/latest` non restituisce mai
 prerelease, entrambi i termini del confronto sono sempre `vX.Y.Z` semplici.
@@ -87,7 +91,7 @@ iniettabile nei test, sullo stesso schema di `internal/config`.
 ### 5.2 Freschezza
 
 La cache è **scaduta** se manca, se non si legge, se non si parsifica, se
-`now - checked_at > 24h`, **oppure se `checked_at` è nel futuro** (orologio spostato
+`now - checked_at >= 24h`, **oppure se `checked_at` è nel futuro** (orologio spostato
 indietro: senza questa condizione la cache resterebbe "fresca" per sempre).
 
 Una cache corrotta o illeggibile è sempre trattata come scaduta — si rifà la chiamata
@@ -141,7 +145,7 @@ non deve ricevere un avviso che lo invita a "aggiornare" a `v1.7.0`.
 |---|---|
 | `CLUP_NO_UPDATE_CHECK` valorizzata | disattiva, **vince su tutto** |
 | `update_check: false` nel config | disattiva |
-| `CLICKUP_DEMO=1` | disattiva (vincolo "zero I/O" della demo) |
+| `CLICKUP_DEMO=1` | disattiva **nella TUI** (vincolo "zero I/O" della demo) |
 | chiave assente | **attivo** |
 
 Il campo di config è **`*bool` con tag `yaml:"update_check,omitempty"`**. Il puntatore
@@ -153,6 +157,13 @@ di esso `Save` scriverebbe `update_check: null` in ogni file salvato. È lo stes
 `false` esplicito → `&false`, ed entrambi sopravvivono a un round-trip Save/Load.
 
 L'aggiunta è additiva e non tocca `migrate`.
+
+**La demo riguarda solo la TUI.** Il comando headless ignora deliberatamente
+`CLICKUP_DEMO` — `internal/cli/report.go` lo dichiara in un commento e
+`TestReportIgnoresDemoEnv` lo blocca: il percorso headless passa sempre dalla config e
+dall'API vere. Quindi `clup report` controlla gli aggiornamenti anche con
+`CLICKUP_DEMO=1` impostata, coerentemente con il resto di ciò che fa in quella
+condizione. Chi vuole silenzio usa `CLUP_NO_UPDATE_CHECK`.
 
 ## 8. Testo e collocazione
 

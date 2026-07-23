@@ -15,6 +15,7 @@
 - **Tre voci dell'issue esistono già** — `CONTRIBUTING.md` + `CONTRIBUTING.it.md`, `CODE_OF_CONDUCT.md`, i template issue/PR — e **non vanno toccate**. Lo scope reale è `CHANGELOG.md`, `SECURITY.md` e l'impostazione del repo.
 - **CHANGELOG in inglese soltanto.** `CLAUDE.md` stabilisce che il testo in-repo è in inglese tranne `README.it.md` e i doc di design. Il bilinguismo per l'utente vive nelle note di release e nei README.
 - **Copertura del CHANGELOG: da v1.2.0 a v1.6.0, più `Unreleased`.** `v1.7.0` **non è ancora taggata**: l'ultima release pubblicata è `v1.6.0`, e il lavoro v1.7 sta su `main` senza tag. Inventare una voce `v1.7.0` datata sarebbe falso.
+- **Il limite inferiore va dichiarato nel file.** Esistono quattro release più vecchie (`v0.1.0`, `v0.1.1`, `v1.1.0`, `v1.1.1`) con note **solo in italiano**: ricostruirle in inglese sarebbe tradurre e riassumere a posteriori. Il CHANGELOG chiude con una riga che lo dice e rimanda alla pagina delle release.
 - **Niente indirizzi email** in `SECURITY.md`: il canale è il private vulnerability reporting di GitHub.
 - **Verificare i fatti prima di scriverli.** Percorsi, permessi dei file e nomi delle variabili d'ambiente vanno letti dal codice, non ricordati.
 - **Processo:** Conventional Commits, **MAI** `Co-Authored-By`. Nessun codice cambia, ma il gate resta: `gofmt -l .` (vuoto), `go vet ./...`, `go build ./...`, `go test ./... -race` (verde).
@@ -72,7 +73,8 @@ Regole di contenuto:
 - una sezione per ogni release pubblicata, da `1.6.0` a `1.2.0`, in ordine decrescente, con la **data reale** di `publishedAt`;
 - voci raggruppate in `Added` / `Changed` / `Fixed` / `Deprecated`, omettendo i gruppi vuoti;
 - voci scritte per un lettore, non copiate dai subject dei commit;
-- `Unreleased` contiene il lavoro v1.7 (profondità di fatturazione) e diventerà `1.7.0` al momento del tag.
+- `Unreleased` contiene il lavoro v1.7 (profondità di fatturazione) e diventerà `1.7.0` al momento del tag;
+- **in fondo al file**, una riga che dichiara il limite inferiore, del tipo: `Releases before 1.2.0 predate this changelog; see the [GitHub releases](https://github.com/marcoarnulfo/clickup-cli/releases) page.`
 
 **Due voci da non perdere,** perché sono quelle che un lettore cerca:
 - **1.6.0** — rebrand del binario `clickup` → `clup`, con `clickup` mantenuto come shim deprecato e il fallback di lettura della vecchia config; è un cambio che tocca chiunque abbia installato prima;
@@ -103,11 +105,14 @@ git commit -m "docs: add CHANGELOG backfilled from v1.2.0 to v1.6.0 (#108)"
 - [ ] **Step 2: abilitare il canale privato**
 
 ```bash
+gh api repos/marcoarnulfo/clickup-cli/private-vulnerability-reporting   # prima: {"enabled":false}
 gh api -X PUT repos/marcoarnulfo/clickup-cli/private-vulnerability-reporting
-gh api repos/marcoarnulfo/clickup-cli --jq '.security_and_analysis'
+gh api repos/marcoarnulfo/clickup-cli/private-vulnerability-reporting   # dopo: {"enabled":true}
 ```
 
-Il secondo comando conferma l'impostazione. Se l'endpoint fallisce per permessi, riportarlo invece di proseguire in silenzio: senza il canale abilitato, il file rimanderebbe a un pulsante inesistente.
+La conferma va letta **da questo endpoint**, non da `.security_and_analysis` del repo: quel
+campo riporta secret scanning e Dependabot, non il private vulnerability reporting, quindi
+guardarlo darebbe una verifica che non verifica nulla. Se l'endpoint fallisce per permessi, riportarlo invece di proseguire in silenzio: senza il canale abilitato, il file rimanderebbe a un pulsante inesistente.
 
 - [ ] **Step 3: scrivere `SECURITY.md`**, in inglese, con queste sezioni:
 
@@ -139,9 +144,11 @@ git commit -m "docs: add SECURITY policy with the token threat model (#108)"
 
 **Files:** nessuno (solo GitHub).
 
-- [ ] **Step 1: spuntare le voci reali** su [#108](https://github.com/marcoarnulfo/clickup-cli/issues/108), in **entrambe** le sezioni linguistiche del corpo, e aggiungere un commento bilingue che chiarisce che `CONTRIBUTING`, `CODE_OF_CONDUCT` e i template esistevano già prima di questo lavoro — altrimenti sembrano voci lasciate cadere invece che già fatte.
+- [ ] **Step 1: correggere la forma della checklist, poi spuntarla.** Attenzione: il corpo di [#108](https://github.com/marcoarnulfo/clickup-cli/issues/108) **non** ha cinque caselle, ne ha **una sola per lingua** che elenca tutti i file su una riga — quindi "spuntare le voci" non è eseguibile così com'è. Prima si spezza quella riga in una casella per file, in **entrambe** le sezioni linguistiche, poi si spuntano quelle vere.
 
-- [ ] **Step 2: verificare** — `gh issue view 108` e controllare che il corpo aggiornato sia coerente in entrambe le lingue.
+- [ ] **Step 2: commentare** — aggiungere un commento bilingue che chiarisce che `CONTRIBUTING`, `CODE_OF_CONDUCT` e i template esistevano già **prima** di questo lavoro: senza, sembrano voci lasciate cadere invece che già fatte.
+
+- [ ] **Step 3: verificare** — `gh issue view 108` e controllare che il corpo aggiornato sia coerente in entrambe le lingue.
 
 ---
 

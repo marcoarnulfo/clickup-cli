@@ -18,7 +18,8 @@
 - **Silenzio totale sugli errori:** rete, timeout, 4xx/5xx, rate limit, JSON malformato, cache corrotta — nessun avviso, nessun messaggio, nessun exit code diverso.
 - **stdout è intoccabile:** l'avviso della CLI va su **stderr**. `clup report --json` deve restare parsabile.
 - **Nessun header `Authorization`** sulla chiamata a GitHub; `User-Agent` obbligatorio.
-- **Opt-out:** `CLUP_NO_UPDATE_CHECK` (vince su tutto) → config `update_check: false` → altrimenti attivo. In `CLICKUP_DEMO=1` non parte mai (vincolo "zero I/O" della demo).
+- **Opt-out:** `CLUP_NO_UPDATE_CHECK` (vince su tutto) → config `update_check: false` → altrimenti attivo.
+- **Demo: solo la TUI.** In `CLICKUP_DEMO=1` la TUI non controlla mai (vincolo "zero I/O" della demo). Il comando headless **ignora deliberatamente** `CLICKUP_DEMO` — lo dichiara un commento in `internal/cli/report.go` ed è bloccato da `TestReportIgnoresDemoEnv`: il percorso headless passa sempre dalla config e dall'API vere, quindi controlla anche in quella condizione. Perciò il Task 6 passa `false` come modalità demo, e non è una svista.
 - **Config additiva:** `UpdateCheck *bool` con tag `yaml:"update_check,omitempty"`. Il puntatore evita che l'assenza della chiave valga `false`; `omitempty` evita che `Save` scriva `update_check: null` ovunque.
 - **Niente self-update:** il tool non scarica né sostituisce mai il proprio binario.
 - **Processo:** Conventional Commits, **MAI** `Co-Authored-By`. Testo in-repo in inglese (i doc di design restano in italiano). Prima di ogni commit: `gofmt -l .` (vuoto), `go vet ./...`, `go build ./...`, `go test ./... -race` (verde).
@@ -254,24 +255,18 @@ func Resolve(ldflagsVersion, mainVersion string) string {
 - Consumes: `version.Resolve`, `version.Dev` (Task 1).
 - Produces: `func service.CurrentVersion() string`.
 
-- [ ] **Step 1: scrivere il test** — in `internal/cli/cli_test.go`, accanto a `TestRootCmdSettings`:
+- [ ] **Step 1: nessun test nuovo — usare quello che c'è.** `TestRootCmdSettings` in
+`internal/cli/cli_test.go` asserisce già `cmd.Version != ""`, che è esattamente
+l'invariante da preservare: dopo la modifica il comando radice deve continuare a esporre
+una versione non vuota.
 
-```go
-func TestRootCmdVersionIsNotHardcodedDev(t *testing.T) {
-	cmd := newRootCmd()
-	// The version now comes from the build: under `go test` the binary carries
-	// the test module's build info, so the exact value is not pinned — what is
-	// pinned is that it is no longer the hardcoded literal that lied to every
-	// user installed via `go install`.
-	if cmd.Version == "" {
-		t.Fatal("Version is empty, want a non-empty build version string")
-	}
-}
-```
+**Non** aggiungere un test tipo "la versione non è più `dev` hardcoded": non potrebbe
+funzionare. Sotto `go test` il binario porta le build info del *modulo di test*, quindi il
+valore esatto non è fissabile, e un'asserzione di non-vuoto passerebbe identica anche con
+la costante di prima — un test che non può fallire per la ragione che dichiara. La
+copertura vera del resolver sta nei test puri di `version.Resolve` (Task 1).
 
-*(Se `newRootCmd` non è il nome della funzione che costruisce il comando radice, usare quella realmente presente in `cli.go`; non rinominarla.)*
-
-- [ ] **Step 2: eseguire** — `go test ./internal/cli/ -run Version -v` → PASS (il test passa già; serve come rete prima della modifica).
+- [ ] **Step 2: eseguire prima della modifica** — `go test ./internal/cli/ -run TestRootCmdSettings -v` → PASS. È la rete di sicurezza: deve continuare a passare dopo.
 
 - [ ] **Step 3: implementare** `internal/service/update.go`:
 
@@ -305,7 +300,7 @@ func CurrentVersion() string {
 }
 ```
 
-- [ ] **Step 4: sostituire la costante** in `internal/cli/cli.go`: eliminare `const version = "dev"` (riga 18 e il suo commento) e usare `service.CurrentVersion()` dove il comando radice imposta `Version:`. Aggiungere l'import di `internal/service` se manca.
+- [ ] **Step 4: sostituire la costante** in `internal/cli/cli.go`: eliminare `const version = "dev"` (riga 18 e il suo commento) e usare `service.CurrentVersion()` dentro `rootCmd()`, dove il comando imposta `Version:`. Aggiungere l'import di `internal/service` se manca.
 
 - [ ] **Step 5: eseguire** — `go test ./internal/cli/ ./internal/service/ -race` → PASS; `go build ./...` pulito.
 
@@ -324,15 +319,23 @@ func CurrentVersion() string {
 
 - [ ] **Step 1: scrivere i test che falliscono** in `internal/config/config_test.go`:
 
+> **Isolamento obbligatorio.** Ogni test che chiama `Save` **deve** aprire con
+> `isolateConfig(t)`, l'helper già presente in `config_test.go`. Impostare solo
+> `XDG_CONFIG_HOME` **non isola nulla su macOS**, dove `os.UserConfigDir()` ignora quella
+> variabile: un test così scriverebbe nel config reale dello sviluppatore
+> (`~/Library/Application Support/clup/config.yml`) e glielo sovrascriverebbe.
+> `isolateConfig` imposta sia `HOME` sia `XDG_CONFIG_HOME` proprio per questo.
+> Nota anche che **`Path()` ritorna `(string, error)`**.
+
 ```go
 func TestUpdateCheckAbsentIsNil(t *testing.T) {
 	// A config file without the key must load as nil — meaning "enabled".
 	// With a plain bool the absent key would decode as false and the update
 	// check would be born disabled in every existing config.
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	// ... scrivere un config v2 minimale SENZA la chiave update_check,
-	//     usando lo stesso helper già usato dagli altri test del file ...
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -343,11 +346,9 @@ func TestUpdateCheckAbsentIsNil(t *testing.T) {
 }
 
 func TestUpdateCheckFalseRoundTrips(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	isolateConfig(t)
 	no := false
-	cfg := Config{Token: "t", WorkspaceID: "1", UpdateCheck: &no}
-	if err := Save(cfg); err != nil {
+	if err := Save(Config{Token: "t", WorkspaceID: "1", UpdateCheck: &no}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load()
@@ -362,12 +363,15 @@ func TestUpdateCheckFalseRoundTrips(t *testing.T) {
 func TestUpdateCheckNilIsNotWrittenToDisk(t *testing.T) {
 	// omitempty matters: without it Save writes "update_check: null" into
 	// every config file it touches.
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	isolateConfig(t)
 	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(Path())
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,8 +380,6 @@ func TestUpdateCheckNilIsNotWrittenToDisk(t *testing.T) {
 	}
 }
 ```
-
-*(Allineare l'impostazione della directory di config e il nome dell'helper del percorso a quelli già usati dagli altri test del file: non introdurre un secondo modo di puntare la config.)*
 
 - [ ] **Step 2: verificare che falliscano** — `go test ./internal/config/ -run UpdateCheck -v` → FAIL (campo inesistente).
 
@@ -476,11 +478,16 @@ func TestCacheFresh(t *testing.T) {
 	}
 }
 
-func TestWriteCacheIsAtomic(t *testing.T) {
+func TestWriteCacheLeavesNoTempFile(t *testing.T) {
 	// Two concurrent clup invocations can write the cache at the same time; a
 	// truncated file is exactly the corruption readCache has to tolerate.
 	// Writing through a temp file plus rename means a reader sees either the
 	// old file or the new one, never half of one.
+	//
+	// Note the limit of this test, and do not over-trust it: it only proves no
+	// temp file is left behind. A plain os.WriteFile would pass it too.
+	// Atomicity itself is not practically assertable here; the guarantee comes
+	// from os.Rename, and the test guards the litter the technique produces.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "update.json")
 	if err := writeCache(path, updateCache{CheckedAt: time.Now(), Latest: "v1.8.0"}); err != nil {
@@ -598,7 +605,6 @@ type UpdateOptions struct {
 	CachePath string        // "" => defaultCachePath()
 	APIURL    string        // "" => endpoint GitHub
 	Now       time.Time     // zero => time.Now()
-	Client    *http.Client  // nil => client con timeout di 2s
 }
 
 // CheckForUpdate returns the latest release tag and true only when it is
@@ -810,7 +816,6 @@ type UpdateOptions struct {
 	CachePath string
 	APIURL    string
 	Now       time.Time
-	Client    *http.Client
 }
 
 // CheckForUpdate reports the latest published release and whether it is
@@ -858,10 +863,7 @@ func fetchLatestRelease(ctx context.Context, o UpdateOptions) (string, error) {
 	if url == "" {
 		url = githubLatestReleaseURL
 	}
-	client := o.Client
-	if client == nil {
-		client = &http.Client{Timeout: updateCheckTimeout}
-	}
+	client := &http.Client{Timeout: updateCheckTimeout}
 	ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
 	defer cancel()
 
@@ -944,11 +946,16 @@ func TestReportNoNoticeWhenDisabled(t *testing.T) {
 }
 ```
 
-*(Per rendere il controllo pilotabile dai test, `runReport` legge l'endpoint e il percorso di cache da variabili di package non esportate — `updateAPIURL`, `updateCachePath` — vuote in produzione e valorizzate dal test. Non aggiungere flag pubbliche per questo.)*
+*(Per rendere il controllo pilotabile dai test, `runReport` legge l'endpoint e il percorso di cache da variabili di package non esportate — `updateAPIURL`, `updateCachePath` — vuote in produzione e valorizzate dal test. Non aggiungere flag pubbliche per questo. I test **devono** ripristinarle con `t.Cleanup`, sullo stesso schema dell'helper `withSeams` già presente in `report_test.go`: altrimenti un test lascia il proprio endpoint acceso per quelli successivi del package.)*
 
 - [ ] **Step 2: verificare che falliscano** — `go test ./internal/cli/ -run Notice -v` → FAIL.
 
-- [ ] **Step 3: implementare** — in `internal/cli/report.go`, dentro `runReport`:
+- [ ] **Step 3: implementare** — in `internal/cli/report.go`, dentro `runReport`.
+
+**Collocazione esatta:** la chiamata a `startUpdateCheck` va **subito dopo che la config è
+stata caricata e validata** (`cfg` non esiste prima di quel punto) e **prima** del recupero
+delle entry, così il controllo gira in parallelo alla chiamata API del report. Aggiungere
+`context` agli import del file se manca.
 
 ```go
 	// Start the update check alongside the report fetch. Running it serially
@@ -998,7 +1005,7 @@ func startUpdateCheck(ctx context.Context, cfg config.Config) <-chan string {
 }
 ```
 
-*(Il `false` passato a `UpdateCheckEnabled` è la modalità demo: il comando headless non ha una modalità demo.)*
+*(Il `false` passato a `UpdateCheckEnabled` è la modalità demo, ed è voluto: il percorso headless ignora deliberatamente `CLICKUP_DEMO` — vedi le Global Constraints e `TestReportIgnoresDemoEnv`. La demo riguarda solo la TUI.)*
 
 - [ ] **Step 4: eseguire** — `go test ./internal/cli/ -race` → PASS. Verificare a mano che `go run ./cmd/clup report --json` non stampi nulla di estraneo su stdout.
 
@@ -1053,7 +1060,12 @@ func TestHomeShowsUpdateNotice(t *testing.T) {
 
 - [ ] **Step 2: verificare che falliscano** — `go test ./internal/tui/ -run 'Update|Init|Notice' -v` → FAIL.
 
-- [ ] **Step 3: implementare**:
+- [ ] **Step 3: implementare**.
+
+Nota sulla view della home: la firma reale è
+`func (m homeModel) view(rangeLabel, scope, membersNote string) string` — **non** riceve il
+Model radice. Passare la versione come quarto argomento da `Model.View()`, dove lo stato
+vive, seguendo lo schema già usato per gli altri dati mostrati in home.
 
 In `app.go`, il msg tipizzato accanto agli altri:
 

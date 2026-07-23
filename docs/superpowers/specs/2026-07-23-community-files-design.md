@@ -32,6 +32,15 @@ crescere per sempre.
 
 **Copertura: da v1.2.0 a v1.6.0**, più una sezione `Unreleased`.
 
+**Perché non si parte da v0.1.0.** Esistono quattro release precedenti — `v0.1.0`,
+`v0.1.1`, `v1.1.0`, `v1.1.1` — le cui note sono però in italiano soltanto, scritte prima
+che il progetto adottasse la doppia lingua. Ricostruirle in inglese significherebbe
+tradurre e riassumere a posteriori il lavoro di quella fase, cioè scrivere storia
+riscritta. Si parte da v1.2.0, che è la prima release con note bilingui da cui estrarre la
+metà inglese senza interpretare nulla — e il CHANGELOG lo **dichiara in fondo** con una
+riga che rimanda alla pagina delle release per ciò che precede. Un changelog che comincia
+a metà senza spiegare perché è peggio di uno che comincia a metà dichiarandolo.
+
 Il limite superiore non è una scelta stilistica: **v1.7.0 non è ancora taggata**. L'ultima
 release pubblicata è `v1.6.0` (2026-07-22) e il lavoro v1.7 sta su `main` senza tag,
 quindi non esistono note da cui ricostruire una voce v1.7.0. Il lavoro v1.7 va in
@@ -68,7 +77,10 @@ scrivere bene, perché riguarda specificamente questo tool:
   dichiarare, non da nascondere;
 - esiste l'alternativa `CLICKUP_TOKEN` come variabile d'ambiente, che `Save` non
   persiste mai su disco;
-- il keychain di sistema è pianificato per la v1.10 (#—, milestone *Task context & accounts*).
+- il keychain di sistema è pianificato per la milestone *v1.10 — Task context (read) &
+  accounts* (citare la milestone, non un numero di issue: la issue del keychain va
+  verificata al momento della scrittura e, se non esiste ancora, si nomina solo la
+  milestone).
 
 **Una riga sull'avviso di aggiornamento**, quando #104 sarà a bordo: la chiamata è
 anonima, non manda mai il token, e il tool non scarica né esegue codice — non c'è
