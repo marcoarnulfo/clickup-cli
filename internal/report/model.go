@@ -165,7 +165,7 @@ type InvoiceLine struct {
 	Hours float64 `json:"hours"`
 	Rate  float64 `json:"rate"`
 	// Amount is round2(exact billed hours × Rate) — the money base is the exact
-	// billed duration, not the 4-decimal Hours above.
+	// billed duration, not the 6-decimal Hours above.
 	Amount   float64 `json:"amount"`
 	Currency string  `json:"currency"`
 	Billable bool    `json:"billable"`
