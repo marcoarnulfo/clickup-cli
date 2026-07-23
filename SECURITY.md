@@ -58,7 +58,8 @@ token.
   Authorization header of any kind, is attached or could be — and it only
   ever reads release metadata: it does not download or execute any code, and
   clup has no self-update mechanism. It's cached locally for 24 hours and can
-  be turned off with `CLUP_NO_UPDATE_CHECK=1`, with `update_check: false` in
-  the config, or by using demo mode.
+  be turned off with `CLUP_NO_UPDATE_CHECK=1` or with `update_check: false` in
+  the config. Demo mode (`CLICKUP_DEMO=1`) also disables it, but for the TUI
+  only — `clup report` ignores `CLICKUP_DEMO` and checks like any other run.
 
 Nothing else. clup makes no other outbound network calls.

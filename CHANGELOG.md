@@ -35,12 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rendered at 6 decimal places so `qty_hours × rate` reconciles to `amount` exactly).
 - Demo mode (`CLICKUP_DEMO=1`) covers the new billing model with no API calls:
   billable/non-billable split, multiple currencies, tags and a budget.
-- Update check: `clup` now tells you, at most once a day, when a newer release
-  exists — a discreet line on the TUI home screen, and for `clup report`, on
-  stderr (never stdout, so `--format json` stays scriptable). It's an anonymous
-  request to the public GitHub releases API, no token sent, and it never
-  self-updates. Disable it with `CLUP_NO_UPDATE_CHECK=1` or `update_check: false`
-  in the config.
+- Update check: `clup` now tells you when a newer release exists — a discreet
+  line on the TUI home screen, and for `clup report`, on stderr (never stdout,
+  so `--format json` stays scriptable). It asks the public GitHub releases API at
+  most once a day (the result is cached), the request is anonymous with no token
+  sent, and it never self-updates. Disable it with `CLUP_NO_UPDATE_CHECK=1` or
+  `update_check: false` in the config.
+- `clup --version` now reports the real build version stamped by the Go
+  toolchain, instead of a hardcoded `dev`.
 
 ### Changed
 - **Config schema v2 (additive):** a new `billing` block (rate overrides, currencies,

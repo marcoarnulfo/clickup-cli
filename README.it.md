@@ -420,10 +420,11 @@ fa:
 - **Dove compare:** come riga aggiuntiva nella home della TUI e, per `clup report`,
   come riga su **stderr** stampata dopo il corpo del report — mai su stdout, così
   `clup report --format json` resta interpretabile dagli strumenti a valle.
-- **Disattivarlo** con `CLUP_NO_UPDATE_CHECK=1` (qualsiasi valore non vuoto), con
-  `update_check: false` nel config, oppure eseguendo in modalità demo
-  (`CLICKUP_DEMO=1`), che non fa alcun I/O; la variabile d'ambiente vince sempre
-  sul config. Omettere la chiave lascia il controllo attivo.
+- **Disattivarlo** con `CLUP_NO_UPDATE_CHECK=1` (qualsiasi valore non vuoto) o con
+  `update_check: false` nel config; la variabile d'ambiente vince sempre sul
+  config. Omettere la chiave lascia il controllo attivo. Anche la modalità demo
+  (`CLICKUP_DEMO=1`) lo disattiva — ma **solo per la TUI**; `clup report` ignora
+  `CLICKUP_DEMO` e controlla come in qualsiasi altra esecuzione.
 
 ## Contribuire
 

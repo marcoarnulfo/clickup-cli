@@ -177,6 +177,10 @@ func CheckForUpdate(ctx context.Context, o UpdateOptions) (string, bool) {
 		// does not pay the timeout on every invocation.
 		latest = cached.Latest
 	}
+	// A write failure is deliberately ignored: on an unwritable cache dir the
+	// "at most one call per 24h" guarantee degrades to a fetch per invocation,
+	// still silent and still 2s-bounded. A courtesy feature does not warrant
+	// surfacing a cache error, and the trade-off is accepted knowingly.
 	_ = writeCache(path, updateCache{CheckedAt: now, Latest: latest})
 	return latest, version.Newer(o.Current, latest)
 }

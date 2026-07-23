@@ -387,10 +387,11 @@ short notice. It is deliberately narrow in what it does:
 - **Where it shows up:** as an extra line on the TUI's home screen, and for
   `clup report`, as a line on **stderr** printed after the report body — never on
   stdout, so `clup report --format json` stays parsable by downstream tools.
-- **Opt out** with `CLUP_NO_UPDATE_CHECK=1` (any non-empty value), with
-  `update_check: false` in the config, or by running in demo mode
-  (`CLICKUP_DEMO=1`), which performs no I/O at all; the environment variable
-  always wins over the config. Omitting the key leaves the check enabled.
+- **Opt out** with `CLUP_NO_UPDATE_CHECK=1` (any non-empty value) or with
+  `update_check: false` in the config; the environment variable always wins over
+  the config. Omitting the key leaves the check enabled. Demo mode
+  (`CLICKUP_DEMO=1`) also disables it — but for the **TUI only**; `clup report`
+  ignores `CLICKUP_DEMO` and checks like any other run.
 
 ## Contributing
 
