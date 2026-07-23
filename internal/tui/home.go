@@ -108,7 +108,7 @@ func (m Model) rangeLabel() string {
 	return report.PeriodLabel(start, end)
 }
 
-func (m homeModel) view(rangeLabel, scope, membersNote string) string {
+func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion string) string {
 	title := styleTitle.Render("ClickUp Hours — Report")
 	scopeStr := styleAccent.Render(scope)
 	if membersNote != "" {
@@ -124,6 +124,13 @@ func (m homeModel) view(rangeLabel, scope, membersNote string) string {
 	out := title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
 	if m.errText != "" {
 		out += "\n\n" + styleErr.Render(m.errText)
+	}
+	if latestVersion != "" {
+		// The module path is spelled out in full: an elided ".../cmd/clup" reads
+		// fine but does not work when the user copies the line.
+		out += "\n\n" + styleHelp.Render(fmt.Sprintf(
+			"clup %s available — go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest",
+			latestVersion))
 	}
 	return out
 }

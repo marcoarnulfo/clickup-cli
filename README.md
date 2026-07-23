@@ -341,6 +341,8 @@ billing:
       nearest increment.
     - `scope`: `day` rounds the total per (day, list, member) instead of per entry;
       any other value rounds each entry individually.
+- `update_check` (optional): set to `false` to turn off the update check described
+  below. Omitting the key (or setting `true`) leaves it enabled.
 
 ### How billed amounts are computed
 
@@ -361,6 +363,35 @@ the config file (handy for CI or to avoid saving the token to disk):
 ```bash
 CLICKUP_TOKEN=pk_xxx clup
 ```
+
+### Update check
+
+Once a day, `clup` asks GitHub whether a newer release exists and, if so, shows a
+short notice. It is deliberately narrow in what it does:
+
+- **Anonymous.** It's a single, 2-second-timeout GET to the public
+  `https://api.github.com/repos/marcoarnulfo/clickup-cli/releases/latest` endpoint,
+  sending only `Accept` and `User-Agent` headers. There is no `Authorization` header
+  — your ClickUp token never travels to GitHub.
+- **No self-update.** `clup` never downloads or replaces its own binary; the notice
+  only tells you a newer version exists and points at
+  `go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest`.
+- **Cached.** The result is stored at `os.UserCacheDir()/clup/update.json` and
+  reused for 24 hours, so most runs make no network call at all.
+- **Most source builds are exempt.** If you built `clup` yourself with a plain
+  `go build`, the binary reports a pseudo-version rather than a numbered release
+  and the check never runs — unless the checkout is clean and sitting exactly on
+  a release tag, in which case it reports that exact version and the check
+  behaves as it would for any release build. Extra commits past the tag, or a
+  dirty tree (`+dirty`), are what keep it silent.
+- **Where it shows up:** as an extra line on the TUI's home screen, and for
+  `clup report`, as a line on **stderr** printed after the report body — never on
+  stdout, so `clup report --format json` stays parsable by downstream tools.
+- **Opt out** with `CLUP_NO_UPDATE_CHECK=1` (any non-empty value) or with
+  `update_check: false` in the config; the environment variable always wins over
+  the config. Omitting the key leaves the check enabled. Demo mode
+  (`CLICKUP_DEMO=1`) also disables it — but for the **TUI only**; `clup report`
+  ignores `CLICKUP_DEMO` and checks like any other run.
 
 ## Contributing
 

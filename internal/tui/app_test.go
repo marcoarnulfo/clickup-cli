@@ -1300,3 +1300,23 @@ func TestExportInvoiceWritesDistinctFile(t *testing.T) {
 		t.Fatalf("expected a distinct invoice file: %v", err)
 	}
 }
+
+func TestUpdateAvailableMsgSetsLatestVersion(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	next, _ := m.Update(updateAvailableMsg{latest: "v1.8.0"})
+	got := next.(Model)
+	if got.latestVersion != "v1.8.0" {
+		t.Fatalf("latestVersion = %q, want v1.8.0", got.latestVersion)
+	}
+	if got.screen == screenError {
+		t.Fatal("an update notice must never route to the error screen")
+	}
+}
+
+func TestInitDoesNotCheckInDemoMode(t *testing.T) {
+	m := New(config.Config{})
+	m.demo = true
+	if cmd := m.Init(); cmd != nil {
+		t.Fatal("demo mode must issue no commands: the demo performs zero I/O")
+	}
+}

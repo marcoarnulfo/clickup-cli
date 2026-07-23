@@ -74,6 +74,11 @@ type Config struct {
 	// pre-rebrand path. Save uses it to decide whether the legacy file
 	// should be rewritten to a pointer stub.
 	loadedFromLegacy bool
+
+	// UpdateCheck enables the "a newer release exists" check. nil means
+	// enabled: a plain bool would make an absent key decode as false and
+	// disable the check in every config written before this field existed.
+	UpdateCheck *bool `yaml:"update_check,omitempty"`
 }
 
 // Valid reports whether the config can be used to query the API.

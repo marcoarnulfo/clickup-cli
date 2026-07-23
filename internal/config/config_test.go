@@ -487,3 +487,57 @@ func TestMigrateIdempotentOnV2(t *testing.T) {
 		t.Fatalf("expected idempotent migrate/save/load cycle, no drift:\nfirst  %+v\nsecond %+v", first, second)
 	}
 }
+
+// --- Task 3: optional update_check key ---
+
+func TestUpdateCheckAbsentIsNil(t *testing.T) {
+	// A config file without the key must load as nil — meaning "enabled".
+	// With a plain bool the absent key would decode as false and the update
+	// check would be born disabled in every existing config.
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UpdateCheck != nil {
+		t.Fatalf("UpdateCheck = %v, want nil for an absent key", *cfg.UpdateCheck)
+	}
+}
+
+func TestUpdateCheckFalseRoundTrips(t *testing.T) {
+	isolateConfig(t)
+	no := false
+	if err := Save(Config{Token: "t", WorkspaceID: "1", UpdateCheck: &no}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UpdateCheck == nil || *got.UpdateCheck {
+		t.Fatalf("UpdateCheck = %v, want an explicit false", got.UpdateCheck)
+	}
+}
+
+func TestUpdateCheckNilIsNotWrittenToDisk(t *testing.T) {
+	// omitempty matters: without it Save writes "update_check: null" into
+	// every config file it touches.
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "update_check") {
+		t.Fatalf("saved config mentions update_check:\n%s", raw)
+	}
+}

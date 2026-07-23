@@ -56,6 +56,13 @@ type (
 		folders    []clickup.Folder
 		folderless []clickup.List
 	}
+
+	// updateAvailableMsg carries a newer published release. It is only ever
+	// sent when one exists: unlike every other command in this program, the
+	// update check never reports its failures — it emits no errMsg and never
+	// routes to screenError, because a failed update check is not the user's
+	// problem.
+	updateAvailableMsg struct{ latest string }
 )
 
 // Model is the root model of the TUI.
@@ -65,6 +72,10 @@ type Model struct {
 	demo   bool // demo mode (fake data, no API)
 	screen screen
 	err    error
+
+	// latestVersion is the newer published release, "" when up to date or
+	// unknown (the check hasn't returned yet, is disabled, or failed silently).
+	latestVersion string
 
 	width, height int
 
@@ -166,7 +177,27 @@ func defaultYearMonth(now time.Time, loc *time.Location) (int, time.Month) {
 	return t.Year(), t.Month()
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m Model) Init() tea.Cmd { return m.updateCheckCmd() }
+
+// updateCheckCmd checks GitHub for a newer release in the background and
+// returns updateAvailableMsg when one exists. It returns nil (issuing no
+// command at all) when the check is disabled or, per the demo's zero-I/O
+// rule, whenever m.demo is set. See updateAvailableMsg for why this command
+// never reports failure.
+func (m Model) updateCheckCmd() tea.Cmd {
+	if !service.UpdateCheckEnabled(m.cfg, m.demo) {
+		return nil
+	}
+	return func() tea.Msg {
+		latest, newer := service.CheckForUpdate(context.Background(), service.UpdateOptions{
+			Current: service.CurrentVersion(),
+		})
+		if !newer {
+			return nil
+		}
+		return updateAvailableMsg{latest: latest}
+	}
+}
 
 // currentRange returns the [start, end) period the report should cover.
 // periodMode == periodModeWeek overrides everything else with the current
@@ -634,6 +665,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.browserScreen = bs
 		return m, nil
 
+	case updateAvailableMsg:
+		m.latestVersion = msg.latest
+		return m, nil
+
 	case spaceContentsMsg:
 		if m.browserContents == nil {
 			m.browserContents = map[string]browserSpaceContents{}
@@ -695,7 +730,7 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote())
+		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion)
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
