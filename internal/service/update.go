@@ -1,12 +1,17 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"time"
 
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/version"
 )
 
@@ -99,4 +104,115 @@ func cacheFresh(c updateCache, now time.Time) bool {
 		return false
 	}
 	return now.Sub(c.CheckedAt) < updateCheckInterval
+}
+
+// githubLatestReleaseURL is the endpoint asked for the newest release.
+//
+// It deliberately excludes drafts and prereleases. That is what keeps the
+// release flow quiet in the window where a tag is pushed but its notes are
+// still a draft: the endpoint keeps returning the previous release. Do not
+// swap it for the tags API, which would lose that property.
+const githubLatestReleaseURL = "https://api.github.com/repos/marcoarnulfo/clickup-cli/releases/latest"
+
+const updateCheckTimeout = 2 * time.Second
+
+// UpdateCheckEnabled reports whether the update check may run.
+// CLUP_NO_UPDATE_CHECK wins over the config; demo mode never checks, because a
+// demo session performs no I/O at all.
+func UpdateCheckEnabled(cfg config.Config, demo bool) bool {
+	if demo {
+		return false
+	}
+	if os.Getenv("CLUP_NO_UPDATE_CHECK") != "" {
+		return false
+	}
+	if cfg.UpdateCheck != nil && !*cfg.UpdateCheck {
+		return false
+	}
+	return true
+}
+
+// UpdateOptions configures a check. The zero value of each optional field
+// selects the production default; tests fill them in.
+type UpdateOptions struct {
+	Current   string    // current version; the check does not run unless it is a release
+	CachePath string    // "" => defaultCachePath()
+	APIURL    string    // "" => githubLatestReleaseURL
+	Now       time.Time // zero => time.Now()
+}
+
+// CheckForUpdate reports the latest published release and whether it is
+// strictly newer than the running version.
+//
+// It never returns an error: every failure — no cache, a corrupt cache, no
+// network, a timeout, a non-200, a malformed body — is silent, because a
+// failed update check is not the user's problem.
+func CheckForUpdate(ctx context.Context, o UpdateOptions) (string, bool) {
+	// A source build has nothing meaningful to compare against, and must not
+	// even reach the network.
+	if !version.IsRelease(o.Current) {
+		return "", false
+	}
+	now := o.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	path := o.CachePath
+	if path == "" {
+		p, err := defaultCachePath()
+		if err != nil {
+			return "", false
+		}
+		path = p
+	}
+
+	cached, ok := readCache(path)
+	if ok && cacheFresh(cached, now) {
+		return cached.Latest, version.Newer(o.Current, cached.Latest)
+	}
+
+	latest, err := fetchLatestRelease(ctx, o)
+	if err != nil || !version.IsRelease(latest) {
+		// Keep whatever we knew, but record the attempt so an offline user
+		// does not pay the timeout on every invocation.
+		latest = cached.Latest
+	}
+	_ = writeCache(path, updateCache{CheckedAt: now, Latest: latest})
+	return latest, version.Newer(o.Current, latest)
+}
+
+func fetchLatestRelease(ctx context.Context, o UpdateOptions) (string, error) {
+	url := o.APIURL
+	if url == "" {
+		url = githubLatestReleaseURL
+	}
+	client := &http.Client{Timeout: updateCheckTimeout}
+	ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	// GitHub rejects requests without a User-Agent. The call carries no
+	// Authorization header: it is anonymous, and the user's ClickUp token has
+	// no business travelling to api.github.com.
+	req.Header.Set("User-Agent", "clup/"+o.Current)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("github returned %s", resp.Status)
+	}
+	var body struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return "", err
+	}
+	return body.TagName, nil
 }

@@ -1,10 +1,17 @@
 package service
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
 )
 
 func TestCacheRoundTrip(t *testing.T) {
@@ -75,5 +82,167 @@ func TestWriteCacheLeavesNoTempFile(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != "update.json" {
 		t.Fatalf("temp file left behind: %v", entries)
+	}
+}
+
+func TestUpdateCheckEnabled(t *testing.T) {
+	no, yes := false, true
+	cases := []struct {
+		name string
+		env  string
+		cfg  config.Config
+		demo bool
+		want bool
+	}{
+		{"default on", "", config.Config{}, false, true},
+		{"config nil is on", "", config.Config{UpdateCheck: nil}, false, true},
+		{"config true", "", config.Config{UpdateCheck: &yes}, false, true},
+		{"config false", "", config.Config{UpdateCheck: &no}, false, false},
+		{"env wins over config true", "1", config.Config{UpdateCheck: &yes}, false, false},
+		{"env any value", "please-dont", config.Config{}, false, false},
+		{"demo never checks", "", config.Config{UpdateCheck: &yes}, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("CLUP_NO_UPDATE_CHECK", c.env)
+			if got := UpdateCheckEnabled(c.cfg, c.demo); got != c.want {
+				t.Errorf("UpdateCheckEnabled = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// newTestAPI returns a server answering like GitHub's releases/latest, and a
+// counter of how many requests it received.
+func newTestAPI(t *testing.T, tag string, status int) (*httptest.Server, *int32) {
+	t.Helper()
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		if r.Header.Get("User-Agent") == "" {
+			t.Error("request has no User-Agent; GitHub rejects those")
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("update check must never send an Authorization header")
+		}
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			return
+		}
+		fmt.Fprintf(w, `{"tag_name":%q}`, tag)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &calls
+}
+
+func TestCheckForUpdateFetchesAndReportsNewer(t *testing.T) {
+	srv, calls := newTestAPI(t, "v1.8.0", http.StatusOK)
+	latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current:   "v1.7.0",
+		CachePath: filepath.Join(t.TempDir(), "update.json"),
+		APIURL:    srv.URL,
+		Now:       time.Now(),
+	})
+	if latest != "v1.8.0" || !newer {
+		t.Fatalf("got (%q, %v), want (v1.8.0, true)", latest, newer)
+	}
+	if *calls != 1 {
+		t.Fatalf("calls = %d, want 1", *calls)
+	}
+}
+
+func TestCheckForUpdateUsesFreshCacheWithoutCallingTheServer(t *testing.T) {
+	// Without the request counter this test would prove nothing: it would pass
+	// whether or not the cache was consulted.
+	srv, calls := newTestAPI(t, "v9.9.9", http.StatusOK)
+	path := filepath.Join(t.TempDir(), "update.json")
+	now := time.Now()
+	if err := writeCache(path, updateCache{CheckedAt: now.Add(-time.Hour), Latest: "v1.8.0"}); err != nil {
+		t.Fatal(err)
+	}
+	latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current: "v1.7.0", CachePath: path, APIURL: srv.URL, Now: now,
+	})
+	if latest != "v1.8.0" || !newer {
+		t.Fatalf("got (%q, %v), want the cached (v1.8.0, true)", latest, newer)
+	}
+	if *calls != 0 {
+		t.Fatalf("server was called %d times despite a fresh cache", *calls)
+	}
+}
+
+func TestCheckForUpdateSkipsNonReleaseCurrent(t *testing.T) {
+	srv, calls := newTestAPI(t, "v1.8.0", http.StatusOK)
+	for _, current := range []string{"dev", "(devel)", "v1.6.1-0.20260723143812-50d39f8", "v1.7.0+dirty"} {
+		latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+			Current: current, CachePath: filepath.Join(t.TempDir(), "update.json"),
+			APIURL: srv.URL, Now: time.Now(),
+		})
+		if newer || latest != "" {
+			t.Errorf("current=%q: got (%q, %v), want no check at all", current, latest, newer)
+		}
+	}
+	if *calls != 0 {
+		t.Fatalf("a source build must not reach the network (calls=%d)", *calls)
+	}
+}
+
+func TestCheckForUpdateOlderOrEqualIsSilent(t *testing.T) {
+	for _, tag := range []string{"v1.7.0", "v1.6.0"} {
+		srv, _ := newTestAPI(t, tag, http.StatusOK)
+		_, newer := CheckForUpdate(context.Background(), UpdateOptions{
+			Current: "v1.7.0", CachePath: filepath.Join(t.TempDir(), "update.json"),
+			APIURL: srv.URL, Now: time.Now(),
+		})
+		if newer {
+			t.Errorf("tag %q: reported an update over v1.7.0", tag)
+		}
+	}
+}
+
+func TestCheckForUpdateFailuresAreSilentAndStampTheCache(t *testing.T) {
+	// Offline users must not pay the timeout on every single invocation, so a
+	// failed attempt still records when it happened.
+	srv, _ := newTestAPI(t, "", http.StatusInternalServerError)
+	path := filepath.Join(t.TempDir(), "update.json")
+	now := time.Now()
+	if _, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current: "v1.7.0", CachePath: path, APIURL: srv.URL, Now: now,
+	}); newer {
+		t.Fatal("a 500 must not produce a notice")
+	}
+	c, ok := readCache(path)
+	if !ok || !c.CheckedAt.Equal(now) {
+		t.Fatalf("failed attempt not stamped: %+v ok=%v", c, ok)
+	}
+}
+
+func TestCheckForUpdateFailureKeepsPreviousLatest(t *testing.T) {
+	srv, _ := newTestAPI(t, "", http.StatusInternalServerError)
+	path := filepath.Join(t.TempDir(), "update.json")
+	now := time.Now()
+	if err := writeCache(path, updateCache{CheckedAt: now.Add(-48 * time.Hour), Latest: "v1.8.0"}); err != nil {
+		t.Fatal(err)
+	}
+	latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current: "v1.7.0", CachePath: path, APIURL: srv.URL, Now: now,
+	})
+	// An offline user who already learned about v1.8.0 keeps being told: it is
+	// still true.
+	if latest != "v1.8.0" || !newer {
+		t.Fatalf("got (%q, %v), want the previously known (v1.8.0, true)", latest, newer)
+	}
+}
+
+func TestCheckForUpdateMalformedBodyIsSilent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "{not json")
+	}))
+	defer srv.Close()
+	if _, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current: "v1.7.0", CachePath: filepath.Join(t.TempDir(), "update.json"),
+		APIURL: srv.URL, Now: time.Now(),
+	}); newer {
+		t.Fatal("malformed JSON must not produce a notice")
 	}
 }
