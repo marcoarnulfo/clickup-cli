@@ -357,9 +357,21 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 			Amount:        round2(curAmt[cur]),
 		})
 	}
-	// No cross-currency totals: TotalAmount only makes sense single-currency.
-	if len(r.CurrencySubtotals) == 1 {
-		r.TotalAmount = r.CurrencySubtotals[0].Amount
+	// No cross-currency totals: TotalAmount only makes sense when a single
+	// currency carries money. Counting subtotals is not enough — a list whose
+	// hours are all non-billable still creates a (zero-amount) subtotal in its
+	// own currency, which would silently zero the total of an otherwise
+	// unambiguous single-currency invoice.
+	var moneyed int
+	var moneyedAmount float64
+	for _, s := range r.CurrencySubtotals {
+		if s.Amount != 0 {
+			moneyed++
+			moneyedAmount = s.Amount
+		}
+	}
+	if moneyed == 1 {
+		r.TotalAmount = moneyedAmount
 	}
 
 	for _, k := range bOrder {

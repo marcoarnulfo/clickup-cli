@@ -343,8 +343,9 @@ billing:
     **(lista, membro) > membro > lista > default**.
   - `currencies`: `list_id: codice ISO` — fattura ogni lista nella sua valuta. I
     subtotali sono sempre per valuta e non vengono mai sommati tra valute diverse
-    (nessun FX); un totale complessivo unico viene mostrato solo quando l'intero
-    report è in una sola valuta.
+    (nessun FX); un totale complessivo unico viene mostrato solo quando una sola
+    valuta porta importi (le altre possono comunque comparire con sole ore non
+    fatturabili).
   - `budgets`: `list_id: importo` — un budget in valuta per lista, confrontato con
     gli **importi fatturati** (non le ore) e mostrato come barra burn-down nella TUI
     (`b` dalla schermata del report).

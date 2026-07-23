@@ -749,3 +749,47 @@ func TestPricingCurrencyFor(t *testing.T) {
 		t.Errorf("currencyFor(Z) = %q, want EUR (default)", got)
 	}
 }
+
+// TestTotalAmountSingleMoneyCurrency pins that TotalAmount is populated when
+// exactly one currency carries money, even if a second currency appears with
+// non-billable hours only. Gating on len(CurrencySubtotals) == 1 silently
+// zeroed the total for an unambiguously single-currency invoice.
+func TestTotalAmountSingleMoneyCurrency(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
+	entries := []TimeEntry{
+		{ID: "1", ListID: "eur", ListName: "Alpha", Start: start, Duration: 2 * time.Hour, Billable: true},
+		{ID: "2", ListID: "usd", ListName: "Beta", Start: start, Duration: 1 * time.Hour, Billable: false},
+	}
+	p := Pricing{
+		Rates:           Rates{Default: 100},
+		Currencies:      map[string]string{"eur": "EUR", "usd": "USD"},
+		DefaultCurrency: "EUR",
+	}
+	r := Build(entries, GroupByList, p, start, start.AddDate(0, 1, 0), time.UTC)
+
+	if len(r.CurrencySubtotals) != 2 {
+		t.Fatalf("subtotals = %d, want 2 (the USD list has non-billable hours)", len(r.CurrencySubtotals))
+	}
+	if r.TotalAmount != 200 {
+		t.Errorf("TotalAmount = %v, want 200 (only EUR carries money)", r.TotalAmount)
+	}
+}
+
+// TestTotalAmountZeroWhenTwoCurrenciesCarryMoney keeps the no-FX rule: two
+// money-carrying currencies must leave TotalAmount at 0.
+func TestTotalAmountZeroWhenTwoCurrenciesCarryMoney(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
+	entries := []TimeEntry{
+		{ID: "1", ListID: "eur", ListName: "Alpha", Start: start, Duration: 2 * time.Hour, Billable: true},
+		{ID: "2", ListID: "usd", ListName: "Beta", Start: start, Duration: 1 * time.Hour, Billable: true},
+	}
+	p := Pricing{
+		Rates:           Rates{Default: 100},
+		Currencies:      map[string]string{"eur": "EUR", "usd": "USD"},
+		DefaultCurrency: "EUR",
+	}
+	r := Build(entries, GroupByList, p, start, start.AddDate(0, 1, 0), time.UTC)
+	if r.TotalAmount != 0 {
+		t.Errorf("TotalAmount = %v, want 0 (no cross-currency totals)", r.TotalAmount)
+	}
+}

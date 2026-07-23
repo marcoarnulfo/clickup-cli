@@ -320,7 +320,8 @@ billing:
     **(list, member) > member > list > default**.
   - `currencies`: `list_id: ISO code` — bill each list in its own currency. Subtotals
     are always per currency and never summed across currencies (no FX); a single
-    overall total is shown only when the whole report is single-currency.
+    overall total is shown only when exactly one currency carries money (other
+    currencies may still appear with non-billable hours only).
   - `budgets`: `list_id: amount` — a money budget per list, checked against **billed
     amounts** (not hours) and rendered as a burn-down bar in the TUI (`b` from the
     report screen).

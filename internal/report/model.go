@@ -39,8 +39,9 @@ type Bucket struct {
 // Report is the aggregated result ready for presentation/export.
 //
 // Money: CurrencySubtotals (and Lines) are the authoritative totals. TotalAmount
-// is populated ONLY when the report is single-currency, otherwise it stays 0 —
-// amounts in different currencies are never summed (no FX).
+// is populated ONLY when exactly one currency carries a non-zero amount (other
+// currencies may still appear with non-billable hours only), otherwise it stays
+// 0 — amounts in different currencies are never summed (no FX).
 type Report struct {
 	Start   time.Time `json:"start"` // period [Start, End)
 	End     time.Time `json:"end"`
