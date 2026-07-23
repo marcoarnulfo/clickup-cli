@@ -249,7 +249,7 @@ func Resolve(ldflagsVersion, mainVersion string) string {
 **Files:**
 - Create: `internal/service/update.go` (solo `CurrentVersion` in questo task)
 - Modify: `internal/cli/cli.go` (rimuove `const version = "dev"`)
-- Test: `internal/cli/cli_test.go` (estende l'asserzione esistente)
+- Test: nessuna modifica — `internal/cli/cli_test.go` resta com'è e fa da rete di sicurezza (vedi Step 1)
 
 **Interfaces:**
 - Consumes: `version.Resolve`, `version.Dev` (Task 1).

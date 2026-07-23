@@ -49,7 +49,7 @@ mente a tutti. Diventa un resolver a tre livelli, in ordine:
 **Testabilità (vincolante).** `debug.ReadBuildInfo()` dentro un test restituisce le
 informazioni del binario di test, quindi un resolver che lo chiama internamente non è
 testabile. La funzione con la logica prende gli input come parametri —
-`resolve(ldflagsVersion string, info *debug.BuildInfo) string` — e un wrapper sottile
+`Resolve(ldflagsVersion, mainVersion string) string` — e un wrapper sottile
 non testato chiama `ReadBuildInfo`. Senza questo i test del §9 sarebbero vacui.
 
 ### 4.1 Quando il controllo NON parte — regola positiva
