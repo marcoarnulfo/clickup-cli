@@ -1228,8 +1228,10 @@ func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 func newWithClock(cfg config.Config, now func() time.Time) Model {
 	m := New(cfg)
 	m.now = now
-	t := now()
-	m.year, m.month = t.Year(), t.Month()
+	// Re-derive the default month from the injected clock the same way New
+	// does, so the helper cannot re-encode the local-calendar bug
+	// defaultYearMonth exists to prevent.
+	m.year, m.month = defaultYearMonth(m.now(), m.loc)
 	return m
 }
 
