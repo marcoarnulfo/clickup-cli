@@ -1,0 +1,61 @@
+name: release
+
+# Tag-driven releases: push a v* tag and this workflow runs the test suite,
+# extracts the tag's section from CHANGELOG.md into the release notes, and
+# lets GoReleaser publish binaries, signed checksums and the package-manager
+# manifests. Prerelease tags (vX.Y.Z-rcN) smoke-test the whole pipeline:
+# skip_upload: auto in .goreleaser.yaml keeps them off the package managers.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub release and upload artifacts
+  id-token: write # cosign keyless signing via GitHub OIDC
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - run: go vet ./...
+      - run: go test ./... -race
+
+      # The release notes are the tag's CHANGELOG.md section. A missing
+      # section fails the release here, before anything is published.
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found=1; next }
+            /^## \[/ && found { exit }
+            found
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## [$version]' section"
+            exit 1
+          fi
+
+      - uses: sigstore/cosign-installer@v4
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes=notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Personal access token with contents:write on homebrew-tap and
+          # scoop-bucket (GITHUB_TOKEN cannot push to other repos).
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          # SSH private key registered on aur.archlinux.org. Optional: the
+          # aurs section disables itself while this is empty.
+          AUR_KEY: ${{ secrets.AUR_KEY }}
