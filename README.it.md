@@ -126,6 +126,10 @@ Comandi disponibili:
 - `d`: cancella il valore selezionato, tornando al livello successivo della
   precedenza (una valuta o un budget di lista si cancellano invece riaprendo il
   proprio campo con `c`/`g` e inviando un valore vuoto)
+- Digitare `0` per una tariffa è un'azione diversa dal cancellarla: `0` fattura la
+  lista, il membro o la coppia a zero, mentre `d` cancella l'override e fa
+  applicare la tariffa ereditata. Un budget di `0` non ha questo significato e
+  resta rifiutato.
 - `b` (Lists): apre il **browser workspace liste** per aggiungere una lista non
   ancora tracciata
 - `s`: salva le modifiche e torna al report
@@ -320,7 +324,10 @@ billing:
 - `rates` (opzionale): mappa `list_id: tariffa` con tariffe orarie specifiche per
   singola lista. Le liste non elencate usano la tariffa di default `rate`. La mappa
   si compila comodamente dalla schermata **Impostazioni di fatturazione** della TUI
-  (`p` nella schermata del report).
+  (`p` nella schermata del report). Una tariffa di `0` (qui o in `rates_by_member`/
+  `rate_overrides` più sotto) significa che la lista/membro/coppia fattura a zero —
+  un valore deliberato, diverso dall'omettere la voce (che ricade sul livello
+  successivo della precedenza).
 - `schema_version`: scritto automaticamente al salvataggio — non va mai modificato a
   mano. Un file di config precedente alla v1.7 (schema v1) viene comunque letto
   così com'è, con i valori esistenti di `rate`/`rates`/`currency` intatti, e viene

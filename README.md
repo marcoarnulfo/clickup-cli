@@ -121,6 +121,9 @@ increment/mode/scope, and timezone). Rate precedence, most specific first:
   member, then type the rate
 - `d`: clear the selected value, reverting to the next level of the precedence (a
   list's currency or budget is instead cleared via `c`/`g` with an empty value)
+- Typing `0` for a rate is a different action from clearing it: `0` bills the list,
+  member or pair at zero, while `d` clears the override so the inherited rate applies.
+  A budget of `0` has no such meaning and stays rejected.
 - `b` (Lists): open the **workspace list browser** to add a list not yet tracked
 - `s`: save changes and return to the report
 - `Esc`: cancel (discard unsaved changes) and return to the report
@@ -299,7 +302,10 @@ billing:
 - `rate`: default hourly rate used to compute the billable amount.
 - `rates` (optional): a `list_id: rate` map with per-list hourly rates. Lists not listed
   use the default `rate`. The map is conveniently filled from the TUI's Billing
-  settings screen (`p` on the report screen).
+  settings screen (`p` on the report screen). A rate of `0` (here or in `rates_by_member`/
+  `rate_overrides` below) means the list/member/pair bills at zero — a deliberate value,
+  not the same as omitting the entry (which falls back to the next level of the
+  precedence).
 - `schema_version`: written automatically on save — you never edit it by hand. A
   config file from before v1.7 (schema v1) is still read as-is, its existing
   `rate`/`rates`/`currency` values untouched, and gets stamped to v2 the next time it

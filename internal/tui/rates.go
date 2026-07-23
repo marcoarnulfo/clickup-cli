@@ -282,11 +282,25 @@ func sortOverrides(o []overrideRow) {
 	})
 }
 
-// validRate accepts only a finite number > 0. A rate (or budget) of zero is
-// not an edit but a removal, which has its own key ('d'), so accepting it here
-// would only hide typos in a billing tool. The decimal comma is accepted as
-// well as the dot (handy for the Italian keyboard).
+// validRate accepts a finite number >= 0: zero is a deliberate billing outcome
+// ("this list/member bills at zero"), distinct from clearing the value with
+// 'd' (which falls back to the inherited rate). Only a negative number is
+// rejected. The decimal comma is accepted as well as the dot (handy for the
+// Italian keyboard).
 func validRate(s string) (float64, bool) {
+	s = strings.ReplaceAll(s, ",", ".")
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	return f, true
+}
+
+// validBudget accepts only a finite number > 0. Unlike a rate, a budget of
+// zero is not a meaningful value — the burn-down bar would divide by zero or
+// show a meaningless 0% — so it stays rejected; to remove a budget, reopen its
+// field ('g') and submit an empty value.
+func validBudget(s string) (float64, bool) {
 	s = strings.ReplaceAll(s, ",", ".")
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil || f <= 0 || math.IsNaN(f) || math.IsInf(f, 0) {
@@ -610,7 +624,8 @@ func (rt ratesModel) commit(v string) ratesModel {
 		return rt
 	}
 	const (
-		badRate     = "Invalid rate: enter a number > 0 ('d' reverts to the inherited rate)"
+		badRate     = "Invalid rate: enter a number >= 0 (0 bills at zero; 'd' clears the override so the inherited rate applies)"
+		badBudget   = "Invalid budget: enter an amount > 0 (press 'g' and submit an empty value to remove the budget)"
 		badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
 	)
 
@@ -647,9 +662,9 @@ func (rt ratesModel) commit(v string) ratesModel {
 			delete(rt.budgets, id)
 			return done()
 		}
-		f, ok := validRate(v)
+		f, ok := validBudget(v)
 		if !ok {
-			rt.msg = "Invalid budget: enter an amount > 0 (press 'g' and submit an empty value to remove the budget)"
+			rt.msg = badBudget
 			return rt
 		}
 		rt.budgets[id] = f

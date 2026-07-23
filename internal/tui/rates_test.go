@@ -302,7 +302,59 @@ func TestRatesEmptyRoundingIncrementMeansOff(t *testing.T) {
 	}
 }
 
-func TestRatesRejectsNonPositiveRateInline(t *testing.T) {
+func TestRatesRejectsNegativeRateInline(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "tab")   // Members
+	m = press(t, m, "enter") // edit rate
+	rt := m.ratesScreen
+	rt = rt.commit("-5") // '-' cannot be typed (numericRune filters it); exercise the validator directly
+	m.ratesScreen = rt
+
+	if rt.msg == "" {
+		t.Fatal("a negative rate must be reported inline")
+	}
+	if _, ok := rt.memberRates[7]; ok {
+		t.Fatal("a rejected rate must not be stored")
+	}
+	if !rt.editing {
+		t.Fatal("a rejected rate must keep the field open for correction")
+	}
+}
+
+// A rate of 0 means "this list/member bills at zero", a distinct, deliberate
+// billing outcome from clearing the value with 'd' (which falls back to the
+// inherited rate). The UI must accept it exactly like the hand-written YAML
+// already does.
+func TestRatesZeroListRatePersists(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "enter") // Lists: edit the selected list's rate
+	m = typeIn(t, m, "0")
+	m = press(t, m, "enter")
+
+	rt := m.ratesScreen
+	if rt.msg != "" {
+		t.Fatalf("a zero rate must be accepted, got inline error %q", rt.msg)
+	}
+	if v, ok := rt.rates["1"]; !ok || v != 0 {
+		t.Fatalf("a zero list rate must be stored, got %v (ok=%v)", v, ok)
+	}
+
+	m = press(t, m, "s")
+	if got, ok := m.cfg.Rates["1"]; !ok || got != 0 {
+		t.Fatalf("a zero list rate must survive save, got Rates = %v", m.cfg.Rates)
+	}
+
+	// Re-enter the editor: the persisted zero must still be there and shown.
+	m.ratesScreen = newRates(m.entries, m.cfg)
+	if v, ok := m.ratesScreen.rates["1"]; !ok || v != 0 {
+		t.Fatalf("a zero list rate must survive re-entry, got %v (ok=%v)", v, ok)
+	}
+	if !strings.Contains(m.ratesScreen.view(), "0.00") {
+		t.Fatalf("the Lists view should show the persisted zero rate, got:\n%s", m.ratesScreen.view())
+	}
+}
+
+func TestRatesZeroMemberRatePersists(t *testing.T) {
 	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
 	m = press(t, m, "tab")   // Members
 	m = press(t, m, "enter") // edit rate
@@ -310,14 +362,59 @@ func TestRatesRejectsNonPositiveRateInline(t *testing.T) {
 	m = press(t, m, "enter")
 
 	rt := m.ratesScreen
-	if rt.msg == "" {
-		t.Fatal("a non-positive rate must be reported inline")
+	if rt.msg != "" {
+		t.Fatalf("a zero rate must be accepted, got inline error %q", rt.msg)
 	}
-	if _, ok := rt.memberRates[7]; ok {
-		t.Fatal("a rejected rate must not be stored")
+	if v, ok := rt.memberRates[7]; !ok || v != 0 {
+		t.Fatalf("a zero member rate must be stored, got %v (ok=%v)", v, ok)
+	}
+
+	m = press(t, m, "s")
+	if got, ok := m.cfg.Billing.RatesByMember[7]; !ok || got != 0 {
+		t.Fatalf("a zero member rate must survive save, got RatesByMember = %v", m.cfg.Billing.RatesByMember)
+	}
+}
+
+func TestRatesZeroOverrideRatePersists(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "tab", "tab") // -> Overrides
+	m = press(t, m, "n")          // new (list,member) override
+	m = press(t, m, "enter")      // list "Website" (id 1)
+	m = press(t, m, "down")       // member Bob (id 8)
+	m = press(t, m, "enter")
+	m = typeIn(t, m, "0")
+	m = press(t, m, "enter")
+
+	rt := m.ratesScreen
+	if rt.msg != "" {
+		t.Fatalf("a zero override rate must be accepted, got inline error %q", rt.msg)
+	}
+
+	m = press(t, m, "s")
+	want := []config.Override{{List: "1", Member: 8, Rate: 0}}
+	got := m.cfg.Billing.RateOverrides
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("a zero override rate must survive save, got %v, want %v", got, want)
+	}
+}
+
+// A budget of 0 is not a meaningful value (it would render a 0% or divide-by-
+// zero burn-down bar): unlike a rate, it must stay rejected.
+func TestRatesRejectsZeroBudgetInline(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "g") // budget of the selected list
+	m = typeIn(t, m, "0")
+	m = press(t, m, "enter")
+
+	rt := m.ratesScreen
+	if rt.msg == "" {
+		t.Fatal("a zero budget must be reported inline")
+	}
+	if _, ok := rt.budgets["1"]; ok {
+		t.Fatal("a rejected budget must not be stored")
 	}
 	if !rt.editing {
-		t.Fatal("a rejected rate must keep the field open for correction")
+		t.Fatal("a rejected budget must keep the field open for correction")
 	}
 }
 

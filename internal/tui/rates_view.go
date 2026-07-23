@@ -28,13 +28,15 @@ func (rt ratesModel) help() string {
 	}
 	switch rt.sec {
 	case secLists:
-		// 'd' only clears the rate; a currency or a budget is cleared by
-		// reopening its own field ('c'/'g') and submitting an empty value.
-		return "Tab: section · ↑/↓ select · Enter: rate · c: currency · g: budget (submit empty to clear either) · d: use default rate · b: browse lists · s: save · Esc: cancel"
+		// 'd' only clears the rate (falls back to the default rate); a
+		// currency or a budget is cleared by reopening its own field
+		// ('c'/'g') and submitting an empty value. Typing 0 for the rate is
+		// not a clear: it bills the list at zero.
+		return "Tab: section · ↑/↓ select · Enter: rate (0: bill at zero) · c: currency · g: budget (submit empty to clear either) · d: use default rate · b: browse lists · s: save · Esc: cancel"
 	case secMembers:
-		return "Tab: section · ↑/↓ select · Enter: rate · d: use default · s: save · Esc: cancel"
+		return "Tab: section · ↑/↓ select · Enter: rate (0: bill at zero) · d: use default · s: save · Esc: cancel"
 	case secOverrides:
-		return "Tab: section · ↑/↓ select · Enter: edit · n: new override · d: delete · s: save · Esc: cancel"
+		return "Tab: section · ↑/↓ select · Enter: edit (0: bill at zero) · n: new override · d: delete · s: save · Esc: cancel"
 	default:
 		return "Tab: section · ↑/↓ select · Enter: edit/toggle · d: clear · s: save · Esc: cancel"
 	}
