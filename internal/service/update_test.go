@@ -234,6 +234,50 @@ func TestCheckForUpdateFailureKeepsPreviousLatest(t *testing.T) {
 	}
 }
 
+func TestCheckForUpdateUnexpectedTagShapeIsSilentAndStampsTheCache(t *testing.T) {
+	// A 200 with syntactically valid JSON whose tag_name is not release-shaped
+	// (a prerelease slipping through, or an empty string) must be treated the
+	// same as any other failure: discarded, not cached, but the attempt is
+	// still stamped.
+	for _, tag := range []string{"v1.8.0-rc1", ""} {
+		srv, _ := newTestAPI(t, tag, http.StatusOK)
+		path := filepath.Join(t.TempDir(), "update.json")
+		now := time.Now()
+		latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+			Current: "v1.7.0", CachePath: path, APIURL: srv.URL, Now: now,
+		})
+		if newer || latest != "" {
+			t.Errorf("tag %q: got (%q, %v), want no notice with no prior cache", tag, latest, newer)
+		}
+		c, ok := readCache(path)
+		if !ok || !c.CheckedAt.Equal(now) {
+			t.Errorf("tag %q: attempt not stamped: %+v ok=%v", tag, c, ok)
+		}
+		if c.Latest != "" {
+			t.Errorf("tag %q: garbage tag %q was written to the cache", tag, c.Latest)
+		}
+	}
+}
+
+func TestCheckForUpdateUnexpectedTagShapeKeepsPreviousCache(t *testing.T) {
+	srv, _ := newTestAPI(t, "v1.8.0-rc1", http.StatusOK)
+	path := filepath.Join(t.TempDir(), "update.json")
+	now := time.Now()
+	if err := writeCache(path, updateCache{CheckedAt: now.Add(-48 * time.Hour), Latest: "v1.8.0"}); err != nil {
+		t.Fatal(err)
+	}
+	latest, newer := CheckForUpdate(context.Background(), UpdateOptions{
+		Current: "v1.7.0", CachePath: path, APIURL: srv.URL, Now: now,
+	})
+	if latest != "v1.8.0" || !newer {
+		t.Fatalf("got (%q, %v), want the previously known (v1.8.0, true) surviving the garbage tag", latest, newer)
+	}
+	c, ok := readCache(path)
+	if !ok || c.Latest != "v1.8.0" || !c.CheckedAt.Equal(now) {
+		t.Fatalf("cache not stamped with the surviving value: %+v ok=%v", c, ok)
+	}
+}
+
 func TestCheckForUpdateMalformedBodyIsSilent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "{not json")
