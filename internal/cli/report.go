@@ -120,7 +120,7 @@ func resolveRange(month, from, to, preset string, now time.Time) (start, end tim
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("invalid --month %q: %w", month, err)
 		}
-		start, end := report.RangeForPreset(report.PresetThisMonth, t.Year(), t.Month(), now)
+		start, end := report.RangeForPreset(report.PresetThisMonth, t.Year(), t.Month(), now, nil)
 		return start, end, nil
 	case from != "" || to != "":
 		if from == "" || to == "" {
@@ -134,13 +134,13 @@ func resolveRange(month, from, to, preset string, now time.Time) (start, end tim
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("invalid --to %q: %w", to, err)
 		}
-		start, end := report.CustomRange(f, tt)
+		start, end := report.CustomRange(f, tt, nil)
 		return start, end, nil
 	case preset != "":
-		start, end := report.RangeForPreset(preset, now.Year(), now.Month(), now)
+		start, end := report.RangeForPreset(preset, now.Year(), now.Month(), now, nil)
 		return start, end, nil
 	default:
-		start, end := report.RangeForPreset(report.PresetThisMonth, now.Year(), now.Month(), now)
+		start, end := report.RangeForPreset(report.PresetThisMonth, now.Year(), now.Month(), now, nil)
 		return start, end, nil
 	}
 }

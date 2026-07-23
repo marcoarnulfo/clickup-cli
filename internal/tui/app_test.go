@@ -29,7 +29,7 @@ func TestCurrentRangeDefaultsToMonth(t *testing.T) {
 		now:    time.Now,
 	}
 	start, end := m.currentRange()
-	ws, we := report.MonthRange(2026, time.July)
+	ws, we := report.MonthRange(2026, time.July, nil)
 	if !start.Equal(ws) || !end.Equal(we) {
 		t.Errorf("currentRange = [%s,%s), want month", start, end)
 	}
@@ -50,7 +50,7 @@ func TestCurrentRangeUsesInjectedClock(t *testing.T) {
 	m := newWithClock(config.Config{Token: "t", WorkspaceID: "1"}, func() time.Time { return fixed })
 	m.preset = report.PresetLast7d
 	start, end := m.currentRange()
-	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed)
+	wantStart, wantEnd := report.RangeForPreset(report.PresetLast7d, m.year, m.month, fixed, nil)
 	if !start.Equal(wantStart) || !end.Equal(wantEnd) {
 		t.Fatalf("range = [%v,%v), want [%v,%v)", start, end, wantStart, wantEnd)
 	}

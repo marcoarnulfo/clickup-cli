@@ -150,7 +150,7 @@ func TestBuildMixedRatePerTask(t *testing.T) {
 }
 
 func TestMonthRange(t *testing.T) {
-	start, end := MonthRange(2026, time.July)
+	start, end := MonthRange(2026, time.July, nil)
 	if !start.Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("start = %v", start)
 	}

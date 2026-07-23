@@ -21,9 +21,13 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-// MonthRange returns the half-open interval [start, end) of the month in UTC.
-func MonthRange(year int, month time.Month) (start, end time.Time) {
-	start = time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+// MonthRange returns the half-open interval [start, end) of the month in loc.
+// loc == nil is treated as UTC.
+func MonthRange(year int, month time.Month, loc *time.Location) (start, end time.Time) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	start = time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	end = start.AddDate(0, 1, 0)
 	return start, end
 }

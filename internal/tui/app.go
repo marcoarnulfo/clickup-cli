@@ -139,9 +139,9 @@ func (m Model) Init() tea.Cmd { return nil }
 // active preset (custom uses the inclusive customStart..customEnd).
 func (m Model) currentRange() (start, end time.Time) {
 	if m.preset == report.PresetCustom {
-		return report.CustomRange(m.customStart, m.customEnd)
+		return report.CustomRange(m.customStart, m.customEnd, nil)
 	}
-	return report.RangeForPreset(m.preset, m.year, m.month, m.now())
+	return report.RangeForPreset(m.preset, m.year, m.month, m.now(), nil)
 }
 
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
