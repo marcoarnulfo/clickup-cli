@@ -10,19 +10,29 @@
       "label": "Client A",
       "key": "55",
       "hours": 2,
-      "billable_hours": 0,
-      "billed_hours": 0,
-      "amounts": null
+      "billable_hours": 2,
+      "billed_hours": 2,
+      "amounts": [
+        {
+          "currency": "EUR",
+          "amount": 160
+        }
+      ]
     },
     {
       "label": "Client B",
       "key": "66",
       "hours": 1,
-      "billable_hours": 0,
-      "billed_hours": 0,
-      "amounts": null
+      "billable_hours": 1,
+      "billed_hours": 1,
+      "amounts": [
+        {
+          "currency": "EUR",
+          "amount": 50
+        }
+      ]
     }
   ],
   "total_hours": 3,
-  "total_amount": 0
+  "total_amount": 210
 }

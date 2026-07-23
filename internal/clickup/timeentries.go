@@ -53,6 +53,7 @@ type rawEntry struct {
 	TaskTags []struct {
 		Name string `json:"name"`
 	} `json:"task_tags"`
+	Billable *bool `json:"billable"` // absent (nil) means "bill everything": defaults to true
 }
 
 // toTimeEntry converts a rawEntry into the domain type. Errors if start/duration
@@ -71,6 +72,10 @@ func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 	for _, t := range r.TaskTags {
 		tags = append(tags, t.Name)
 	}
+	billable := true
+	if r.Billable != nil {
+		billable = *r.Billable
+	}
 	return report.TimeEntry{
 		ID:       r.ID,
 		TaskID:   r.Task.ID,
@@ -82,6 +87,7 @@ func (r rawEntry) toTimeEntry() (report.TimeEntry, error) {
 		Start:    time.UnixMilli(startMs).UTC(),
 		Duration: time.Duration(ms) * time.Millisecond,
 		Tags:     tags,
+		Billable: billable,
 	}, nil
 }
 

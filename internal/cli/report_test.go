@@ -109,19 +109,14 @@ func TestReportJSONAgainstFakeServer(t *testing.T) {
 		t.Fatalf("report --format json: %v", err)
 	}
 
-	// The fixture declares "billable":true on both entries, but the ClickUp
-	// client does not decode that field yet (it lands with the "billable absent
-	// ⇒ true" default in a follow-up step), so entries still reach Build as
-	// non-billable and nothing is billed: total_amount is 0 here. The money
-	// formatting itself is constrained by TestReportMoneyPipeline below, which
-	// does not depend on that client gap. When the client starts reading the
-	// flag, this must go back to 210 (2h*80 + 1h*50) and the golden must be
-	// regenerated with -update.
-	// The deprecated "currency"/"rate" keys stay populated: the JSON schema this
-	// command promises must not break for existing scripts.
+	// The fixture declares "billable":true on both entries, and the ClickUp
+	// client now decodes that field, so both entries reach Build as billable:
+	// total_amount is 210 (2h*80 + 1h*50). The deprecated "currency"/"rate"
+	// keys stay populated: the JSON schema this command promises must not
+	// break for existing scripts.
 	for _, want := range []string{
 		`"total_hours": 3`,
-		`"total_amount": 0`,
+		`"total_amount": 210`,
 		`"currency": "EUR"`,
 		`"rate": 50`,
 		`"scope": "me"`,
@@ -173,10 +168,9 @@ func TestReportCSVFormat(t *testing.T) {
 	if !strings.HasPrefix(out, "label,hours,amount,currency\n") {
 		t.Errorf("CSV header missing/wrong; got:\n%s", out)
 	}
-	// 0, not 210: see TestReportJSONAgainstFakeServer — entries arrive
-	// non-billable until the client decodes the billable flag. The real CSV
-	// money row is asserted by TestReportMoneyPipeline.
-	if !strings.Contains(out, "TOTAL,3,0,EUR") {
+	// 210 (2h*80 + 1h*50): the fixture entries are billable and the client
+	// now decodes that flag, so the real CSV money row lands here too.
+	if !strings.Contains(out, "TOTAL,3,210,EUR") {
 		t.Errorf("CSV total row missing; got:\n%s", out)
 	}
 }
