@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-23
+
 ### Added
 - Live ticking timer: a running timer now shows as a global indicator on the Home
   screen (`⏱  running on <task> — HH:MM:SS  (X.XXh)`, ticking every second),
