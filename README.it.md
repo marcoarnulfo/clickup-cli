@@ -16,6 +16,7 @@
 - 💶 **Motore di fatturazione**: tariffe orarie di default, per-lista, per-membro e per-(lista,membro), split billable/non billable, arrotondamento configurabile e subtotali per valuta (multi-valuta, senza FX).
 - 🎯 **Budget per lista** con vista burn-down, per vedere a colpo d'occhio quanto budget di ogni progetto è già fatturato.
 - ⏱️ **Log ore** su ClickUp dalla TUI: guidato (lista → task), da ID/URL del task, o con timer start/stop.
+- ⏲️ **Timer live e gestione delle voci**: un indicatore live nella home per il timer in corso, e un browser per modificare, cancellare o consultare lo storico delle voci passate.
 - 📤 **Export** in CSV / JSON / Markdown / HTML self-contained (stampabile in PDF) / fattura CSV riga per riga.
 - ⌨️ TUI interattiva, guidata da tastiera (basata su [Charm](https://charm.sh) bubbletea).
 - 🔒 Il token resta in locale (file di config o variabile `CLICKUP_TOKEN`).
@@ -96,15 +97,18 @@ di setup.
 | `p` | Report | Apre la schermata **Impostazioni di fatturazione** (tariffe, valute, budget, arrotondamento, timezone) |
 | `b` | Report | Apre la vista **Burn-down budget** |
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status/billable) |
+| `v` | Report | Apre il **browser delle voci ore** (edit/delete/history) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
+| `c` | Home | Salta al timer in corso (visibile solo quando un timer è attivo) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (la fattura CSV viene salvata come `clickup-invoice-<periodo>.csv`; `<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
-| `q` | Ovunque tranne setup / rates / range | Esce dall'applicazione |
+| `q` | Ovunque tranne setup / rates / range / browser liste / log ore / voci ore | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |
 
-Nella schermata di setup non è previsto `q` per uscire, per evitare di
-premerlo per errore durante l'inserimento del token: usa `Ctrl+C`.
+Nelle schermate setup, rates, range, browser liste, log ore e voci ore non è previsto
+`q` per uscire, per evitare di premerlo per errore mentre si sta scrivendo (un token,
+una tariffa, una nota, un ID task, ...): usa `Ctrl+C`.
 
 #### Schermata Impostazioni di fatturazione
 
@@ -173,6 +177,30 @@ filtro ormai obsoleto. Comandi disponibili:
 - `a`: seleziona/deseleziona tutti i valori della sezione
 - `Enter`: applica il filtro e torna al report
 - `Esc`: scarta le modifiche e torna al report
+
+#### Timer live e gestione delle voci
+
+Quando un timer è in corso (avviato da **Log ore**, vedi sotto), la home mostra
+un indicatore live che ticchetta — `⏱  running on <task> — HH:MM:SS  (X.XXh)` —
+indipendentemente da quale schermata l'ha avviato, così non lo perdi mai di
+vista. Premi `c` sulla home per saltarci direttamente e fermarlo.
+
+Dalla schermata del report, premendo `v` si apre il **browser delle voci ore**:
+le voci del periodo corrente, dalla più recente, navigabili con `↑`/`↓` (anche
+`k`/`j`). Comandi disponibili:
+
+- `e`: modifica la durata, data/ora, nota e flag billable della voce
+  evidenziata — **solo sulle tue voci**
+- `x`: cancella la voce evidenziata, con conferma `[y/N]` — **solo sulle tue
+  voci**
+- `h`: consulta lo storico delle modifiche della voce (sola lettura) —
+  disponibile su **qualsiasi** voce, non solo le tue
+- `Esc`: torna al report
+
+Modifica e cancellazione sono vincolate alla proprietà: una voce registrata da
+un collega compare nel browser (scope team) ma `e`/`x` non fanno nulla su di
+essa — funziona solo `h`. La modifica dei tag dal browser non è ancora
+supportata.
 
 #### Schermata Log ore
 

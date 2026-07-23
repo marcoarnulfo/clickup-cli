@@ -177,3 +177,14 @@ func finishJSON(status int, body []byte, out any) error {
 func (c *Client) post(ctx context.Context, path string, body any, out any) error {
 	return c.do(ctx, http.MethodPost, path, nil, body, out)
 }
+
+// put performs an authenticated PUT with a JSON body and, if out != nil,
+// decodes the response.
+func (c *Client) put(ctx context.Context, path string, body any, out any) error {
+	return c.do(ctx, http.MethodPut, path, nil, body, out)
+}
+
+// del performs an authenticated DELETE (no body).
+func (c *Client) del(ctx context.Context, path string) error {
+	return c.do(ctx, http.MethodDelete, path, nil, nil, nil)
+}

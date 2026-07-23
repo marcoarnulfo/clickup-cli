@@ -143,19 +143,49 @@ func demoStatusEnrichCmd(entries []report.TimeEntry) tea.Cmd {
 	}
 }
 
-// demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
-// selected member ids and clipped to [start, end).
-func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
-	return func() tea.Msg {
-		entries := filterByUsers(demoEntries(start, end), assignees)
-		out := entries[:0]
-		for _, e := range entries {
-			if !e.Start.Before(start) && e.Start.Before(end) {
-				out = append(out, e)
-			}
+// demoEntriesSnapshot returns the demo entries for [start,end), with edit
+// overrides applied and deleted ids removed, clipped to range + the given
+// assignees. It is the single source demoEntriesCmd and the browser reload
+// (reloadForBrowser, entries.go) both use, so a demo delete/edit is honored by
+// EVERY reload path, not just the one that triggered it.
+func (m Model) demoEntriesSnapshot(start, end time.Time, assignees []int) []report.TimeEntry {
+	src := demoEntries(start, end)
+	out := make([]report.TimeEntry, 0, len(src))
+	for _, e := range src {
+		if m.demoDeleted[e.ID] {
+			continue
 		}
-		return entriesMsg{entries: out}
+		if ov, ok := m.demoOverrides[e.ID]; ok {
+			e = ov
+		}
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			continue // an edit may have moved it out of range
+		}
+		out = append(out, e)
 	}
+	return filterByUsers(out, assignees)
+}
+
+// demoEntriesCmd delivers the demo entries (session state applied — see
+// demoEntriesSnapshot) as entriesMsg, filtered by the selected member ids and
+// clipped to [start, end).
+func (m Model) demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
+	snap := m.demoEntriesSnapshot(start, end, assignees)
+	return func() tea.Msg { return entriesMsg{entries: snap} }
+}
+
+// demoHistoryChanges is a small fixed change history for demo mode (Task 8),
+// enough to make the read-only history view demonstrable without any I/O.
+func demoHistoryChanges() []clickup.HistoryChange {
+	return []clickup.HistoryChange{
+		{Field: "duration", Before: "3600000", After: "5400000", Date: time.Date(2026, time.July, 3, 9, 5, 0, 0, time.UTC), User: "alice"},
+		{Field: "description", Before: "", After: "Landing page redesign", Date: time.Date(2026, time.July, 3, 9, 10, 0, 0, time.UTC), User: "alice"},
+	}
+}
+
+// demoHistoryCmd delivers the fake history as historyMsg (no I/O).
+func demoHistoryCmd() tea.Cmd {
+	return func() tea.Msg { return historyMsg{changes: demoHistoryChanges()} }
 }
 
 // demoSpaces / demoSpaceContents are fake workspace data for demo mode.
@@ -210,12 +240,13 @@ func demoCreateEntryCmd(tid string, dur time.Duration) tea.Cmd {
 	}
 }
 
-// demoStartTimerCmd returns a fake running timer for tid (no I/O). Start is
-// left zero, mirroring the real startTimerCmd's own fallback when the server
-// doesn't echo back a start time.
-func demoStartTimerCmd(tid string) tea.Cmd {
+// demoStartTimerCmd returns a fake running timer for tid (no I/O), started
+// one minute before now. A non-zero Start is load-bearing: with a zero Start
+// the demo timer screen's stopwatch would show "started just now" forever
+// instead of ticking (see elapsedLabel).
+func demoStartTimerCmd(tid string, now time.Time) tea.Cmd {
 	return func() tea.Msg {
-		return timerMsg{timer: &clickup.RunningTimer{TaskID: tid, TaskName: tid}}
+		return timerMsg{timer: &clickup.RunningTimer{TaskID: tid, TaskName: tid, Start: now.Add(-1 * time.Minute)}}
 	}
 }
 
@@ -223,12 +254,27 @@ func demoStartTimerCmd(tid string) tea.Cmd {
 // duration, without ever calling the API.
 func demoStopTimerCmd() tea.Cmd {
 	return func() tea.Msg {
-		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(45*time.Minute))}
+		return timerStoppedMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(45*time.Minute))}
 	}
 }
 
-// demoCurrentTimerCmd reports no timer running, which is the demo default
-// (demo mode never has a timer already in flight when the screen opens).
-func demoCurrentTimerCmd() tea.Cmd {
-	return func() tea.Msg { return timerMsg{timer: nil} }
+// demoCurrentTimerCmd reports the Model's own running-timer state (rt), so the
+// Log-hours "Timer" mode reflects whatever Home's live indicator already shows
+// instead of contradicting it: if a demo timer is already running (per the
+// boot-time demoRunningTimerProbeCmd), the Timer screen must show/stop that
+// same timer, not silently claim there is none.
+func demoCurrentTimerCmd(rt *clickup.RunningTimer) tea.Cmd {
+	return func() tea.Msg { return timerMsg{timer: rt} }
+}
+
+// demoRunningTimerProbeCmd reports a fake running timer for the global Home
+// indicator, started 25 minutes before now so the stopwatch is visibly ticking.
+func demoRunningTimerProbeCmd(now time.Time) tea.Cmd {
+	return func() tea.Msg {
+		return runningTimerMsg{timer: &clickup.RunningTimer{
+			TaskID:   "demo-t1",
+			TaskName: "Fix login bug",
+			Start:    now.Add(-25 * time.Minute),
+		}}
+	}
 }

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Live ticking timer: a running timer now shows as a global indicator on the Home
+  screen (`⏱  running on <task> — HH:MM:SS  (X.XXh)`, ticking every second),
+  regardless of which task started it; press `c` on Home to jump straight to it
+  and stop it.
+- Time-entry browser (`v` from the report screen): lists the current range's
+  entries, newest first, navigable with `↑`/`↓`.
+- Edit (`e`) a time entry's duration, date/time, note and billable flag, and
+  delete (`x`, with a `[y/N]` confirmation) — both restricted to your **own**
+  entries. Change history (`h`) is read-only and available on any entry.
+- Demo mode (`CLICKUP_DEMO=1`) covers all of the above with no API calls: a
+  ticking demo timer and a browser with editable/deletable demo entries.
+- Follow-up: editing an entry's tags from the browser is deferred to a later
+  release.
+
 ## [1.7.0] - 2026-07-23
 
 ### Added

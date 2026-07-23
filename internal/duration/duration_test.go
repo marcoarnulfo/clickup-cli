@@ -93,3 +93,25 @@ func TestRound(t *testing.T) {
 		}
 	}
 }
+
+func TestClock(t *testing.T) {
+	tests := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"zero", 0, "00:00:00"},
+		{"seconds only", 45 * time.Second, "00:00:45"},
+		{"minutes and seconds", 1*time.Minute + 5*time.Second, "00:01:05"},
+		{"hours", 1*time.Hour + 23*time.Minute + 45*time.Second, "01:23:45"},
+		{"over 24h not capped", 25*time.Hour + 2*time.Minute, "25:02:00"},
+		{"negative clamps to zero", -3 * time.Second, "00:00:00"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Clock(tt.d); got != tt.want {
+				t.Errorf("Clock(%v) = %q, want %q", tt.d, got, tt.want)
+			}
+		})
+	}
+}

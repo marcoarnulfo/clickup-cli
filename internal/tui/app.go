@@ -30,6 +30,7 @@ const (
 	screenFilters
 	screenListBrowser
 	screenBudget
+	screenEntries
 )
 
 // Async messages.
@@ -49,6 +50,10 @@ type (
 		origin screen
 		err    error
 	}
+
+	// historyMsg carries a time entry's change history (Task 8), delivered by
+	// historyCmd and rendered by the read-only entriesHistory browser mode.
+	historyMsg struct{ changes []clickup.HistoryChange }
 
 	spacesMsg        struct{ spaces []clickup.Space }
 	spaceContentsMsg struct {
@@ -94,6 +99,14 @@ type Model struct {
 	// injectable clock (default: time.Now)
 	now func() time.Time
 
+	// live timer (#91): the running timer surfaced globally on Home. ticking
+	// guards against arming a second 1s tick chain; tickCount paces the periodic
+	// re-poll. userID is the authenticated user (ownership gating, #94/#98).
+	runningTimer *clickup.RunningTimer
+	ticking      bool
+	tickCount    int
+	userID       int
+
 	// loc is the resolved location for range computation and report building
 	// (#83): the configured timezone, falling back to time.Local. Set once at
 	// New() and re-resolved (with error surfacing) by locOrErr at each report
@@ -113,6 +126,11 @@ type Model struct {
 	filterBillable *bool             // nil = no constraint; see report.FilterCriteria.Billable
 	taskStatus     map[string]string // task id -> current status (session cache)
 
+	// demo-only session state for the entries browser (#98/#99): real mode
+	// never allocates these, so a nil-map read is always false/absent (safe).
+	demoDeleted   map[string]bool             // ids deleted this session, hidden from every demo reload
+	demoOverrides map[string]report.TimeEntry // ids edited this session (Task 7), replacing the fixture value
+
 	// sub-models
 	setup         setupModel
 	home          homeModel
@@ -124,6 +142,7 @@ type Model struct {
 	rangeScreen   rangeModel
 	filtersScreen filtersModel
 	budgetScreen  budgetModel
+	entriesScreen entriesModel
 
 	// shared Space→Folder→List browser (log/rates entry points)
 	browserScreen   listBrowserModel
@@ -177,7 +196,9 @@ func defaultYearMonth(now time.Time, loc *time.Location) (int, time.Month) {
 	return t.Year(), t.Month()
 }
 
-func (m Model) Init() tea.Cmd { return m.updateCheckCmd() }
+func (m Model) Init() tea.Cmd {
+	return tea.Batch(m.updateCheckCmd(), m.runningTimerProbeCmd(), m.currentUserCmd())
+}
 
 // updateCheckCmd checks GitHub for a newer release in the background and
 // returns updateAvailableMsg when one exists. It returns nil (issuing no
@@ -225,22 +246,28 @@ func (m Model) currentRange() (start, end time.Time) {
 // that dispatched the load, so a failure can be routed back there (see
 // retryableErrMsg); demoEntriesCmd never fails, so it doesn't need it.
 func (m Model) reloadEntriesCmd(origin screen) tea.Cmd {
-	// The member filter is a team-scope concept; never carry a stale
-	// selection into a "me" load.
-	var assignees []int
-	if m.scope == "team" {
-		assignees = m.selectedAssignees()
-	}
+	assignees := m.reloadAssignees()
 	start, end := m.currentRange()
 	if m.demo {
-		if m.scope != "team" {
-			// The real API filters "me" scope server-side to the authenticated
-			// caller; mirror that here instead of summing all demo users.
-			assignees = []int{demoSelfID}
-		}
-		return demoEntriesCmd(start, end, assignees)
+		return m.demoEntriesCmd(start, end, assignees)
 	}
 	return loadEntriesCmd(m.client, m.cfg.WorkspaceID, start, end, m.scope, assignees, origin)
+}
+
+// reloadAssignees is the assignee set for a reload: team scope uses the member
+// selection; demo me-scope mirrors the server-side "me" filter with
+// demoSelfID; real me-scope returns nil (the API filters server-side). This is
+// the single derivation shared by reloadEntriesCmd and the browser's
+// reloadForBrowser (entries.go), so a browser reload never disagrees with an
+// ordinary report reload about which entries are in scope.
+func (m Model) reloadAssignees() []int {
+	if m.scope == "team" {
+		return m.selectedAssignees()
+	}
+	if m.demo {
+		return []int{demoSelfID}
+	}
+	return nil
 }
 
 // selectedAssignees returns the ids of the currently selected members, sorted.
@@ -528,8 +555,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 
+	case runningTimerMsg:
+		if msg.failed {
+			// A transient probe failure is not evidence the timer stopped: keep
+			// the current indicator/tick chain untouched and let the next
+			// scheduled re-poll (or the boot probe, where there is nothing to
+			// keep) try again.
+			return m, nil
+		}
+		m.runningTimer = msg.timer
+		if msg.timer != nil && !m.ticking {
+			m.ticking = true
+			return m, tickCmd() // arm exactly one chain on nil -> non-nil
+		}
+		if msg.timer == nil {
+			m.ticking = false // let any in-flight tick chain die on its next fire
+		}
+		return m, nil
+
+	case userMsg:
+		m.userID = msg.id
+		return m, nil
+
+	case tickMsg:
+		if m.runningTimer == nil {
+			m.ticking = false
+			return m, nil // no timer: stop the chain
+		}
+		m.tickCount++
+		if m.tickCount%repollTickInterval == 0 && !m.demo {
+			// periodic re-poll (real mode only: re-issuing the demo probe would
+			// reset the fake Start and make the demo stopwatch sawtooth).
+			return m, tea.Batch(tickCmd(), m.runningTimerProbeCmd())
+		}
+		return m, tickCmd()
+
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser {
+		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser && m.screen != screenLog && m.screen != screenEntries {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
@@ -598,6 +660,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenReport
 		return m, nil
 
+	case entriesReloadedMsg:
+		m.entries = msg.entries
+		m.assignStatuses()
+		m.pruneFilters()
+		if !m.applyReport() { // rebuilds m.report + m.rep; returns false on loc/pricing error
+			return m, nil
+		}
+		es := m.entriesScreen
+		es.entries = sortEntriesByStartDesc(m.visibleEntries())
+		if es.idx >= len(es.entries) {
+			es.idx = len(es.entries) - 1
+		}
+		if es.idx < 0 {
+			es.idx = 0
+		}
+		es.mode = entriesList
+		es.msg = msg.status
+		es.msgErr = false
+		m.entriesScreen = es
+		m.screen = screenEntries
+		return m, nil
+
+	case entriesErrMsg:
+		es := m.entriesScreen
+		es.mode = entriesList
+		es.msg = msg.err.Error()
+		es.msgErr = true
+		m.entriesScreen = es
+		m.screen = screenEntries
+		return m, nil
+
+	case historyMsg:
+		es := m.entriesScreen
+		es.historyChanges = msg.changes
+		es.mode = entriesHistory
+		m.entriesScreen = es
+		m.screen = screenEntries
+		return m, nil
+
 	case teamsMsg:
 		// delivered to setup for workspace selection
 		var cmd tea.Cmd
@@ -605,6 +706,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case logDoneMsg:
+		m.logScreen.step = logDone
+		m.logScreen.msg = msg.summary
+		m.screen = screenLog
+		return m, nil
+
+	case timerStoppedMsg:
+		m.runningTimer = nil
+		m.ticking = false
+		m.logScreen.timer = nil
 		m.logScreen.step = logDone
 		m.logScreen.msg = msg.summary
 		m.screen = screenLog
@@ -618,15 +728,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case timerMsg:
+		// Update global state first, unconditionally: a timer started from the
+		// log flow must surface on Home's live indicator and start ticking even
+		// though (unlike runningTimerMsg) this msg is otherwise scoped to the
+		// log screen.
+		m.runningTimer = msg.timer
+		var tick tea.Cmd
+		if msg.timer != nil && !m.ticking {
+			m.ticking = true
+			tick = tickCmd()
+		}
 		if m.screen != screenLog && m.screen != screenLoading {
-			return m, nil // stale timer message: the user left the screen
+			return m, tick // stale for the log screen, but global state is updated
 		}
 		m.logScreen.timer = msg.timer
 		if msg.timer != nil {
 			m.logScreen.step = logTimerRunning
 		}
 		m.screen = screenLog
-		return m, nil
+		return m, tick
 
 	case membersMsg:
 		m.teamMembers = msg.members
@@ -713,6 +833,8 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateListBrowser(msg)
 	case screenBudget:
 		return m.updateBudget(msg)
+	case screenEntries:
+		return m.updateEntries(msg)
 	case screenError:
 		if !m.cfg.Valid() {
 			m.screen = screenSetup
@@ -730,7 +852,13 @@ func (m Model) View() string {
 	case screenSetup:
 		return m.setup.view()
 	case screenHome:
-		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion)
+		timerLine := ""
+		if m.runningTimer != nil {
+			if label := elapsedLabel(m.runningTimer.Start, m.now()); label != "" {
+				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label + "   (c: manage)"
+			}
+		}
+		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
 	case screenLoading:
 		return styleTitle.Render("Loading hours…")
 	case screenReport:
@@ -740,6 +868,7 @@ func (m Model) View() string {
 	case screenRates:
 		return m.ratesScreen.view()
 	case screenLog:
+		m.logScreen.now = m.now()
 		return m.logScreen.view()
 	case screenMembers:
 		return m.membersScreen.view()
@@ -751,6 +880,8 @@ func (m Model) View() string {
 		return m.browserScreen.view()
 	case screenBudget:
 		return m.budgetScreen.view()
+	case screenEntries:
+		return m.entriesView()
 	case screenError:
 		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
 	}

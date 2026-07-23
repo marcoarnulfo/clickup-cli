@@ -1313,10 +1313,34 @@ func TestUpdateAvailableMsgSetsLatestVersion(t *testing.T) {
 	}
 }
 
+// TestInitDoesNotCheckInDemoMode verifies the update-check portion of Init
+// stays silent in demo mode (the demo performs zero *network* I/O). Since
+// #91/#94 Init also arms the running-timer/current-user startup probes, which
+// legitimately return non-nil demo-safe commands in demo mode (synthetic
+// msgs, no API calls); this test unpacks the batch and asserts every
+// sub-command's message is one of those demo-safe kinds, never an
+// update-check message.
 func TestInitDoesNotCheckInDemoMode(t *testing.T) {
 	m := New(config.Config{})
 	m.demo = true
-	if cmd := m.Init(); cmd != nil {
-		t.Fatal("demo mode must issue no commands: the demo performs zero I/O")
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("expected the demo-safe running-timer/current-user startup probes to still issue commands")
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("expected tea.BatchMsg from Init, got %T", msg)
+	}
+	for _, sub := range batch {
+		if sub == nil {
+			continue
+		}
+		switch sub().(type) {
+		case userMsg, runningTimerMsg:
+			// demo-safe: synthetic startup probes, no network I/O.
+		default:
+			t.Errorf("demo mode issued an unexpected command message: %T (update-check must stay silent)", sub())
+		}
 	}
 }

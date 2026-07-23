@@ -16,6 +16,7 @@
 - 💶 **Billing engine**: default, per-list, per-member and per-(list,member) hourly rate overrides, a billable/non-billable split, configurable rounding, and per-currency subtotals (multi-currency, no FX).
 - 🎯 **Per-list budgets** with a burn-down view, so you can see at a glance how much of each project's budget is already billed.
 - ⏱️ **Log hours** back to ClickUp from the TUI: guided (list → task), by task ID/URL, or with a start/stop timer.
+- ⏲️ **Live timer & entry management**: a ticking Home indicator for a running timer, and a browser to edit, delete or inspect the history of past entries.
 - 📤 **Export** to CSV / JSON / Markdown / self-contained HTML (print to PDF) / line-item CSV invoice.
 - ⌨️ Fully interactive, keyboard-driven TUI (built with [Charm](https://charm.sh) bubbletea).
 - 🔒 Token stays local (config file or `CLICKUP_TOKEN` env var).
@@ -93,15 +94,18 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `p` | Report | Open the **Billing settings** screen (rates, currencies, budgets, rounding, timezone) |
 | `b` | Report | Open the **Budget burn-down** view |
 | `f` | Report | Open the **Filters** screen (list/tag/status/billable) |
+| `v` | Report | Open the **time-entry browser** (edit/delete/history) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
+| `c` | Home | Jump to the running timer (shown only while one is active) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
 | `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (the CSV invoice is saved as `clickup-invoice-<period>.csv`; `<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
-| `q` | Everywhere except setup / rates / range | Quit the application |
+| `q` | Everywhere except setup / rates / range / list browser / log hours / time entries | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
 
-The setup screen has no `q`-to-quit, to avoid pressing it by mistake while typing the
-token: use `Ctrl+C`.
+The setup, rates, range, list browser, log-hours and time-entries screens have no
+`q`-to-quit, to avoid pressing it by mistake while typing (a token, a rate, a note, a
+task ID, …): use `Ctrl+C`.
 
 #### Billing settings screen
 
@@ -163,6 +167,29 @@ filter. Available commands:
 - `a`: select/deselect all values in the section
 - `Enter`: apply the filter and return to the report
 - `Esc`: discard changes and return to the report
+
+#### Live timer & entry management
+
+When a timer is running (started from **Log hours**, see below), the Home screen
+shows a live, ticking indicator — `⏱  running on <task> — HH:MM:SS  (X.XXh)` —
+regardless of which screen started it, so you never lose track of it. Press `c`
+on Home to jump straight to it and stop it.
+
+From the report screen, pressing `v` opens the **time-entry browser**: the
+current range's entries, newest first, navigable with `↑`/`↓` (also `k`/`j`).
+Available commands:
+
+- `e`: edit the highlighted entry's duration, date/time, note and billable
+  flag — **only on your own entries**
+- `x`: delete the highlighted entry, with a `[y/N]` confirmation — **only on
+  your own entries**
+- `h`: view the entry's change history (read-only) — available on **any**
+  entry, not just your own
+- `Esc`: return to the report
+
+Edit and delete are ownership-gated: an entry logged by a teammate shows in the
+browser (team scope) but `e`/`x` do nothing on it — only `h` works. Editing
+tags from the browser is not yet supported.
 
 #### Log hours screen
 

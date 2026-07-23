@@ -46,6 +46,15 @@ type logModel struct {
 	step logStep
 	mode logMode
 
+	// origin is the screen the log flow was entered from (Home or Report);
+	// Esc (and logDone's Enter) return here instead of a hardcoded screen, so
+	// 'c' from Home's live-timer indicator comes back to Home, not Report.
+	origin screen
+
+	// now is stamped by the root (app.go View()) before each render, so the
+	// ticking timer screen never calls time.Now() itself.
+	now time.Time
+
 	lists   []taskListChoice
 	listIdx int
 
@@ -71,8 +80,10 @@ type logModel struct {
 }
 
 // newLog builds the screen from the known lists (entries ∪ config.Rates),
-// in deterministic order for a stable view.
-func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
+// in deterministic order for a stable view. origin is the screen to return
+// to on Esc/done (screenHome or screenReport) — required, not defaulted,
+// because screenSetup == 0 would otherwise silently mean "Setup".
+func newLog(entries []report.TimeEntry, cfg config.Config, origin screen) logModel {
 	names := map[string]string{}
 	var order []string
 	remember := func(id, name string) {
@@ -105,10 +116,15 @@ func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	for i, id := range order {
 		lists[i] = taskListChoice{id: id, name: names[id]}
 	}
-	return logModel{lists: lists}
+	return logModel{lists: lists, origin: origin}
 }
 
 type logDoneMsg struct{ summary string }
+
+// timerStoppedMsg is emitted only by stopping the running timer. It clears the
+// global running-timer indicator; the shared logDoneMsg (also from manual
+// create) must NOT, or logging an entry while a timer runs would kill the line.
+type timerStoppedMsg struct{ summary string }
 
 type taskListMsg struct{ tasks []clickup.Task }
 
@@ -158,7 +174,7 @@ func stopTimerCmd(c *clickup.Client, teamID string) tea.Cmd {
 		if err != nil {
 			return logErr(err)
 		}
-		return logDoneMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(e.Duration))}
+		return timerStoppedMsg{summary: fmt.Sprintf("timer stopped: %s logged", duration.Format(e.Duration))}
 	}
 }
 
@@ -232,7 +248,7 @@ func (m Model) logCreateCmd(tid string, start time.Time, dur time.Duration, desc
 
 func (m Model) timerStartCmd(tid, desc string) tea.Cmd {
 	if m.demo {
-		return demoStartTimerCmd(tid)
+		return demoStartTimerCmd(tid, m.now())
 	}
 	return startTimerCmd(m.client, m.cfg.WorkspaceID, tid, desc)
 }
@@ -246,7 +262,7 @@ func (m Model) timerStopCmd() tea.Cmd {
 
 func (m Model) timerCurrentCmd() tea.Cmd {
 	if m.demo {
-		return demoCurrentTimerCmd()
+		return demoCurrentTimerCmd(m.runningTimer)
 	}
 	return currentTimerCmd(m.client, m.cfg.WorkspaceID)
 }
@@ -254,10 +270,10 @@ func (m Model) timerCurrentCmd() tea.Cmd {
 func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	lg := m.logScreen
 
-	// Esc returns to the report from any non-input step (inputs handle
-	// Esc locally in later steps).
+	// Esc returns to the log flow's origin screen from any non-input step
+	// (inputs handle Esc locally in later steps).
 	if msg.Type == tea.KeyEsc && lg.step != logIDInput && lg.step != logForm {
-		m.screen = screenReport
+		m.screen = lg.origin
 		return m, nil
 	}
 
@@ -335,7 +351,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case logForm:
 		if msg.Type == tea.KeyEsc {
-			m.screen = screenReport
+			m.screen = lg.origin
 			return m, nil
 		}
 		if lg.formField == 3 { // billable toggle (keypress, not a text field)
@@ -464,7 +480,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// the existing screenError, unchanged behavior (out of scope for #38).
 			return m, m.reloadEntriesCmd(screenLog)
 		case "esc", "enter":
-			m.screen = screenReport
+			m.screen = lg.origin
 			return m, nil
 		}
 	}
@@ -488,14 +504,16 @@ func (lg logModel) view() string {
 	case logTimerRunning:
 		if lg.timer == nil {
 			b += styleHelp.Render("No timer running.") + "\n"
-			b += "\n" + styleHelp.Render("Esc: back to the report")
+			b += "\n" + styleHelp.Render("Esc: back")
 			break
 		}
 		b += "⏱  Timer running on: " + styleAccent.Render(lg.timer.TaskName) + "\n"
-		if !lg.timer.Start.IsZero() {
-			b += "Started: " + lg.timer.Start.Local().Format("15:04:05") + "\n"
+		if label := elapsedLabel(lg.timer.Start, lg.now); label != "" {
+			b += styleAccent.Render(label) + "\n"
+		} else {
+			b += styleHelp.Render("started just now") + "\n"
 		}
-		b += "\n" + styleHelp.Render("s: stop and record · Esc: cancel")
+		b += "\n" + styleHelp.Render("s: stop and record · Esc: back")
 	case logListPick:
 		if lg.loading {
 			b += styleHelp.Render("Loading tasks…") + "\n\n"
@@ -547,7 +565,7 @@ func (lg logModel) view() string {
 		if lg.msg != "" {
 			b += styleOK.Render(lg.msg) + "\n\n"
 		}
-		b += styleHelp.Render("r: reload the report · Esc: back to the report")
+		b += styleHelp.Render("r: reload the report · Esc: back")
 	default:
 		b += styleHelp.Render("…")
 	}

@@ -23,6 +23,11 @@ type TimeEntry struct {
 	Tags     []string
 	Status   string
 	Billable bool
+	// Description is the ClickUp time entry's free-text note. Carried through
+	// (not just aggregated over) so an edit (#94) can prefill and preserve it —
+	// without this, resubmitting a blank note would wipe the entry's ClickUp
+	// description on every edit.
+	Description string
 }
 
 // Bucket is an aggregated row of the report. The JSON tags serve the export

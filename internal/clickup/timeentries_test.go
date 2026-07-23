@@ -32,3 +32,24 @@ func TestTimeEntriesBillable(t *testing.T) {
 		}
 	}
 }
+
+// TestTimeEntriesDescription checks the description survives the decode: a
+// blank prefill on edit (#94) would otherwise wipe the ClickUp description on
+// every save, since rawEntry didn't carry it before.
+func TestTimeEntriesDescription(t *testing.T) {
+	body := `{"data":[
+		{"id":"1","task":{"id":"t","name":"T"},"user":{"id":1,"username":"u"},"start":"1000","duration":"3600000","description":"wip"}
+	]}`
+	c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	})
+	defer srv.Close()
+
+	got, err := c.TimeEntries(context.Background(), "team", time.UnixMilli(0), time.UnixMilli(9e12), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Description != "wip" {
+		t.Fatalf("Description = %q, want %q", got[0].Description, "wip")
+	}
+}
