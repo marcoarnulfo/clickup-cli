@@ -16,7 +16,7 @@
 - 💶 **Billing engine**: default, per-list, per-member and per-(list,member) hourly rate overrides, a billable/non-billable split, configurable rounding, and per-currency subtotals (multi-currency, no FX).
 - 🎯 **Per-list budgets** with a burn-down view, so you can see at a glance how much of each project's budget is already billed.
 - ⏱️ **Log hours** back to ClickUp from the TUI: guided (list → task), by task ID/URL, or with a start/stop timer.
-- ⏲️ **Live timer & entry management**: a ticking Home indicator for a running timer, and a browser to edit, delete or inspect the history of past entries.
+- ⏲️ **Live timer & entry management**: a ticking Home indicator for a running timer, and a browser to edit, delete, retag or inspect the history of past entries.
 - 📤 **Export** to CSV / JSON / Markdown / self-contained HTML (print to PDF) / line-item CSV invoice.
 - ⌨️ Fully interactive, keyboard-driven TUI (built with [Charm](https://charm.sh) bubbletea).
 - 🔒 Token stays local (config file or `CLICKUP_TOKEN` env var).
@@ -94,7 +94,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `p` | Report | Open the **Billing settings** screen (rates, currencies, budgets, rounding, timezone) |
 | `b` | Report | Open the **Budget burn-down** view |
 | `f` | Report | Open the **Filters** screen (list/tag/status/billable) |
-| `v` | Report | Open the **time-entry browser** (edit/delete/history) |
+| `v` | Report | Open the **time-entry browser** (edit/delete/tags/history) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `c` | Home | Jump to the running timer (shown only while one is active) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
@@ -183,13 +183,17 @@ Available commands:
   flag — **only on your own entries**
 - `x`: delete the highlighted entry, with a `[y/N]` confirmation — **only on
   your own entries**
+- `t`: edit the highlighted entry's **tags** — **only on your own entries**.
+  These are the entry's own time-tracking tags (shown as `#focus #client-A` on
+  its row), distinct from the task's tags. Opens a picker: `↑`/`↓` to move,
+  `space` to toggle a tag on/off, `n` to create a new tag, `Enter` to save,
+  `Esc` to cancel
 - `h`: view the entry's change history (read-only) — available on **any**
   entry, not just your own
 - `Esc`: return to the report
 
-Edit and delete are ownership-gated: an entry logged by a teammate shows in the
-browser (team scope) but `e`/`x` do nothing on it — only `h` works. Editing
-tags from the browser is not yet supported.
+Edit, delete and tags are ownership-gated: an entry logged by a teammate shows
+in the browser (team scope) but `e`/`x`/`t` do nothing on it — only `h` works.
 
 #### Log hours screen
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Edit a time entry's tags from the entry browser (`v` from the report screen):
+  press `t` on your **own** entry to open a tag picker — toggle existing tags
+  (`space`) or create a new one (`n`), then `Enter` to save. These are the
+  entry's own time-tracking tags, distinct from a task's tags. The browser row
+  now also shows an entry's tags compactly (`#focus #client-A`).
+
 ## [1.8.0] - 2026-07-23
 
 ### Added
