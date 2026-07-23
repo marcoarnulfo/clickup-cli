@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -179,20 +180,53 @@ func TestRatesEditTimezoneAndDefaultCurrencySave(t *testing.T) {
 	}
 }
 
+// A full round trip: every dimension is edited through the UI, saved, and then
+// the screen is re-entered through the real path ('p' from the report screen,
+// which rebuilds the editor from the just-saved config).
 func TestRatesReentryShowsPersistedValues(t *testing.T) {
-	cfg := config.Config{
-		Rate: 30, Currency: "EUR", Timezone: "Europe/Rome",
-		Rates: map[string]float64{"1": 45},
-		Billing: config.Billing{
-			DefaultCurrency: "CHF",
-			RatesByMember:   map[int]float64{7: 50},
-			RateOverrides:   []config.Override{{List: "1", Member: 8, Rate: 60}},
-			Currencies:      map[string]string{"1": "USD"},
-			Budgets:         map[string]float64{"1": 2000},
-			Rounding:        config.Rounding{Increment: "15m", Mode: "up", Scope: "day"},
-		},
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+
+	m = press(t, m, "enter") // Lists: rate
+	m = typeIn(t, m, "45")
+	m = press(t, m, "enter")
+	m = press(t, m, "c")
+	m = typeIn(t, m, "usd")
+	m = press(t, m, "enter")
+	m = press(t, m, "g")
+	m = typeIn(t, m, "2000")
+	m = press(t, m, "enter")
+
+	m = press(t, m, "tab", "enter") // Members: Alice's rate
+	m = typeIn(t, m, "50")
+	m = press(t, m, "enter")
+
+	m = press(t, m, "tab", "n", "enter", "down", "enter") // Overrides: (Website, Bob)
+	m = typeIn(t, m, "60")
+	m = press(t, m, "enter")
+
+	m = press(t, m, "tab", "enter") // Rules: default currency
+	m = typeIn(t, m, "chf")
+	m = press(t, m, "enter")
+	m = press(t, m, "down", "enter")
+	m = typeIn(t, m, "15m")
+	m = press(t, m, "enter")
+	m = press(t, m, "down", "enter") // mode -> up
+	m = press(t, m, "down", "enter") // scope -> day
+	m = press(t, m, "down", "enter")
+	m = typeIn(t, m, "Europe/Rome")
+	m = press(t, m, "enter")
+
+	m = press(t, m, "s")
+	if m.screen != screenReport {
+		t.Fatalf("save should return to the report, got %v (msg %q)", m.screen, m.ratesScreen.msg)
 	}
-	m := billingFixture(t, cfg)
+
+	// Re-enter the editor the way a user does, from the report screen.
+	u, _ := m.updateReport(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = u.(Model)
+	if m.screen != screenRates {
+		t.Fatalf("'p' should reopen the billing editor, got %v", m.screen)
+	}
 
 	lists := m.ratesScreen.view()
 	for _, want := range []string{"45.00", "USD", "2000.00"} {
@@ -319,5 +353,157 @@ func TestRatesOverrideShowsWhatItOverrides(t *testing.T) {
 	}
 	if !strings.Contains(v, "member rate") {
 		t.Fatalf("the Overrides section must name the precedence level it wins over, got:\n%s", v)
+	}
+}
+
+// Demo mode is zero-I/O: 's' must update the in-memory state (so the rebuilt
+// report reflects the edits) without ever writing the user's real config —
+// this screen owns cfg.Timezone and the whole cfg.Billing block, so a stray
+// write would poison every later report with demo values.
+func TestRatesSaveInDemoModeWritesNoConfig(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m.demo = true
+	m = press(t, m, "tab", "enter") // Members: Alice's rate
+	m = typeIn(t, m, "50")
+	m = press(t, m, "enter")
+	m = press(t, m, "s")
+
+	if m.ratesScreen.msg != "" {
+		t.Fatalf("demo save should not error, got %q", m.ratesScreen.msg)
+	}
+	if m.cfg.Billing.RatesByMember[7] != 50 {
+		t.Fatalf("demo save must still update the in-memory config: %v", m.cfg.Billing.RatesByMember)
+	}
+	if m.screen != screenReport {
+		t.Fatalf("demo save should return to the report, got %v", m.screen)
+	}
+	p, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatalf("demo mode must not write %s (stat err = %v)", p, err)
+	}
+}
+
+// Arbitrary text must not reach Pricing.Currencies: it would be printed as the
+// currency of every invoice line for that list.
+func TestRatesRejectsInvalidCurrencyInline(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "c")
+	m = typeIn(t, m, "banana")
+	m = press(t, m, "enter")
+	if m.ratesScreen.msg == "" || !m.ratesScreen.editing {
+		t.Fatalf("an invalid list currency must be rejected inline; msg=%q editing=%v", m.ratesScreen.msg, m.ratesScreen.editing)
+	}
+	if c, ok := m.ratesScreen.currencies["1"]; ok {
+		t.Fatalf("a rejected currency must not be stored, got %q", c)
+	}
+
+	m = press(t, m, "esc")
+	m = press(t, m, "tab", "tab", "tab", "enter") // Rules: default currency
+	m = typeIn(t, m, "banana")
+	m = press(t, m, "enter")
+	if m.ratesScreen.msg == "" || m.ratesScreen.defCur != "" {
+		t.Fatalf("an invalid default currency must be rejected inline; msg=%q defCur=%q", m.ratesScreen.msg, m.ratesScreen.defCur)
+	}
+}
+
+// 'd' in the Lists section clears the rate only. The currency and the budget
+// are cleared by reopening their own field and submitting an empty value —
+// which is what their help text and error messages now say.
+func TestRatesListClearingIsPerField(t *testing.T) {
+	m := billingFixture(t, config.Config{Rate: 30, Currency: "EUR"})
+	m = press(t, m, "enter")
+	m = typeIn(t, m, "45")
+	m = press(t, m, "enter")
+	m = press(t, m, "c")
+	m = typeIn(t, m, "usd")
+	m = press(t, m, "enter")
+	m = press(t, m, "g")
+	m = typeIn(t, m, "2000")
+	m = press(t, m, "enter")
+
+	m = press(t, m, "d") // clears the rate only
+	rt := m.ratesScreen
+	if _, ok := rt.rates["1"]; ok {
+		t.Fatal("'d' should clear the per-list rate")
+	}
+	if rt.currencies["1"] != "USD" {
+		t.Fatalf("'d' must not touch the per-list currency, got %q", rt.currencies["1"])
+	}
+	if _, ok := rt.budgets["1"]; !ok {
+		t.Fatal("'d' must not touch the per-list budget")
+	}
+
+	m = press(t, m, "g", "enter") // empty budget clears it
+	m = press(t, m, "c", "enter") // empty currency clears it
+	rt = m.ratesScreen
+	if _, ok := rt.budgets["1"]; ok {
+		t.Fatal("submitting an empty budget should remove it")
+	}
+	if _, ok := rt.currencies["1"]; ok {
+		t.Fatal("submitting an empty currency should remove it")
+	}
+}
+
+// overrideFixture opens the editor with one (list,member) override already
+// configured, with the Overrides section selected on it.
+func overrideFixture(t *testing.T) Model {
+	t.Helper()
+	cfg := config.Config{Rate: 30, Currency: "EUR"}
+	cfg.Billing.RateOverrides = []config.Override{{List: "1", Member: 8, Rate: 60}}
+	m := billingFixture(t, cfg)
+	return press(t, m, "tab", "tab")
+}
+
+func TestRatesEditExistingOverrideRate(t *testing.T) {
+	m := overrideFixture(t)
+	m = press(t, m, "enter") // edits the selected override, not a new draft
+	if m.ratesScreen.draft.active {
+		t.Fatal("Enter on an existing override must edit it, not start a new draft")
+	}
+	m = typeIn(t, m, "70")
+	m = press(t, m, "enter")
+	m = press(t, m, "s")
+
+	want := []config.Override{{List: "1", Member: 8, Rate: 70}}
+	if got := m.cfg.Billing.RateOverrides; len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("edited override not persisted: got %v, want %v", got, want)
+	}
+}
+
+func TestRatesDeleteOverride(t *testing.T) {
+	m := overrideFixture(t)
+	m = press(t, m, "d")
+	if len(m.ratesScreen.overrides) != 0 {
+		t.Fatalf("'d' should delete the selected override, got %v", m.ratesScreen.overrides)
+	}
+	m = press(t, m, "s")
+	if len(m.cfg.Billing.RateOverrides) != 0 {
+		t.Fatalf("the deletion must be persisted, got %v", m.cfg.Billing.RateOverrides)
+	}
+	// The selection landed on the trailing "new override" row and still works.
+	if v := m.ratesScreen.view(); !strings.Contains(v, "new (list,member) override") {
+		t.Fatalf("the new-override row should still be offered, got:\n%s", v)
+	}
+}
+
+// Re-creating a pair that already has an override updates it instead of
+// appending a second, contradictory entry (report.Rates.ByListMember is a map:
+// a duplicate would resolve non-deterministically).
+func TestRatesNewOverrideOnExistingPairUpdatesIt(t *testing.T) {
+	m := overrideFixture(t)
+	m = press(t, m, "n", "enter", "down", "enter") // same pair: (Website, Bob)
+	m = typeIn(t, m, "70")
+	m = press(t, m, "enter")
+
+	if got := m.ratesScreen.overrides; len(got) != 1 || got[0].rate != 70 {
+		t.Fatalf("re-creating an existing pair must update it in place, got %v", got)
+	}
+	m = press(t, m, "s")
+	want := []config.Override{{List: "1", Member: 8, Rate: 70}}
+	if got := m.cfg.Billing.RateOverrides; len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("upserted override not persisted: got %v, want %v", got, want)
 	}
 }

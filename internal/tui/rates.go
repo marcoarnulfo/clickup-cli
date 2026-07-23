@@ -300,6 +300,21 @@ func numericRune(r rune) bool {
 	return (r >= '0' && r <= '9') || r == '.' || r == ','
 }
 
+// validCurrency accepts an ISO 4217-shaped code — exactly three ASCII letters —
+// and returns it upper-cased. Without this check any typed text would land in
+// Pricing.Currencies and be printed as a currency on the invoice lines.
+func validCurrency(s string) (string, bool) {
+	if len(s) != 3 {
+		return "", false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return "", false
+		}
+	}
+	return strings.ToUpper(s), true
+}
+
 // ---------------------------------------------------------------- lookups --
 
 func (rt ratesModel) listName(id string) string {
@@ -594,7 +609,10 @@ func (rt ratesModel) commit(v string) ratesModel {
 		rt.editing, rt.edit, rt.msg = false, editNone, ""
 		return rt
 	}
-	const badRate = "Invalid rate: enter a number > 0 ('d' clears the value)"
+	const (
+		badRate     = "Invalid rate: enter a number > 0 ('d' reverts to the inherited rate)"
+		badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
+	)
 
 	switch rt.edit {
 	case editListRate:
@@ -613,9 +631,14 @@ func (rt ratesModel) commit(v string) ratesModel {
 		id := rt.rows[rt.idx].listID
 		if v == "" {
 			delete(rt.currencies, id)
-		} else {
-			rt.currencies[id] = strings.ToUpper(v)
+			return done()
 		}
+		c, ok := validCurrency(v)
+		if !ok {
+			rt.msg = badCurrency
+			return rt
+		}
+		rt.currencies[id] = c
 		return done()
 
 	case editListBudget:
@@ -626,7 +649,7 @@ func (rt ratesModel) commit(v string) ratesModel {
 		}
 		f, ok := validRate(v)
 		if !ok {
-			rt.msg = "Invalid budget: enter an amount > 0 ('d' clears the value)"
+			rt.msg = "Invalid budget: enter an amount > 0 (press 'g' and submit an empty value to remove the budget)"
 			return rt
 		}
 		rt.budgets[id] = f
@@ -660,7 +683,16 @@ func (rt ratesModel) commit(v string) ratesModel {
 		return done()
 
 	case editDefaultCurrency:
-		rt.defCur = strings.ToUpper(v)
+		if v == "" {
+			rt.defCur = ""
+			return done()
+		}
+		c, ok := validCurrency(v)
+		if !ok {
+			rt.msg = badCurrency
+			return rt
+		}
+		rt.defCur = c
 		return done()
 
 	case editIncrement:
@@ -708,7 +740,9 @@ func indexOfOverride(list []overrideRow, listID string, member int) int {
 }
 
 // clearSelected ('d') removes the value of the selected row, reverting it to
-// the next level of the precedence (or to "not configured" for the rules).
+// the next level of the precedence (or to "not configured" for the rules). In
+// the Lists section it clears the *rate* only: a per-list currency or budget is
+// cleared by reopening its own field ('c'/'g') and submitting an empty value.
 func (rt ratesModel) clearSelected() ratesModel {
 	rt.msg = ""
 	switch rt.sec {
@@ -743,9 +777,12 @@ func (rt ratesModel) clearSelected() ratesModel {
 	return rt
 }
 
-// saveRates validates the whole editor state, persists it into the config and
-// rebuilds the report. Validation is repeated here (not only per field) so a
-// value that would make the next config load fail can never reach the disk.
+// saveRates persists the editor state into the config and rebuilds the report.
+// The two values that would make the next config *load* fail — the rounding
+// increment (PricingFromConfig) and the timezone (LoadLocation) — are
+// re-checked here as well as at typing time, so neither can reach the disk.
+// The other fields are validated only where they are typed: they cannot be
+// stored in an invalid shape in the first place.
 func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	if rt.rounding.Increment != "" {
 		if _, err := duration.Parse(rt.rounding.Increment); err != nil {
@@ -783,10 +820,15 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	cfg.Billing.Budgets = maps.Clone(rt.budgets)
 	cfg.Billing.Rounding = rt.rounding
 
-	if err := config.Save(cfg); err != nil {
-		rt.msg = "Error saving config: " + err.Error()
-		m.ratesScreen = rt
-		return m, nil
+	// Demo mode is zero-I/O (CLICKUP_DEMO=1): the edits stay in memory so the
+	// rebuilt report reflects them, but the user's real config file — whose
+	// timezone and whole billing block this screen owns — is never touched.
+	if !m.demo {
+		if err := config.Save(cfg); err != nil {
+			rt.msg = "Error saving config: " + err.Error()
+			m.ratesScreen = rt
+			return m, nil
+		}
 	}
 	m.cfg = cfg
 	rt.rates = toSave // update the working copy only after a successful save
@@ -842,168 +884,10 @@ func (rt ratesModel) view() string {
 	return b
 }
 
-func (rt ratesModel) tabs() string {
-	labels := []string{"Lists", "Members", "Overrides", "Rules"}
-	parts := make([]string, len(labels))
-	for i, l := range labels {
-		if ratesSection(i) == rt.sec {
-			parts[i] = styleAccent.Render("[" + l + "]")
-		} else {
-			parts[i] = " " + l + " "
-		}
-	}
-	return strings.Join(parts, " ")
-}
-
-func (rt ratesModel) help() string {
-	if rt.draft.active && rt.draft.step != draftRate {
-		return "↑/↓ select · Enter: confirm · Esc: cancel"
-	}
-	switch rt.sec {
-	case secLists:
-		return "Tab: section · ↑/↓ select · Enter: rate · c: currency · g: budget · d: use default · b: browse lists · s: save · Esc: cancel"
-	case secMembers:
-		return "Tab: section · ↑/↓ select · Enter: rate · d: use default · s: save · Esc: cancel"
-	case secOverrides:
-		return "Tab: section · ↑/↓ select · Enter: edit · n: new override · d: delete · s: save · Esc: cancel"
-	default:
-		return "Tab: section · ↑/↓ select · Enter: edit/toggle · d: clear · s: save · Esc: cancel"
-	}
-}
-
-// moneyOrDash renders a money value, or an em dash when unset.
-func moneyOrDash(v float64, set bool) string {
-	if !set {
-		return "—"
-	}
-	return fmt.Sprintf("%.2f", v)
-}
-
-// billingRow renders one selectable row of the editor.
-func billingRow(sel bool, line string) string {
-	if sel {
-		return "▸ " + styleAccent.Render(line) + "\n"
-	}
-	return "  " + line + "\n"
-}
-
-func (rt ratesModel) listsView() string {
-	b := styleHelp.Render(fmt.Sprintf("  %-24s %10s %-5s %10s  %s", "List", "Rate", "Cur", "Budget", "Source")) + "\n"
-	if len(rt.rows) == 0 {
-		return b + styleHelp.Render("  No lists in the current report — press 'b' to browse the workspace.") + "\n"
-	}
-	for i, r := range rt.rows {
-		rate, tag := rt.def, "default"
-		if v, ok := rt.rates[r.listID]; ok {
-			rate, tag = v, "list rate"
-		}
-		bud, hasBud := rt.budgets[r.listID]
-		line := fmt.Sprintf("%-24s %10.2f %-5s %10s  %s",
-			truncate(r.name, 24), rate, rt.effectiveCurrency(r.listID), moneyOrDash(bud, hasBud), tag)
-		b += billingRow(i == rt.idx, line)
-	}
-	sel := rt.rows[rt.idx]
-	note := fmt.Sprintf("Effective for %s: %.2f %s", truncate(sel.name, 24), rt.rateFor(sel.listID), rt.effectiveCurrency(sel.listID))
-	if n := rt.pairsForList(sel.listID); n > 0 {
-		note += fmt.Sprintf(" · %d (list,member) override(s) take precedence here", n)
-	} else if len(rt.memberRates) > 0 {
-		note += fmt.Sprintf(" · %d member rate(s) take precedence here", len(rt.memberRates))
-	}
-	return b + "\n" + styleHelp.Render(note) + "\n"
-}
-
 // rateFor is the list-level rate (no member in play).
 func (rt ratesModel) rateFor(listID string) float64 {
 	if v, ok := rt.rates[listID]; ok {
 		return v
 	}
 	return rt.def
-}
-
-func (rt ratesModel) membersView() string {
-	b := styleHelp.Render(fmt.Sprintf("  %-30s %10s  %s", "Member", "Rate", "Source")) + "\n"
-	if len(rt.members) == 0 {
-		return b + styleHelp.Render("  No members in the current report — run a team-scope report first.") + "\n"
-	}
-	for i, mr := range rt.members {
-		rate, tag := rt.def, "default"
-		if v, ok := rt.memberRates[mr.id]; ok {
-			rate, tag = v, "member rate"
-		}
-		line := fmt.Sprintf("%-30s %10.2f  %s", truncate(fmt.Sprintf("%s (%d)", mr.name, mr.id), 30), rate, tag)
-		b += billingRow(i == rt.memIdx, line)
-	}
-	sel := rt.members[rt.memIdx]
-	note := "A member rate wins over any per-list rate, on every list."
-	if n := rt.listsForMember(sel.id); n > 0 {
-		note = fmt.Sprintf("%s is overridden on %d list(s) by a (list,member) rate.", truncate(sel.name, 24), n)
-	}
-	return b + "\n" + styleHelp.Render(note) + "\n"
-}
-
-func (rt ratesModel) overridesView() string {
-	b := styleHelp.Render(fmt.Sprintf("  %-20s %-22s %10s  %s", "List", "Member", "Rate", "Instead of")) + "\n"
-	for i, o := range rt.overrides {
-		below, src := rt.rateBelowPair(o.listID, o.member)
-		line := fmt.Sprintf("%-20s %-22s %10.2f  %.2f (%s)",
-			truncate(rt.listName(o.listID), 20),
-			truncate(fmt.Sprintf("%s (%d)", rt.memberName(o.member), o.member), 22),
-			o.rate, below, src)
-		b += billingRow(i == rt.ovIdx, line)
-	}
-	b += billingRow(rt.ovIdx >= len(rt.overrides), "+ new (list,member) override")
-	if len(rt.overrides) == 0 {
-		b += "\n" + styleHelp.Render("No (list,member) overrides — the most specific level of the precedence.") + "\n"
-	}
-	return b
-}
-
-func (rt ratesModel) rulesView() string {
-	mode := "nearest"
-	if rt.rounding.Mode == "up" {
-		mode = "up"
-	}
-	scope := "per entry"
-	if rt.rounding.Scope == "day" {
-		scope = "per day"
-	}
-	inc := rt.rounding.Increment
-	if inc == "" {
-		inc = "— (rounding off)"
-	}
-	cur := rt.defCur
-	if cur == "" {
-		cur = fmt.Sprintf("— (using %s)", rt.cur)
-	}
-	tz := rt.tz
-	if tz == "" {
-		tz = "— (system local)"
-	}
-	fields := [ruleCount][2]string{
-		{"Default currency", cur},
-		{"Rounding increment", inc},
-		{"Rounding mode", mode},
-		{"Rounding scope", scope},
-		{"Timezone", tz},
-	}
-	b := ""
-	for i, f := range fields {
-		b += billingRow(i == rt.ruleIdx, fmt.Sprintf("%-22s %s", f[0], f[1]))
-	}
-	return b + "\n" + styleHelp.Render("The default currency and rounding rule apply to every list without its own currency.") + "\n"
-}
-
-func (rt ratesModel) draftView() string {
-	if rt.draft.step == draftPickList {
-		b := styleHelp.Render("New override — choose the list:") + "\n"
-		for i, r := range rt.rows {
-			b += billingRow(i == rt.draft.idx, truncate(r.name, 40))
-		}
-		return b
-	}
-	b := styleHelp.Render(fmt.Sprintf("New override on %s — choose the member:", truncate(rt.listName(rt.draft.listID), 24))) + "\n"
-	for i, mr := range rt.members {
-		b += billingRow(i == rt.draft.idx, truncate(fmt.Sprintf("%s (%d)", mr.name, mr.id), 40))
-	}
-	return b
 }
