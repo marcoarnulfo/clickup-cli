@@ -59,6 +59,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.6.0] - 2026-07-22
 
+### Added
+- Headless report: `clup report --month YYYY-MM --scope me|team --format
+  json|csv|md` prints a report to stdout for cron jobs, scripts and agents; the
+  JSON output is a stable, `jq`-friendly scripting schema. `CLICKUP_DEMO` is
+  ignored by `report`.
+- `FilteredTeamTasks` (paginated `GET /team/{id}/task`) with parallelized status
+  enrichment.
+
 ### Changed
 - **Rebranded the binary to `clup`** (`go install .../cmd/clup@latest`); this is the
   release everyone upgrading from an older `clickup` install should read.
@@ -72,13 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API errors now route back to Home with an inline message instead of a dead-end
   error screen; a 401 still relaunches the setup wizard.
 
-### Added
-- Headless report: `clup report --month YYYY-MM --scope me|team --format
-  json|csv|md` prints a report to stdout for cron jobs, scripts and agents; the
-  JSON output is a stable, `jq`-friendly scripting schema. `CLICKUP_DEMO` is
-  ignored by `report`.
-- `FilteredTeamTasks` (paginated `GET /team/{id}/task`) with parallelized status
-  enrichment.
+### Deprecated
+- The old `clickup` binary is kept as a **deprecated shim**: it still works,
+  forwards to `clup`, and prints a warning. It will be removed in a future release.
 
 ### Fixed
 - Demo mode no longer builds the client with the real token instead of the demo
@@ -87,10 +91,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equals `CLICKUP_TOKEN`.
 - The log-hours flow in demo mode is now fully I/O-free (no more accidental real
   API calls under `CLICKUP_DEMO=1`).
-
-### Deprecated
-- The old `clickup` binary is kept as a **deprecated shim**: it still works,
-  forwards to `clup`, and prints a warning. It will be removed in a future release.
 
 ## [1.5.0] - 2026-07-21
 
@@ -124,16 +124,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.0] - 2026-07-21
 
-### Changed
-- The whole terminal UI, and error/export output, is now in English.
-- Modernized parts of the codebase to use `slices`/`cmp` instead of `sort`; added
-  `staticcheck` to CI.
-
 ### Added
 - Demo mode: `CLICKUP_DEMO=1 clickup` runs the TUI on fixture data, no ClickUp
   account needed; powers the README demo GIF.
 - Revamped bilingual README, `CONTRIBUTING`, `CODE_OF_CONDUCT`, issue/PR templates
   and `good first issue` labels.
+
+### Changed
+- The whole terminal UI, and error/export output, is now in English.
+- Modernized parts of the codebase to use `slices`/`cmp` instead of `sort`; added
+  `staticcheck` to CI.
 
 ## [1.2.0] - 2026-07-21
 
