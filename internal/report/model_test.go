@@ -34,3 +34,15 @@ func TestRatesForZeroValueNilMapsDoesNotPanic(t *testing.T) {
 		t.Errorf("nil maps should fall through to Default 42, got %v", got)
 	}
 }
+
+// TestCurrencyForExported pins the single exported currency resolver shared by
+// the pricing path, the budget lines and the TUI: a per-list override wins, an
+// empty or missing mapping falls back to DefaultCurrency.
+func TestCurrencyForExported(t *testing.T) {
+	p := Pricing{Currencies: map[string]string{"A": "USD", "B": ""}, DefaultCurrency: "EUR"}
+	for listID, want := range map[string]string{"A": "USD", "B": "EUR", "Z": "EUR"} {
+		if got := p.CurrencyFor(listID); got != want {
+			t.Errorf("CurrencyFor(%q) = %q, want %q", listID, got, want)
+		}
+	}
+}

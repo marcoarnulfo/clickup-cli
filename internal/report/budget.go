@@ -16,58 +16,44 @@ type BudgetLine struct {
 	PercentUsed float64 // percentage of budget used (Billed/Budget*100), rounded to 2 decimals
 }
 
-// BudgetLines computes per-list budget burn-down from billed amounts and budget limits.
-// It filters to budgets with amount > 0, calculates remaining and percent used,
-// and sorts by percent used descending (most-burned first), ties by ListName ascending.
-// Currency is resolved per-list from the currencies map, with fallback to defaultCurrency.
-func BudgetLines(billedByList, budgets map[string]float64, currencies map[string]string, defaultCurrency string, listNames map[string]string) []BudgetLine {
+// BudgetLines computes per-list budget burn-down from billed amounts and budget
+// limits, skipping non-positive budgets, and sorts most-burned first (ties by
+// ListName). Currency comes from p.CurrencyFor, the one resolver shared with
+// the pricing path, so an empty per-list mapping falls back to the default here
+// exactly as it does when the money is computed.
+//
+// A budgeted list with no hours in the period has no entry in listNames (the
+// caller derives them from the report's buckets) — it is labelled by its id
+// rather than left blank, because an untouched budget is precisely the row a
+// user opens this view to see.
+func BudgetLines(billedByList, budgets map[string]float64, p Pricing, listNames map[string]string) []BudgetLine {
 	var lines []BudgetLine
 
-	// Iterate over budgets with amount > 0
 	for listID, budget := range budgets {
 		if budget <= 0 {
 			continue
 		}
-
-		// Get billed amount (default to 0 if not present)
-		billed := billedByList[listID]
-
-		// Get currency
-		currency, ok := currencies[listID]
-		if !ok {
-			currency = defaultCurrency
-		}
-
-		// Get list name
 		listName := listNames[listID]
-
-		// Calculate remaining
-		remaining := budget - billed
-
-		// Calculate percent used with guard for Budget==0
-		var percentUsed float64
-		if budget > 0 {
-			percentUsed = round2(billed / budget * 100)
+		if listName == "" {
+			listName = listID
 		}
 
+		billed := billedByList[listID]
 		lines = append(lines, BudgetLine{
 			ListID:      listID,
 			ListName:    listName,
-			Currency:    currency,
+			Currency:    p.CurrencyFor(listID),
 			Budget:      budget,
 			Billed:      billed,
-			Remaining:   remaining,
-			PercentUsed: percentUsed,
+			Remaining:   budget - billed,
+			PercentUsed: round2(billed / budget * 100), // budget > 0 here: no division guard needed
 		})
 	}
 
-	// Sort by PercentUsed descending (most-burned first), ties by ListName ascending
 	slices.SortFunc(lines, func(a, b BudgetLine) int {
-		// Primary: PercentUsed descending (reverse comparison)
-		if cmp := cmp.Compare(b.PercentUsed, a.PercentUsed); cmp != 0 {
-			return cmp
+		if c := cmp.Compare(b.PercentUsed, a.PercentUsed); c != 0 { // descending
+			return c
 		}
-		// Tie-breaker: ListName ascending
 		return cmp.Compare(a.ListName, b.ListName)
 	})
 

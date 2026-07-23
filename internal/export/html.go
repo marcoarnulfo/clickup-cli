@@ -99,9 +99,9 @@ const htmlTemplateSrc = `<!doctype html>
 // timezone, the shared summary line, currency subtotals (authoritative
 // totals), and the bucket breakdown (indicative, see report.Build's caveat).
 //
-// report.BudgetLines exists for budget burn-down, but its inputs
-// (billedByList/budgets/listNames) are not reachable from a report.Report, so
-// this export has no budget section — see the Task 8 report for that gap.
+// There is no budget section: report.BudgetLines needs inputs
+// (billedByList/budgets/listNames) that a report.Report does not carry, so an
+// exporter taking only a Report cannot render one.
 func HTML(w io.Writer, r report.Report) error {
 	fmtHours := func(h float64) string { return strconv.FormatFloat(h, 'f', 2, 64) }
 	fmtAmt := func(a float64) string { return strconv.FormatFloat(a, 'f', 2, 64) }

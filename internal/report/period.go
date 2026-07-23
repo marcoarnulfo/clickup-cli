@@ -25,6 +25,10 @@ func midnightIn(t time.Time, loc *time.Location) time.Time {
 // WeekRange returns the half-open interval [start, end) for the ISO-8601 week
 // (Monday..Sunday) identified by isoYear/isoWeek, in loc. loc == nil is
 // treated as UTC.
+//
+// isoWeek is not bounds-checked: it is used as an offset from week 1, so an
+// out-of-range value simply lands in the neighbouring year. Callers must pass a
+// week they obtained from time.ISOWeek or otherwise validated.
 func WeekRange(isoYear, isoWeek int, loc *time.Location) (start, end time.Time) {
 	if loc == nil {
 		loc = time.UTC

@@ -170,8 +170,8 @@ func TestBilledByListFromBucketsPicksListCurrencyNotSum(t *testing.T) {
 			{Currency: "USD", Amount: 40},
 		}},
 	}
-	currencies := map[string]string{"list-1": "EUR"}
-	got := billedByListFromBuckets(buckets, currencies, "USD")
+	p := report.Pricing{Currencies: map[string]string{"list-1": "EUR"}, DefaultCurrency: "USD"}
+	got := billedByListFromBuckets(buckets, p)
 	if got["list-1"] != 100 {
 		t.Errorf("billedByList[list-1] = %v, want 100 (EUR only, not summed with USD)", got["list-1"])
 	}

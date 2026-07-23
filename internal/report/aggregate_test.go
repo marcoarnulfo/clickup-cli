@@ -742,11 +742,11 @@ func TestRound6(t *testing.T) {
 
 func TestPricingCurrencyFor(t *testing.T) {
 	p := Pricing{Currencies: map[string]string{"A": "USD"}, DefaultCurrency: "EUR"}
-	if got := p.currencyFor("A"); got != "USD" {
-		t.Errorf("currencyFor(A) = %q, want USD", got)
+	if got := p.CurrencyFor("A"); got != "USD" {
+		t.Errorf("CurrencyFor(A) = %q, want USD", got)
 	}
-	if got := p.currencyFor("Z"); got != "EUR" {
-		t.Errorf("currencyFor(Z) = %q, want EUR (default)", got)
+	if got := p.CurrencyFor("Z"); got != "EUR" {
+		t.Errorf("CurrencyFor(Z) = %q, want EUR (default)", got)
 	}
 }
 

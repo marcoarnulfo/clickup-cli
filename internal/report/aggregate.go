@@ -274,7 +274,7 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 	// 1) Raw hours: report totals, per-currency hours, per-bucket hours.
 	for _, e := range entries {
 		h := e.Duration.Hours()
-		cur := p.currencyFor(e.ListID)
+		cur := p.CurrencyFor(e.ListID)
 		r.TotalHours += h
 		curHours[cur] += h
 		if e.Billable {
@@ -297,7 +297,7 @@ func Build(entries []TimeEntry, groupBy string, p Pricing, start, end time.Time,
 		u := units[k]
 		billed := duration.Round(u.raw, p.Rounding.Increment, p.Rounding.Mode)
 		rate := p.Rates.For(u.listID, u.userID)
-		cur := p.currencyFor(u.listID)
+		cur := p.CurrencyFor(u.listID)
 		// The money base is the EXACT billed duration: amt = round2(exact billed
 		// hours × rate). Deriving it from a 2-decimal hours value instead would
 		// misbill every unit whose hour value is not exact to 2 decimals — a

@@ -124,9 +124,9 @@ func (m *Model) openBudgetView() bool {
 	}
 	start, end := m.currentRange()
 	perList := report.Build(m.visibleEntries(), report.GroupByList, p, start, end, m.loc)
-	billed := billedByListFromBuckets(perList.Buckets, p.Currencies, p.DefaultCurrency)
+	billed := billedByListFromBuckets(perList.Buckets, p)
 	budgets := service.BudgetsFromConfig(m.cfg)
-	lines := report.BudgetLines(billed, budgets, p.Currencies, p.DefaultCurrency, listNamesFromBuckets(perList.Buckets))
+	lines := report.BudgetLines(billed, budgets, p, listNamesFromBuckets(perList.Buckets))
 	m.budgetScreen = newBudget(lines)
 	m.screen = screenBudget
 	return true
@@ -136,15 +136,12 @@ func (m *Model) openBudgetView() bool {
 // a report built with report.GroupByList, where Bucket.Key is the listID. A
 // bucket may in principle carry more than one currency (Bucket.Amounts is a
 // per-currency slice); this picks the amount matching the list's own resolved
-// currency and never sums across currencies (see the task's binding note on
-// budget inputs).
-func billedByListFromBuckets(buckets []report.Bucket, currencies map[string]string, defaultCurrency string) map[string]float64 {
+// currency (resolved through the shared report.Pricing.CurrencyFor) and never
+// sums across currencies (see the task's binding note on budget inputs).
+func billedByListFromBuckets(buckets []report.Bucket, p report.Pricing) map[string]float64 {
 	out := make(map[string]float64, len(buckets))
 	for _, b := range buckets {
-		cur := currencies[b.Key]
-		if cur == "" {
-			cur = defaultCurrency
-		}
+		cur := p.CurrencyFor(b.Key)
 		for _, a := range b.Amounts {
 			if a.Currency == cur {
 				out[b.Key] = a.Amount

@@ -65,7 +65,7 @@ type Report struct {
 	BillableHours    float64 `json:"billable_hours"`     // billable entries, raw
 	NonBillableHours float64 `json:"non_billable_hours"` // never rounded
 	BilledHours      float64 `json:"billed_hours"`       // billable after rounding
-	TotalAmount      float64 `json:"total_amount"`       // 0 unless single-currency
+	TotalAmount      float64 `json:"total_amount"`       // 0 unless one currency carries money
 }
 
 // ListMember identifies a (list, member) pair, the most specific rate override.
@@ -124,9 +124,11 @@ type Pricing struct {
 	Rounding        RoundRule
 }
 
-// currencyFor resolves the currency billed for a list: its per-list override, or
-// DefaultCurrency when the list has none.
-func (p Pricing) currencyFor(listID string) string {
+// CurrencyFor resolves the currency billed for a list: its per-list override,
+// or DefaultCurrency when the list has none (an empty mapping counts as none).
+// It is the single currency resolver: the aggregation, BudgetLines and the TUI
+// all go through it, so they can never disagree on a list's currency.
+func (p Pricing) CurrencyFor(listID string) string {
 	if c, ok := p.Currencies[listID]; ok && c != "" {
 		return c
 	}
@@ -169,5 +171,8 @@ type InvoiceLine struct {
 	// billed duration, not the 6-decimal Hours above.
 	Amount   float64 `json:"amount"`
 	Currency string  `json:"currency"`
-	Billable bool    `json:"billable"`
+	// Billable is always true: only billable entries become billing units. It is
+	// kept for schema stability (exports and scripts already read the column),
+	// not as a live discriminator.
+	Billable bool `json:"billable"`
 }
