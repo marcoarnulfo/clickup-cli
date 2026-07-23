@@ -50,7 +50,7 @@ func TestDemoMembers(t *testing.T) {
 
 func TestDemoEntriesMultipleUsers(t *testing.T) {
 	users := map[string]bool{}
-	for _, e := range demoEntries(2026, time.July) {
+	for _, e := range demoEntries(demoJuly2026()) {
 		users[e.UserName] = true
 	}
 	if len(users) < 2 {
@@ -94,7 +94,7 @@ func TestReloadDemoMeScopeIsSingleSelfUser(t *testing.T) {
 }
 
 func TestDemoEntriesBuildReport(t *testing.T) {
-	entries := demoEntries(2026, time.July)
+	entries := demoEntries(demoJuly2026())
 	pricing := report.Pricing{
 		Rates:           report.Rates{Default: 50, ByList: map[string]float64{"web": 65, "mobile": 45}},
 		DefaultCurrency: "EUR",
@@ -143,7 +143,7 @@ func TestDemoConfigHasBillingFields(t *testing.T) {
 // needs: earlier demo entries were all Billable:true (so the report wasn't
 // stuck at zero); this task adds the mix so the split is visibly non-trivial.
 func TestDemoEntriesHaveBillableMix(t *testing.T) {
-	entries := demoEntries(2026, time.July)
+	entries := demoEntries(demoJuly2026())
 	var billable, nonBillable int
 	for _, e := range entries {
 		if e.Billable {
@@ -228,7 +228,7 @@ func TestDemoModeBillingEditorNeverWritesConfig(t *testing.T) {
 	t.Setenv("CLICKUP_DEMO", "1")
 
 	m := New(config.Config{})
-	m.entries = demoEntries(2026, time.July)
+	m.entries = demoEntries(demoJuly2026())
 	m.ratesScreen = newRates(m.entries, m.cfg)
 	m.screen = screenRates
 
@@ -241,4 +241,67 @@ func TestDemoModeBillingEditorNeverWritesConfig(t *testing.T) {
 	if _, err := os.Stat(p); !os.IsNotExist(err) {
 		t.Fatalf("demo mode must not write %s (stat err = %v)", p, err)
 	}
+}
+
+// TestDemoWeekToggleHasEntries pins demo parity for the week toggle (#4): the
+// fixture days are anchored to the requested range, not to days 2..10 of the
+// month, so pressing `w` on any date yields a non-empty report instead of
+// "No hours to show".
+func TestDemoWeekToggleHasEntries(t *testing.T) {
+	// A Thursday in the middle of a month: the ISO week is Jul 20..26, which
+	// under the month-anchored fixture contained zero entries.
+	now := time.Date(2026, time.July, 23, 10, 0, 0, 0, time.UTC)
+	m := Model{demo: true, cfg: demoConfig(), loc: time.UTC, scope: "me",
+		periodMode: periodModeWeek, now: func() time.Time { return now }}
+
+	em, ok := m.reloadEntriesCmd(screenHome)().(entriesMsg)
+	if !ok {
+		t.Fatalf("expected entriesMsg")
+	}
+	if len(em.entries) == 0 {
+		t.Fatal("week toggle in demo mode produced 0 entries")
+	}
+
+	start, end := m.currentRange()
+	for _, e := range em.entries {
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			t.Errorf("entry %s at %s outside the week range [%s,%s)", e.ID, e.Start, start, end)
+		}
+	}
+
+	r := report.Build(em.entries, report.GroupByList, report.Pricing{
+		Rates: report.Rates{Default: 50}, DefaultCurrency: "EUR",
+	}, start, end, time.UTC)
+	if len(r.Buckets) == 0 || r.BilledHours <= 0 {
+		t.Errorf("empty demo week report: buckets=%d billed=%v", len(r.Buckets), r.BilledHours)
+	}
+}
+
+// TestDemoEntriesSpanMonthBoundary pins that a range straddling two months
+// still gets fixtures: they follow the range start, not a single month.
+func TestDemoEntriesSpanMonthBoundary(t *testing.T) {
+	start := time.Date(2026, time.July, 27, 0, 0, 0, 0, time.UTC) // Mon
+	end := start.AddDate(0, 0, 7)                                 // into August
+	entries := demoEntries(start, end)
+	if len(entries) == 0 {
+		t.Fatal("no demo entries for a month-straddling week")
+	}
+	var august int
+	for _, e := range entries {
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			t.Fatalf("entry %s at %s outside [%s,%s)", e.ID, e.Start, start, end)
+		}
+		if e.Start.Month() == time.August {
+			august++
+		}
+	}
+	if august == 0 {
+		t.Error("expected at least one entry in the second month of the range")
+	}
+}
+
+// demoJuly2026 is the [start, end) month range used by the demo tests.
+func demoJuly2026() (time.Time, time.Time) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	return start, start.AddDate(0, 1, 0)
 }
