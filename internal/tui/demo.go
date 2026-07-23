@@ -143,19 +143,35 @@ func demoStatusEnrichCmd(entries []report.TimeEntry) tea.Cmd {
 	}
 }
 
-// demoEntriesCmd delivers the fake entries as entriesMsg, filtered by the
-// selected member ids and clipped to [start, end).
-func demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
-	return func() tea.Msg {
-		entries := filterByUsers(demoEntries(start, end), assignees)
-		out := entries[:0]
-		for _, e := range entries {
-			if !e.Start.Before(start) && e.Start.Before(end) {
-				out = append(out, e)
-			}
+// demoEntriesSnapshot returns the demo entries for [start,end), with edit
+// overrides applied and deleted ids removed, clipped to range + the given
+// assignees. It is the single source demoEntriesCmd and the browser reload
+// (reloadForBrowser, entries.go) both use, so a demo delete/edit is honored by
+// EVERY reload path, not just the one that triggered it.
+func (m Model) demoEntriesSnapshot(start, end time.Time, assignees []int) []report.TimeEntry {
+	src := demoEntries(start, end)
+	out := make([]report.TimeEntry, 0, len(src))
+	for _, e := range src {
+		if m.demoDeleted[e.ID] {
+			continue
 		}
-		return entriesMsg{entries: out}
+		if ov, ok := m.demoOverrides[e.ID]; ok {
+			e = ov
+		}
+		if e.Start.Before(start) || !e.Start.Before(end) {
+			continue // an edit may have moved it out of range
+		}
+		out = append(out, e)
 	}
+	return filterByUsers(out, assignees)
+}
+
+// demoEntriesCmd delivers the demo entries (session state applied — see
+// demoEntriesSnapshot) as entriesMsg, filtered by the selected member ids and
+// clipped to [start, end).
+func (m Model) demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
+	snap := m.demoEntriesSnapshot(start, end, assignees)
+	return func() tea.Msg { return entriesMsg{entries: snap} }
 }
 
 // demoSpaces / demoSpaceContents are fake workspace data for demo mode.
