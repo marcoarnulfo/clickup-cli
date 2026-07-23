@@ -63,6 +63,7 @@ type entriesModel struct {
 	editNote     string
 	editBillable bool
 	editID       string
+	editStart    time.Time // original start (loc-resolved), to preserve sub-minute precision (#126)
 	input        textinput.Model
 
 	// history (Task 8): read-only change list opened with 'h', for ANY entry
@@ -108,6 +109,7 @@ func enterEditForm(es entriesModel, now time.Time, loc *time.Location) entriesMo
 	es.editNote = e.Description
 	es.editBillable = e.Billable
 	es.editID = e.ID
+	es.editStart = start // full-precision original start, so an unchanged HH:MM keeps its seconds (#126)
 	es.msg = ""
 	es.msgErr = false
 	es.input = newTextInput("Duration (e.g. 2h30, 1.5h, 90m)")
@@ -280,6 +282,13 @@ func (m Model) submitEntriesEdit(es entriesModel) (tea.Model, tea.Cmd) {
 		hh, mm2 = tm.Hour(), tm.Minute()
 	}
 	start := time.Date(day.Year(), day.Month(), day.Day(), hh, mm2, 0, 0, locOr(m.loc))
+	// The form edits start only to HH:MM. If the user left the minute unchanged,
+	// keep the original entry's seconds/nanoseconds rather than shaving them to
+	// :00 — a timer-created entry has non-zero seconds, and an unrelated edit
+	// (e.g. a billable toggle) must not shift its start by up to 59s (#126).
+	if orig := es.editStart; !orig.IsZero() && orig.Truncate(time.Minute).Equal(start) {
+		start = start.Add(orig.Sub(orig.Truncate(time.Minute)))
+	}
 	dur, _ := duration.Parse(es.editDur)
 	id := es.editID
 	note := es.editNote

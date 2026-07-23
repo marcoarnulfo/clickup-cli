@@ -65,6 +65,34 @@ func TestEditPrefillCarriesDescriptionAndBillable(t *testing.T) {
 	}
 }
 
+// TestEditPreservesSecondsWhenMinuteUnchanged guards #126: the form edits start
+// only to HH:MM, so an unrelated edit (billable toggle, note) must not shave a
+// timer-created entry's non-zero seconds to :00. Changing the minute still snaps
+// to :00 — the intended minute-precision behavior.
+func TestEditPreservesSecondsWhenMinuteUnchanged(t *testing.T) {
+	base := func() Model {
+		m := newTestModel()
+		m.demo = true
+		m.loc = time.UTC
+		m.now = fixedNow(time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC))
+		own := report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Billable: true,
+			Start: time.Date(2026, 7, 20, 9, 0, 37, 0, time.UTC), Duration: 2 * time.Hour}
+		return browserWithEntries(m, own)
+	}
+
+	// Minute unchanged (09:00) -> original seconds (:37) preserved.
+	mm, _ := submitEdit(base(), "2.00h", "2026-07-20", "09:00", "note")
+	if got := mm.demoOverrides["e1"].Start; got.Second() != 37 {
+		t.Errorf("unchanged minute: start = %s, want seconds preserved (:37)", got.Format("15:04:05"))
+	}
+
+	// Minute changed (09:05) -> snaps to :00.
+	mm2, _ := submitEdit(base(), "2.00h", "2026-07-20", "09:05", "note")
+	if got := mm2.demoOverrides["e1"].Start; got.Second() != 0 || got.Minute() != 5 {
+		t.Errorf("changed minute: start = %s, want 09:05:00", got.Format("15:04:05"))
+	}
+}
+
 // clearAndType clears the prefilled input (ctrl+u: delete-before-cursor,
 // where SetValue parks the cursor) and types s rune by rune, mirroring a user
 // replacing a prefilled field.
