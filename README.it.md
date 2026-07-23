@@ -85,6 +85,7 @@ di setup.
 |---|---|---|
 | `d` | Home | Apre il **selettore del periodo** (preset + personalizzato from/to) |
 | `◂` / `▸` (frecce sin/dx, anche `h`/`l`) | Home | Cambia mese (solo mentre il periodo `this month` è attivo) |
+| `w` | Home | Alterna la settimana ISO corrente |
 | `t` | Home | Alterna scope `me` / `team` |
 | `f` | Home | Apre la **selezione membri** (scope team): multiselezione dei membri inclusi nel report |
 | `Enter` | Home | Genera il report per il periodo/scope selezionati |

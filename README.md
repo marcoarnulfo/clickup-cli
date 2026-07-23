@@ -82,6 +82,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 |---|---|---|
 | `d` | Home | Open the **report range** picker (presets + custom from/to) |
 | `◂` / `▸` (left/right arrows, also `h`/`l`) | Home | Change month (only while the `this month` range is active) |
+| `w` | Home | Toggle the current ISO week |
 | `t` | Home | Toggle scope `me` / `team` |
 | `f` | Home | Open **member selection** (team scope): multi-select which members the report covers |
 | `Enter` | Home | Generate the report for the selected range/scope |
