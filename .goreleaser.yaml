@@ -1,0 +1,134 @@
+# GoReleaser configuration for clup release artifacts.
+#
+# Triggered by .github/workflows/release.yml on v* tags. What it produces:
+#   - darwin/linux/windows × amd64/arm64 archives + checksums.txt
+#   - cosign keyless signature of the checksums (GitHub OIDC, no keys to manage)
+#   - Homebrew cask  → github.com/marcoarnulfo/homebrew-tap
+#   - Scoop manifest → github.com/marcoarnulfo/scoop-bucket
+#   - AUR PKGBUILD (clup-bin), enabled automatically once the AUR_KEY secret exists
+#
+# Publishers use skip_upload: auto, so prerelease tags (vX.Y.Z-rcN) build and
+# sign everything on GitHub without touching any package manager.
+version: 2
+
+project_name: clup
+
+builds:
+  - id: clup
+    main: ./cmd/clup
+    binary: clup
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      # Stamp the release version into internal/service.ldflagsVersion.
+      # {{ .Tag }} (not {{ .Version }}) keeps the leading "v" that
+      # internal/version.IsRelease requires — without it the binary would
+      # report a version the update check deliberately rejects.
+      - -X github.com/marcoarnulfo/clickup-cli/internal/service.ldflagsVersion={{ .Tag }}
+
+archives:
+  - id: clup
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  # cosign v3 keyless: one bundle file holding signature + certificate.
+  # Needs id-token: write in the workflow; verify with:
+  #   cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+
+# Release notes come from CHANGELOG.md, extracted by the workflow and passed
+# via --release-notes. GoReleaser's own commit-derived changelog is unwanted.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: marcoarnulfo
+    name: clickup-cli
+  # Tags with a prerelease segment (vX.Y.Z-rcN) become GitHub prereleases,
+  # which releases/latest (polled by the update check) excludes.
+  prerelease: auto
+  footer: |
+    ---
+    **Install**: `brew install marcoarnulfo/tap/clup` (macOS/Linux) · `scoop bucket add clup https://github.com/marcoarnulfo/scoop-bucket && scoop install clup` (Windows) · `yay -S clup-bin` (Arch) · or download a binary below.
+
+    **Verify**: `cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt`
+
+homebrew_casks:
+  - name: clup
+    repository:
+      owner: marcoarnulfo
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/marcoarnulfo/clickup-cli
+    description: Terminal UI for ClickUp hours reports, billing and time tracking
+    skip_upload: auto
+    hooks:
+      post:
+        # The binaries are not Apple-notarized: strip the quarantine bit so
+        # Gatekeeper does not refuse to run clup. See
+        # https://goreleaser.com/customization/publish/homebrew_casks/#signing-and-notarizing
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/clup"]
+          end
+
+scoops:
+  - name: clup
+    repository:
+      owner: marcoarnulfo
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: bucket
+    homepage: https://github.com/marcoarnulfo/clickup-cli
+    description: Terminal UI for ClickUp hours reports, billing and time tracking
+    license: MIT
+    skip_upload: auto
+
+aurs:
+  - name: clup-bin
+    homepage: https://github.com/marcoarnulfo/clickup-cli
+    description: Terminal UI for ClickUp hours reports, billing and time tracking
+    maintainers:
+      - "Marco Arnulfo <marcoarnulfo1 at gmail dot com>"
+    license: MIT
+    # Publishing activates as soon as the AUR_KEY secret (an SSH private key
+    # registered on aur.archlinux.org) exists on the clickup-cli repo; until
+    # then this section is disabled and the release stays green.
+    # index (not .Env.AUR_KEY) so a missing key does not fail the template.
+    disable: '{{ if index .Env "AUR_KEY" }}false{{ else }}true{{ end }}'
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/clup-bin.git"
+    provides:
+      - clup
+    conflicts:
+      - clup
+    skip_upload: auto

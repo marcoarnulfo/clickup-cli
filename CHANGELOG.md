@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Release pipeline (#97, #99, #103): pushing a `v*` tag now builds prebuilt
+  binaries for darwin/linux/windows × amd64/arm64 and attaches them to the
+  GitHub release, with `checksums.txt` signed via cosign keyless (verify with
+  `cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt`).
+- New install paths: Homebrew tap (`brew install marcoarnulfo/tap/clup`) and
+  Scoop bucket (`scoop bucket add clup https://github.com/marcoarnulfo/scoop-bucket`),
+  both updated automatically on every release. AUR publishing (`clup-bin`) is
+  configured and activates once the maintainer registers an AUR key; Nix is
+  deferred to community contributors (see #103).
+
 ## [1.8.0] - 2026-07-23
 
 ### Added
