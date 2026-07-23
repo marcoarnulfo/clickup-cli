@@ -100,11 +100,12 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
 | `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (the CSV invoice is saved as `clickup-invoice-<period>.csv`; `<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
-| `q` | Everywhere except setup / rates / range | Quit the application |
+| `q` | Everywhere except setup / rates / range / list browser / log hours / time entries | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
 
-The setup screen has no `q`-to-quit, to avoid pressing it by mistake while typing the
-token: use `Ctrl+C`.
+The setup, rates, range, list browser, log-hours and time-entries screens have no
+`q`-to-quit, to avoid pressing it by mistake while typing (a token, a rate, a note, a
+task ID, …): use `Ctrl+C`.
 
 #### Billing settings screen
 

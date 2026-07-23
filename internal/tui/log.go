@@ -262,7 +262,7 @@ func (m Model) timerStopCmd() tea.Cmd {
 
 func (m Model) timerCurrentCmd() tea.Cmd {
 	if m.demo {
-		return demoCurrentTimerCmd()
+		return demoCurrentTimerCmd(m.runningTimer)
 	}
 	return currentTimerCmd(m.client, m.cfg.WorkspaceID)
 }
@@ -565,7 +565,7 @@ func (lg logModel) view() string {
 		if lg.msg != "" {
 			b += styleOK.Render(lg.msg) + "\n\n"
 		}
-		b += styleHelp.Render("r: reload the report · Esc: back to the report")
+		b += styleHelp.Render("r: reload the report · Esc: back")
 	default:
 		b += styleHelp.Render("…")
 	}

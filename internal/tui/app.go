@@ -556,6 +556,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case runningTimerMsg:
+		if msg.failed {
+			// A transient probe failure is not evidence the timer stopped: keep
+			// the current indicator/tick chain untouched and let the next
+			// scheduled re-poll (or the boot probe, where there is nothing to
+			// keep) try again.
+			return m, nil
+		}
 		m.runningTimer = msg.timer
 		if msg.timer != nil && !m.ticking {
 			m.ticking = true

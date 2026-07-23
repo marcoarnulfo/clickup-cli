@@ -50,6 +50,29 @@ func TestRunningTimerMsgArmsOneTickChain(t *testing.T) {
 	}
 }
 
+// TestRunningTimerMsgFailedProbeKeepsIndicator verifies a transient probe
+// failure (network blip, timeout, 5xx — e.g. laptop sleep/wake) does not clear
+// an already-known running timer nor stop the tick chain: the indicator must
+// survive until the next scheduled re-poll succeeds or genuinely finds none.
+func TestRunningTimerMsgFailedProbeKeepsIndicator(t *testing.T) {
+	m := Model{now: fixedNow(time.Now())}
+	rt := &clickup.RunningTimer{TaskID: "t1", TaskName: "Fix", Start: time.Now().Add(-time.Minute)}
+	m.runningTimer = rt
+	m.ticking = true
+
+	m2, cmd := m.Update(runningTimerMsg{timer: nil, failed: true})
+	mm := m2.(Model)
+	if mm.runningTimer != rt {
+		t.Errorf("failed probe changed runningTimer: got %+v, want unchanged %+v", mm.runningTimer, rt)
+	}
+	if !mm.ticking {
+		t.Errorf("failed probe stopped ticking, expected it to keep the chain alive")
+	}
+	if cmd != nil {
+		t.Errorf("failed probe should not issue a new command (the live chain re-polls on its own)")
+	}
+}
+
 func TestTickMsgStopsWhenNoTimer(t *testing.T) {
 	m := Model{now: fixedNow(time.Now()), ticking: true}
 	m2, cmd := m.Update(tickMsg{})

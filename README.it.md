@@ -103,11 +103,12 @@ di setup.
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (la fattura CSV viene salvata come `clickup-invoice-<periodo>.csv`; `<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
-| `q` | Ovunque tranne setup / rates / range | Esce dall'applicazione |
+| `q` | Ovunque tranne setup / rates / range / browser liste / log ore / voci ore | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |
 
-Nella schermata di setup non è previsto `q` per uscire, per evitare di
-premerlo per errore durante l'inserimento del token: usa `Ctrl+C`.
+Nelle schermate setup, rates, range, browser liste, log ore e voci ore non è previsto
+`q` per uscire, per evitare di premerlo per errore mentre si sta scrivendo (un token,
+una tariffa, una nota, un ID task, ...): usa `Ctrl+C`.
 
 #### Schermata Impostazioni di fatturazione
 

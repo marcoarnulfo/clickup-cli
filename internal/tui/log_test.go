@@ -510,13 +510,30 @@ func TestDemoTimerStartAndStopNoIO(t *testing.T) {
 	}
 }
 
-func TestDemoCurrentTimerCmdReportsNoTimer(t *testing.T) {
+// TestDemoCurrentTimerCmdReflectsModelState verifies the demo Log→Timer flow
+// no longer hardcodes "no timer": it must mirror m.runningTimer, whatever it
+// is, so it never contradicts the demo indicator already shown on Home (boot
+// probe: demoRunningTimerProbeCmd). Both the "none" and "already running"
+// cases are checked.
+func TestDemoCurrentTimerCmdReflectsModelState(t *testing.T) {
 	m := demoLogModel()
+	if m.runningTimer != nil {
+		t.Fatalf("precondition: expected no running timer on a fresh demo model, got %+v", m.runningTimer)
+	}
 	cmd := m.timerCurrentCmd()
 	msg := cmd() // must not hit the network: m.client is nil
 	tm, ok := msg.(timerMsg)
 	if !ok || tm.timer != nil {
-		t.Fatalf("expected timerMsg{timer:nil} in demo mode, got %#v", msg)
+		t.Fatalf("expected timerMsg{timer:nil} when no demo timer is running, got %#v", msg)
+	}
+
+	rt := &clickup.RunningTimer{TaskID: "demo-t1", TaskName: "Fix login bug"}
+	m.runningTimer = rt
+	cmd = m.timerCurrentCmd()
+	msg = cmd() // must not hit the network: m.client is nil
+	tm, ok = msg.(timerMsg)
+	if !ok || tm.timer != rt {
+		t.Fatalf("expected timerMsg{timer: m.runningTimer} when a demo timer is already running, got %#v", msg)
 	}
 }
 

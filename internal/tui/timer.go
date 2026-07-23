@@ -13,7 +13,15 @@ import (
 // distinct from timerMsg (which drives the log timer flow and is dropped unless
 // the user is on the log/loading screen); this one must update global state even
 // while the user is on Home.
-type runningTimerMsg struct{ timer *clickup.RunningTimer }
+//
+// failed distinguishes "the probe itself errored" (network blip, timeout, 5xx —
+// e.g. laptop sleep/wake) from "the probe succeeded and found no timer running".
+// A failed probe must NOT clear an already-known running timer: the handler
+// keeps the current state and lets the next scheduled re-poll try again.
+type runningTimerMsg struct {
+	timer  *clickup.RunningTimer
+	failed bool
+}
 
 // userMsg carries the authenticated user's id (0 if unknown).
 type userMsg struct{ id int }
@@ -23,7 +31,10 @@ type tickMsg struct{}
 
 // repollTickInterval is how many 1s ticks pass between background re-polls of the
 // running timer, so a timer started/stopped in another ClickUp client is
-// eventually reflected here. Cheap: one GET per 30s, well within the limiter.
+// reflected here — but only while a tick chain is already alive (i.e. while
+// Home already shows a running timer): the re-poll piggybacks on the existing
+// chain, it does not run on its own. Cheap: one GET per 30s, well within the
+// limiter.
 const repollTickInterval = 30
 
 // tickCmd schedules the next 1s tick. Elapsed is derived from m.now() in the
@@ -44,7 +55,10 @@ func (m Model) runningTimerProbeCmd() tea.Cmd {
 		defer cancel()
 		rt, err := c.CurrentTimer(ctx, teamID)
 		if err != nil {
-			return runningTimerMsg{timer: nil} // silent: a failed probe just means "no indicator"
+			// A transient failure (network blip, timeout, 5xx) is not evidence
+			// the timer stopped: report it as "failed", not "no timer", so the
+			// handler keeps whatever indicator it already has.
+			return runningTimerMsg{timer: nil, failed: true}
 		}
 		return runningTimerMsg{timer: rt}
 	}

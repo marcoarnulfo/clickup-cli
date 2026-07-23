@@ -258,16 +258,17 @@ func demoStopTimerCmd() tea.Cmd {
 	}
 }
 
-// demoCurrentTimerCmd reports no timer running, which is the demo default
-// (demo mode never has a timer already in flight when the screen opens).
-func demoCurrentTimerCmd() tea.Cmd {
-	return func() tea.Msg { return timerMsg{timer: nil} }
+// demoCurrentTimerCmd reports the Model's own running-timer state (rt), so the
+// Log-hours "Timer" mode reflects whatever Home's live indicator already shows
+// instead of contradicting it: if a demo timer is already running (per the
+// boot-time demoRunningTimerProbeCmd), the Timer screen must show/stop that
+// same timer, not silently claim there is none.
+func demoCurrentTimerCmd(rt *clickup.RunningTimer) tea.Cmd {
+	return func() tea.Msg { return timerMsg{timer: rt} }
 }
 
 // demoRunningTimerProbeCmd reports a fake running timer for the global Home
 // indicator, started 25 minutes before now so the stopwatch is visibly ticking.
-// It is SEPARATE from demoCurrentTimerCmd (which returns nil — load-bearing for
-// the log timer flow, where nil means "no timer, pick a task").
 func demoRunningTimerProbeCmd(now time.Time) tea.Cmd {
 	return func() tea.Msg {
 		return runningTimerMsg{timer: &clickup.RunningTimer{
