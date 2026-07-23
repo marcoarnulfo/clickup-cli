@@ -93,9 +93,9 @@ func submitEdit(m Model, dur, date, timeStr, note string) (Model, tea.Cmd) {
 	next, _ = m.Update(key("enter"))
 	m = next.(Model)
 	m = clearAndType(m, note)
-	next, cmd := m.Update(key("enter")) // note -> billable step
+	next, _ = m.Update(key("enter")) // note -> billable step
 	m = next.(Model)
-	next, cmd = m.Update(key("enter")) // billable: Enter = yes
+	next, cmd := m.Update(key("enter")) // billable: Enter = yes
 	return next.(Model), cmd
 }
 
