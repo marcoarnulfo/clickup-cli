@@ -148,6 +148,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -190,28 +191,25 @@ func TestSetTimeEntryTags(t *testing.T) {
 		t.Fatalf("no request made")
 	}
 	// At least one request must carry the desired tag names and target the entry.
-	all := ""
-	for _, s := range reqs {
-		all += s + "\n"
-	}
+	all := strings.Join(reqs, "\n")
 	for _, want := range []string{"focus", "new-tag", "e1"} {
-		if !contains(all, want) {
+		if !strings.Contains(all, want) {
 			t.Errorf("requests %q missing %q", all, want)
 		}
 	}
-	// sanity: the body is valid JSON on each request
+	// sanity: each request body (the 3rd space-separated field) is valid JSON.
 	for _, s := range reqs {
-		if i := indexSpaceSpace(s); i >= 0 {
+		if parts := strings.SplitN(s, " ", 3); len(parts) == 3 && parts[2] != "" {
 			var v any
-			if body := s[i:]; body != "" && json.Unmarshal([]byte(body), &v) != nil {
-				t.Errorf("request body not JSON: %q", body)
+			if json.Unmarshal([]byte(parts[2]), &v) != nil {
+				t.Errorf("request body not JSON: %q", parts[2])
 			}
 		}
 	}
 }
 ```
 
-> **Implementer note:** `contains`/`indexSpaceSpace` are throwaway test helpers — use `strings.Contains` and `strings.Index(s, "  ")`-style logic inline instead of inventing helpers, or simplify the assertions to what your chosen mechanism actually sends. The point the test pins: the desired names and the entry id reach the server as valid JSON. If the spike picks the add/remove diff, also assert that `SetTimeEntryTags` fetches or is told the current set — since `SetTimeEntryTags(ctx, teamID, entryID, desired)` has no current set, the diff mechanism needs the current tags: pass them in as a parameter `SetTimeEntryTags(ctx, teamID, entryID string, current, desired []string)` and update the interface + callers accordingly. Prefer replace-PUT if the API supports it precisely to avoid needing `current`.
+> **Implementer note:** the assertions above are mechanism-agnostic (the desired names + entry id must reach the server as valid JSON), so they hold whether the spike picks replace-PUT or add/remove-diff. **Signature ripple:** if the spike picks the add/remove diff, `SetTimeEntryTags` needs the entry's current tags to diff against — change its signature to `SetTimeEntryTags(ctx, teamID, entryID string, current, desired []string)` and update Task 4's caller (`m.setTagsCmd`) to pass `entryByID(m.entriesScreen.entries, entryID).EntryTags`. Prefer replace-PUT (ClickUp's documented `tags`+`tag_action` on the single-entry PUT) to avoid needing `current`. **DELETE-with-body:** mechanism (b)'s remove call carries a JSON body, but `c.del(ctx, path)` takes no body — issue it via `c.do(ctx, http.MethodDelete, path, nil, body, nil)` directly (do not extend `del` unless you also update its other caller).
 
 - [ ] **Step 2: Run test to verify it fails** — `go test ./internal/clickup/ -run 'TimeEntryTags|SetTimeEntryTags' -v` → FAIL (undefined).
 
@@ -323,14 +321,21 @@ func TestTGatedOnOwnership(t *testing.T) {
 	}
 }
 
+// openTagPicker opens the tag picker on the current entry and delivers the
+// fetched workspace tags (shared by this file and the Task 4 save tests).
+func openTagPicker(m Model, fetched []string) Model {
+	next, _ := m.Update(keyRunes("t"))
+	m = next.(Model)
+	next, _ = m.Update(tagsMsg{tags: fetched})
+	return next.(Model)
+}
+
 func TestTagsMsgPopulatesAndUnionsCurrent(t *testing.T) {
 	m := newTestModel()
 	own := report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Start: time.Now(), EntryTags: []string{"focus", "legacy"}}
 	m = browserWithEntries(m, own)
-	m = m.Update2Tags() // helper: open picker (see note)
-	m2, _ := m.Update(tagsMsg{tags: []string{"focus", "client-A"}})
-	mm := m2.(Model)
-	es := mm.entriesScreen
+	m = openTagPicker(m, []string{"focus", "client-A"})
+	es := m.entriesScreen
 	if es.tagLoading {
 		t.Errorf("tagsMsg should clear loading")
 	}
@@ -347,20 +352,19 @@ func TestSpaceTogglesTag(t *testing.T) {
 	m := newTestModel()
 	own := report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Start: time.Now(), EntryTags: []string{"focus"}}
 	m = browserWithEntries(m, own)
-	m = m.Update2Tags()
-	m2, _ := m.Update(tagsMsg{tags: []string{"focus", "client-A"}})
-	mm := m2.(Model)
-	// cursor on the first tag; space toggles it off
-	before := mm.entriesScreen.tagSel[mm.entriesScreen.tagAll[0]]
-	m3, _ := mm.Update(key("space"))
-	after := m3.(Model).entriesScreen.tagSel[mm.entriesScreen.tagAll[0]]
+	m = openTagPicker(m, []string{"focus", "client-A"})
+	// cursor on the first tag; space toggles it off. key(" ") delivers a space
+	// whose String() == " " (key("space") would send the 5-rune string "space").
+	before := m.entriesScreen.tagSel[m.entriesScreen.tagAll[0]]
+	m2, _ := m.Update(key(" "))
+	after := m2.(Model).entriesScreen.tagSel[m.entriesScreen.tagAll[0]]
 	if before == after {
 		t.Errorf("space did not toggle the tag under the cursor")
 	}
 }
 ```
 
-> **Implementer note:** there is no `Update2Tags` helper — that's shorthand for "open the picker": `next, _ := m.Update(keyRunes("t")); m = next.(Model)`. Inline it (or add a small local test helper). `key("space")` — confirm the space key string the framework delivers (`" "` via `tea.KeySpace`/`tea.KeyRunes{' '}`); use whatever `key()`/`keyRunes()` produce for space, matching how `membersModel` reads it. Reuse existing `key`/`keyRunes`/`newTestModel`/`browserWithEntries`.
+> **Implementer note:** `openTagPicker` (defined above) is the shared "open the picker + deliver tags" helper; Task 4's tests import it from this file. For the space key, the codebase idiom is defensive — `updateMembers` uses `case " ", "space":` (`members.go`) and the real terminal delivers `tea.KeySpace` whose `String()` is `" "`. Match that idiom in the handler (Step 3d) and drive it in tests with `key(" ")`. Reuse existing `key`/`keyRunes`/`newTestModel`/`browserWithEntries`.
 
 - [ ] **Step 2: Run test to verify it fails** — `go test ./internal/tui/ -run 'TOpensTag|TGatedOn|TagsMsg|SpaceToggles' -v` → FAIL.
 
@@ -383,6 +387,8 @@ func TestSpaceTogglesTag(t *testing.T) {
 			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
 				e := es.entries[es.idx]
 				es.mode = entriesTags
+				es.msg = "" // clear any prior success/error (e.g. "Entry saved.") from the picker
+				es.msgErr = false
 				es.tagLoading = true
 				es.tagEntryID = e.ID
 				es.tagIdx = 0
@@ -393,7 +399,7 @@ func TestSpaceTogglesTag(t *testing.T) {
 				}
 				es.tagAll = append([]string(nil), e.EntryTags...) // shown until the fetch lands
 				m.entriesScreen = es
-				return m, m.tagsFetchCmd(e.ID)
+				return m, m.tagsFetchCmd()
 			}
 ```
 
@@ -403,7 +409,9 @@ func TestSpaceTogglesTag(t *testing.T) {
 // tagsMsg carries the workspace's time-entry tags for the picker.
 type tagsMsg struct{ tags []string }
 
-func (m Model) tagsFetchCmd(entryID string) tea.Cmd {
+// tagsFetchCmd fetches the workspace's time-entry tags (the entry id isn't
+// needed — tags are workspace-scoped; the target entry is es.tagEntryID).
+func (m Model) tagsFetchCmd() tea.Cmd {
 	if m.demo {
 		return demoTagsFetchCmd()
 	}
@@ -425,6 +433,9 @@ In `app.go` `Update` (top-level switch):
 
 ```go
 	case tagsMsg:
+		if m.screen != screenEntries {
+			return m, nil // stale: the user left the browser before the fetch landed
+		}
 		es := m.entriesScreen
 		es.tagLoading = false
 		es.tagAll = unionSortedTags(msg.tags, es.tagAll) // fetched ∪ current, deduped+sorted
@@ -468,7 +479,7 @@ func unionSortedTags(a, b []string) []string {
 			if es.tagIdx < len(es.tagAll)-1 {
 				es.tagIdx++
 			}
-		case " ": // space toggles the tag under the cursor
+		case " ", "space": // space toggles the tag under the cursor (house idiom, cf. updateMembers)
 			if len(es.tagAll) > 0 {
 				name := es.tagAll[es.tagIdx]
 				es.tagSel[name] = !es.tagSel[name]
@@ -524,6 +535,8 @@ Add the small helper `tagPickerTaskName(es entriesModel) string` returning the t
 
 with a helper `tagBadges(tags []string) string` → `"#focus #client-A"` (space-joined, each prefixed `#`).
 
+Also update the `entriesList` help line (currently `"↑/↓ select · e: edit · x: delete · h: history · Esc: back"`) to include the new binding: `"↑/↓ select · e: edit · x: delete · t: tags · h: history · Esc: back"` — so the in-TUI help and the README (Task 5) agree.
+
 - [ ] **Step 3g: Demo tag fetch + fixture** — in `demo.go`:
 
 ```go
@@ -534,7 +547,7 @@ func demoTagsFetchCmd() tea.Cmd {
 }
 ```
 
-And give at least one demo self-owned entry some `EntryTags` in `demoEntries` (e.g. `EntryTags: []string{"focus"}`) so the picker seeds a selection and the row shows tags.
+And give at least one demo self-owned entry (UserID == `demoSelfID`) some `EntryTags` so the picker seeds a selection and the row shows tags. The `mk(...)` fixture helper (`demo.go`) has no tags parameter — don't change its signature; instead post-assign the field on the built slice in `demoEntries`, e.g. after the entries are constructed: `entries[0].EntryTags = []string{"focus"}` (pick a self-owned index).
 
 - [ ] **Step 4: Run tests to verify they pass** — `go test ./internal/tui/ -run 'TOpensTag|TGatedOn|TagsMsg|SpaceToggles' -v` → PASS. `go build ./...`; `go test ./internal/tui/ -race`.
 
@@ -562,18 +575,14 @@ git commit -m "feat(tui): time-entry tag picker (fetch, multi-select, row displa
 package tui
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-func openTagPicker(m Model, fetched []string) Model {
-	next, _ := m.Update(keyRunes("t"))
-	m = next.(Model)
-	next, _ = m.Update(tagsMsg{tags: fetched})
-	return next.(Model)
-}
+// openTagPicker is defined in entries_tags_test.go (Task 3) and reused here.
 
 func TestNewTagAddsAndSelects(t *testing.T) {
 	m := newTestModel()
@@ -630,18 +639,9 @@ func TestSaveRecordsDemoOverrideAndReloads(t *testing.T) {
 	if !ok {
 		t.Fatalf("save did not record a demo override")
 	}
-	if !contains2(ov.EntryTags, "client-A") || !contains2(ov.EntryTags, "focus") {
+	if !slices.Contains(ov.EntryTags, "client-A") || !slices.Contains(ov.EntryTags, "focus") {
 		t.Errorf("override EntryTags = %v, want focus+client-A", ov.EntryTags)
 	}
-}
-
-func contains2(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 ```
 
@@ -691,7 +691,7 @@ func contains2(ss []string, s string) bool {
 			if es.tagIdx < len(es.tagAll)-1 {
 				es.tagIdx++
 			}
-		case " ":
+		case " ", "space":
 			if len(es.tagAll) > 0 {
 				name := es.tagAll[es.tagIdx]
 				es.tagSel[name] = !es.tagSel[name]
@@ -768,7 +768,22 @@ func (m Model) setTagsCmd(entryID string, desired []string) tea.Cmd {
 
 > If Task 2's spike forced `SetTimeEntryTags(ctx, teamID, entryID, current, desired)`, pass the entry's current tags here (`entryByID(m.entriesScreen.entries, entryID).EntryTags`).
 
-- [ ] **Step 4: Run tests to verify they pass** — `go test ./internal/tui/ -run 'NewTagAdds|SaveRecords' -v` → PASS. Also add the new-tag input line to the picker view (Task 3's view branch): when `es.tagNewMode`, render `es.input.View()` under the list. `go build ./...`; `go test ./internal/tui/ -race`.
+- [ ] **Step 3c: Render the new-tag input in the picker view** — extend the `entriesTags` view branch (Task 3 Step 3e) so that when `es.tagNewMode`, the input and a mode-specific help line replace the toggle help line (without it the user types a new tag blind):
+
+```go
+		if es.tagNewMode {
+			b += "\n" + es.input.View() + "\n"
+			b += "\n" + styleHelp.Render("Enter: add · Esc: back")
+			if es.msg != "" {
+				b += "\n" + styleErr.Render(es.msg)
+			}
+			return b
+		}
+```
+
+Place this immediately after the tag-list loop and before the normal (list-mode) help line, so new-tag mode shows the input + "Enter: add · Esc: back" and list mode shows "↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel".
+
+- [ ] **Step 4: Run tests to verify they pass** — `go test ./internal/tui/ -run 'NewTagAdds|SaveRecords' -v` → PASS. `go build ./...`; `go test ./internal/tui/ -race`.
 
 - [ ] **Step 5: Commit**
 
@@ -810,4 +825,6 @@ git commit -m "docs: document editing a time entry's tags (#125)"
 
 **Type consistency:** `EntryTags` (Task 1) consumed in 3/4; `tagsMsg`/`tagsFetchCmd`/picker state (Task 3) consumed in 4; `setTagsCmd` + `demoOverrides` reuse (Task 4). Reused v1.8 infra (`canEdit`, `entriesErr`, `reloadForBrowser`, `demoEntriesSnapshot`) verified present. ✅
 
-**Known risks handed to the reviewer:** (a) the tag-set mechanism is spike-gated and may change `SetTimeEntryTags`'s signature — Task 2; (b) the space-key string in `updateEntries` must match the framework — Task 3 note; (c) staticcheck is in the gate now (v1.8 lesson).
+**Fable spec+plan review folded in:** C1 — space key uses `case " ", "space":` (house idiom) and tests drive it with `key(" ")`, not `key("space")` (which sends 5 runes and would never toggle); I1 — mechanism-(b) DELETE carries a body via `c.do(...MethodDelete...body...)` (`del` has none); I2 — Task 2 test uses `strings.SplitN`/`strings.Contains` (no invented `contains`/`indexSpaceSpace`, no dead assertion); I3 — Task 4 test uses `slices.Contains` (no `contains2`); I4 — `entriesList` help line gains `· t: tags`; I5 — the `t` handler clears `es.msg`/`es.msgErr` so a prior "Entry saved." doesn't render red in the picker; M1 — `tagsFetchCmd()` drops the unused param; M2 — spec §6 duplicate-name wording aligned; M3 — demo `EntryTags` post-assigned (no `mk` signature change); M4 — `openTagPicker` defined in Task 3, reused in Task 4; M5 — `tagsMsg` staleness guard; M6 — new-tag input view moved into a real impl step (Task 4 Step 3c).
+
+**Known residual risks handed to the reviewer:** (a) the tag-set mechanism is spike-gated and may change `SetTimeEntryTags`'s signature (`current` param ripples to Task 4's caller) — flagged at both sites; (b) staticcheck is in the gate now (v1.8 lesson — SA4006 broke that CI run).

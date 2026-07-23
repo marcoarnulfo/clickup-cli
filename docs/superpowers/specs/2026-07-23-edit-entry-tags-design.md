@@ -84,9 +84,10 @@ call to confirm), it does not silently drop the feature.
   - `tagLoading bool`, `tagEntryID string`.
 - Keys (list mode): `↑/↓`/`k/j` move · `space` toggle the tag under the cursor ·
   `n` → new-tag input · `enter` save · `esc` cancel (back to `entriesList`).
-- Keys (new-tag input mode): type the name; `enter` adds it to `tagAll`
-  (if absent) and selects it, returns to list mode with the cursor on it;
-  `esc` cancels the input (back to list). A blank or duplicate name is a no-op.
+- Keys (new-tag input mode): type the name; `enter` selects that tag (adding it
+  to `tagAll` if absent) and returns to list mode with the cursor on it — so a
+  **duplicate** name just selects the existing tag, and a **blank** name is a
+  no-op; `esc` cancels the input (back to list).
 - View: `Tags: <task name>`, then the tag list with `[x]`/`[ ]` and a cursor,
   then (in new-tag mode) the input line, then the help line. `tagLoading` shows
   "Loading tags…".
