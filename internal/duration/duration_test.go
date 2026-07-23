@@ -54,3 +54,42 @@ func TestFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatHours(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{90 * time.Minute, "1.50h"},
+		{0, "0.00h"},
+		{45 * time.Minute, "0.75h"},
+		{2 * time.Hour, "2.00h"},
+	}
+	for _, c := range cases {
+		if got := FormatHours(c.d); got != c.want {
+			t.Errorf("FormatHours(%v) = %q, want %q", c.d, got, c.want)
+		}
+	}
+}
+
+func TestRound(t *testing.T) {
+	q := 15 * time.Minute
+	cases := []struct {
+		name   string
+		d, inc time.Duration
+		mode   RoundMode
+		want   time.Duration
+	}{
+		{"off-zero-inc", 7 * time.Minute, 0, RoundNearest, 7 * time.Minute},
+		{"nearest-up", 8 * time.Minute, q, RoundNearest, 15 * time.Minute},
+		{"nearest-down", 7 * time.Minute, q, RoundNearest, 0},
+		{"nearest-exact", 30 * time.Minute, q, RoundNearest, 30 * time.Minute},
+		{"up-any", 1 * time.Minute, q, RoundUp, 15 * time.Minute},
+		{"up-exact", 30 * time.Minute, q, RoundUp, 30 * time.Minute},
+	}
+	for _, c := range cases {
+		if got := Round(c.d, c.inc, c.mode); got != c.want {
+			t.Errorf("%s: Round(%v,%v)=%v want %v", c.name, c.d, c.inc, got, c.want)
+		}
+	}
+}
