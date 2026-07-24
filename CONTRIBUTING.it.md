@@ -49,6 +49,21 @@ go test ./... -race
 go build ./...
 ```
 
+### Golden file
+
+L'output renderizzato della TUI è bloccato dai golden file in
+`internal/tui/testdata/`. Quando una modifica cambia una schermata di
+proposito, rigenerali e **leggi il diff prima di committare** — quel diff è
+la review della tua modifica alla UI:
+
+    go test ./internal/tui -update
+    git diff internal/tui/testdata
+
+Le screen golden vengono renderizzate con i colori disattivati, così restano
+leggibili in un diff. `palette_light.golden` e `palette_dark.golden`
+catturano il colore di ogni token del tema e sono gli unici golden a
+contenere sequenze di escape.
+
 ## Struttura del progetto e convenzioni
 
 ```
