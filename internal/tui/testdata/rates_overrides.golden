@@ -1,0 +1,11 @@
+Billing settings
+                
+ Lists   Members  [Overrides]  Rules 
+
+  List                 Member                       Rate  Instead of
+▸ + new (list,member) override
+
+No (list,member) overrides — the most specific level of the precedence.
+
+Tab: section · ↑/↓ select · Enter: edit (0: bill at zero) · n: new override · d: delete · s: save · Esc: cancel
+Rate precedence: (list,member) > member > list > default
