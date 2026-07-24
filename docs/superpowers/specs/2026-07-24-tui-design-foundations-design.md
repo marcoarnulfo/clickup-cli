@@ -32,10 +32,11 @@ one establishes.
 ## 3. Current state (measured, not assumed)
 
 - `internal/tui` is ~10k lines over 37 files.
-- `styles.go` is 17 lines: 4 color vars (`colAccent` 205, `colDim` 240,
-  `colErr` 196, `colOK` 42) and 6 style vars (`styleTitle`, `styleHelp`,
-  `styleErr`, `styleAccent`, `styleOK`, `styleBox`), plus the `newTextInput` /
-  `newNumberInput` helpers.
+- `styles.go` is 17 lines and holds *nothing but* vars: 4 colors (`colAccent`
+  205, `colDim` 240, `colErr` 196, `colOK` 42) and 6 styles (`styleTitle`,
+  `styleHelp`, `styleErr`, `styleAccent`, `styleOK`, `styleBox`). The
+  `newTextInput` / `newNumberInput` helpers live in `setup.go` and are not
+  touched by this work.
 - Those styles are read at **146 sites across 16 files**.
 - 12 sub-model `view()` methods take no styling parameter; 4 render helpers
   (`historyLine`, `browserRow`, `ratesModel.tabs`, `billingRow`) use styles
@@ -136,8 +137,8 @@ force-color variable by hand is unjustified surface area.
 - **Create** `internal/tui/golden_test.go` — the `golden` helper, the `-update`
   flag, and `testTheme(dark bool) theme`.
 - **Create** `internal/tui/testdata/*.golden`.
-- **Rename** `internal/tui/styles.go` → `internal/tui/inputs.go`, keeping only
-  `newTextInput` / `newNumberInput`. All style and color vars are deleted.
+- **Delete** `internal/tui/styles.go` outright — it holds only the vars that
+  `theme.go` replaces.
 - **Modify** `internal/tui/app.go` — `theme` field on `Model`, built in `New()`;
   every `view()` call site passes it.
 - **Modify** the 15 remaining files that read styles.
@@ -152,8 +153,7 @@ force-color variable by hand is unjustified surface area.
    sets `Light == Dark` to today's values (205/240/196/42), so the task-1
    goldens must stay **byte-identical**.
 3. **The 6 large files** (`report`, `entries`, `log`, `filters`, `rates`,
-   `rates_view`), deletion of the package vars, `styles.go` → `inputs.go`.
-   Goldens still byte-identical.
+   `rates_view`), then `styles.go` is deleted. Goldens still byte-identical.
 4. **The real adaptive palette.** `Light` values diverge from `Dark`;
    `palette_light` / `palette_dark` goldens are added, plus regression tests for
    `NO_COLOR` and `CLICOLOR_FORCE`. Screen goldens remain byte-identical —
