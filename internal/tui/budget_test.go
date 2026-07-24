@@ -13,7 +13,7 @@ func TestBudgetViewRendersProgressBar(t *testing.T) {
 		{ListID: "list-1", ListName: "Website", Currency: "EUR",
 			Budget: 1000, Billed: 600, Remaining: 400, PercentUsed: 60},
 	}
-	out := newBudget(lines).view()
+	out := newBudget(lines).view(testTheme(true))
 	for _, want := range []string{"Website", "60%", "600.00", "1000.00", "EUR"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("budget view missing %q; got:\n%s", want, out)
@@ -25,7 +25,7 @@ func TestBudgetViewRendersProgressBar(t *testing.T) {
 }
 
 func TestBudgetViewEmptyShowsMessage(t *testing.T) {
-	out := newBudget(nil).view()
+	out := newBudget(nil).view(testTheme(true))
 	if !strings.Contains(out, "No budgets") {
 		t.Errorf("empty budget view should say no budgets are configured; got:\n%s", out)
 	}

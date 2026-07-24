@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -77,6 +78,11 @@ type Model struct {
 	demo   bool // demo mode (fake data, no API)
 	screen screen
 	err    error
+
+	// theme carries every style the views render through (#54). It is passed
+	// explicitly to each view rather than read from package state, so a view
+	// can never render with an unset theme.
+	theme theme
 
 	// latestVersion is the newer published release, "" when up to date or
 	// unknown (the check hasn't returned yet, is disabled, or failed silently).
@@ -163,6 +169,7 @@ func New(cfg config.Config) Model {
 		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
+		theme:  newTheme(lipgloss.DefaultRenderer(), defaultPalette()),
 	}
 	// Best-effort default so range/label display works before the first report
 	// build; a genuinely invalid configured zone is caught and surfaced by
@@ -860,7 +867,7 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) View() string {
 	switch m.screen {
 	case screenSetup:
-		return m.setup.view()
+		return m.setup.view(m.theme)
 	case screenHome:
 		timerLine := ""
 		if m.runningTimer != nil {
@@ -868,32 +875,33 @@ func (m Model) View() string {
 				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label + "   (c: manage)"
 			}
 		}
-		return m.home.view(m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
+		return m.home.view(m.theme, m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
 	case screenLoading:
-		return styleTitle.Render("Loading hours…")
+		return m.theme.Title.Render("Loading hours…")
 	case screenReport:
 		return m.rep.view()
 	case screenExport:
-		return m.export.view()
+		return m.export.view(m.theme)
 	case screenRates:
 		return m.ratesScreen.view()
 	case screenLog:
 		m.logScreen.now = m.now()
 		return m.logScreen.view()
 	case screenMembers:
-		return m.membersScreen.view()
+		return m.membersScreen.view(m.theme)
 	case screenRange:
-		return m.rangeScreen.view()
+		return m.rangeScreen.view(m.theme)
 	case screenFilters:
 		return m.filtersScreen.view()
 	case screenListBrowser:
-		return m.browserScreen.view()
+		return m.browserScreen.view(m.theme)
 	case screenBudget:
-		return m.budgetScreen.view()
+		return m.budgetScreen.view(m.theme)
 	case screenEntries:
 		return m.entriesView()
 	case screenError:
-		return styleErr.Render("Error: ") + m.err.Error() + "\n\n" + styleHelp.Render("press a key to return home")
+		return m.theme.Err.Render("Error: ") + m.err.Error() + "\n\n" +
+			m.theme.Help.Render("press a key to return home")
 	}
 	return ""
 }

@@ -101,7 +101,7 @@ func goldenEntries() []report.TimeEntry {
 func TestGoldenHome(t *testing.T) {
 	t.Parallel()
 	m := goldenModel()
-	golden(t, "home", m.home.view("July 2026", "me", "", "", ""))
+	golden(t, "home", m.home.view(testTheme(true), "July 2026", "me", "", "", ""))
 }
 
 func TestGoldenHomeWithNotices(t *testing.T) {
@@ -110,7 +110,7 @@ func TestGoldenHomeWithNotices(t *testing.T) {
 	m.home.errText = "request failed: 500"
 	// The timer line is the string app.go builds for a running timer; keep it
 	// verbatim so the golden depicts something the app actually renders.
-	golden(t, "home_notices", m.home.view("July 2026", "team", "Members: 2/3", "v1.9.0",
+	golden(t, "home_notices", m.home.view(testTheme(true), "July 2026", "team", "Members: 2/3", "v1.9.0",
 		"⏱  running on Landing page — 00:12:30   (c: manage)"))
 }
 
@@ -121,7 +121,7 @@ func TestGoldenReport(t *testing.T) {
 
 func TestGoldenExport(t *testing.T) {
 	t.Parallel()
-	golden(t, "export", newExport(goldenReport()).view())
+	golden(t, "export", newExport(goldenReport()).view(testTheme(true)))
 }
 
 func TestGoldenBudget(t *testing.T) {
@@ -130,23 +130,23 @@ func TestGoldenBudget(t *testing.T) {
 		{ListID: "l1", ListName: "Website", Currency: "EUR",
 			Budget: 1000, Billed: 625, Remaining: 375, PercentUsed: 62.5},
 	}
-	golden(t, "budget", newBudget(lines).view())
+	golden(t, "budget", newBudget(lines).view(testTheme(true)))
 }
 
 func TestGoldenBudgetEmpty(t *testing.T) {
 	t.Parallel()
-	golden(t, "budget_empty", newBudget(nil).view())
+	golden(t, "budget_empty", newBudget(nil).view(testTheme(true)))
 }
 
 func TestGoldenMembers(t *testing.T) {
 	t.Parallel()
 	members := []clickup.Member{{ID: 1, Username: "Marco"}, {ID: 2, Username: "Ada"}}
-	golden(t, "members", newMembers(members, map[int]bool{1: true}).view())
+	golden(t, "members", newMembers(members, map[int]bool{1: true}).view(testTheme(true)))
 }
 
 func TestGoldenRange(t *testing.T) {
 	t.Parallel()
-	golden(t, "range", newRange(report.PresetThisMonth).view())
+	golden(t, "range", newRange(report.PresetThisMonth).view(testTheme(true)))
 }
 
 func TestGoldenFilters(t *testing.T) {
@@ -156,7 +156,7 @@ func TestGoldenFilters(t *testing.T) {
 
 func TestGoldenSetup(t *testing.T) {
 	t.Parallel()
-	golden(t, "setup", newSetup().view())
+	golden(t, "setup", newSetup().view(testTheme(true)))
 }
 
 func TestGoldenListBrowser(t *testing.T) {
@@ -165,7 +165,7 @@ func TestGoldenListBrowser(t *testing.T) {
 		origin: screenLog,
 		spaces: []clickup.Space{{ID: "s1", Name: "Clients"}, {ID: "s2", Name: "Internal"}},
 	}
-	golden(t, "listbrowser", bs.view())
+	golden(t, "listbrowser", bs.view(testTheme(true)))
 }
 
 func TestGoldenHistory(t *testing.T) {

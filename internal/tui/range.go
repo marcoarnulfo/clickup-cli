@@ -143,14 +143,14 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (rs rangeModel) view() string {
-	b := styleTitle.Render("Report range") + "\n\n"
+func (rs rangeModel) view(th theme) string {
+	b := th.Title.Render("Report range") + "\n\n"
 	for i, p := range rangePresets {
 		cursor := "  "
 		line := p.label
 		if i == rs.idx {
 			cursor = "▸ "
-			line = styleAccent.Render(line)
+			line = th.Accent.Render(line)
 		}
 		b += cursor + line + "\n"
 	}
@@ -158,12 +158,12 @@ func (rs rangeModel) view() string {
 		b += "\n" + rs.fromInput.View() + "\n" + rs.toInput.View() + "\n"
 	}
 	if rs.msg != "" {
-		b += "\n" + styleErr.Render(rs.msg)
+		b += "\n" + th.Err.Render(rs.msg)
 	}
 	help := "↑/↓ select · Enter: choose/next · Esc: back"
 	if rs.editing {
 		help = "Tab: from/to · Enter: confirm · Esc: cancel"
 	}
-	b += "\n" + styleHelp.Render(help)
+	b += "\n" + th.Help.Render(help)
 	return b
 }
