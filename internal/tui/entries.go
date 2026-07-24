@@ -52,7 +52,7 @@ type entriesModel struct {
 	idx     int
 	mode    entriesMode
 	msg     string
-	msgErr  bool // true → render msg with styleErr; false → styleOK (success)
+	msgErr  bool // render msg with th.Err; false → th.OK
 
 	// edit form (Task 7), modeled on logModel's logForm sequence: Duration →
 	// Date → Time → Note → Billable. editStep indexes the field being edited
@@ -571,26 +571,26 @@ func reloadForBrowser(m Model, status string) tea.Msg {
 	return entriesReloadedMsg{entries: entries, status: status}
 }
 
-func (m Model) entriesView() string {
+func (m Model) entriesView(th theme) string {
 	es := m.entriesScreen
 	if es.mode == entriesConfirmDelete && len(es.entries) > 0 {
 		e := es.entries[es.idx]
-		return styleTitle.Render("Delete entry") + "\n\n" +
-			"Delete " + styleAccent.Render(truncate(e.TaskName, 40)) + " (" +
+		return th.Title.Render("Delete entry") + "\n\n" +
+			"Delete " + th.Accent.Render(truncate(e.TaskName, 40)) + " (" +
 			duration.FormatHours(e.Duration) + ")?\n\n" +
-			styleHelp.Render("y: delete · any other key: cancel")
+			th.Help.Render("y: delete · any other key: cancel")
 	}
 	if es.mode == entriesEdit {
-		return entriesEditView(es)
+		return entriesEditView(th, es)
 	}
 	if es.mode == entriesHistory {
-		return entriesHistoryView(es, m.loc)
+		return entriesHistoryView(th, es, m.loc)
 	}
 	if es.mode == entriesTags {
-		b := styleTitle.Render("Tags") + "  " + styleAccent.Render(truncate(tagPickerTaskName(es), 40)) + "\n\n"
+		b := th.Title.Render("Tags") + "  " + th.Accent.Render(truncate(tagPickerTaskName(es), 40)) + "\n\n"
 		if es.tagLoading {
-			b += styleHelp.Render("Loading tags…") + "\n"
-			return b + "\n" + styleHelp.Render("Esc: cancel")
+			b += th.Help.Render("Loading tags…") + "\n"
+			return b + "\n" + th.Help.Render("Esc: cancel")
 		}
 		for i, name := range es.tagAll {
 			cursor := "  "
@@ -601,31 +601,31 @@ func (m Model) entriesView() string {
 			line := box + " " + name
 			if i == es.tagIdx {
 				cursor = "▸ "
-				line = styleAccent.Render(line)
+				line = th.Accent.Render(line)
 			}
 			b += cursor + line + "\n"
 		}
 		if len(es.tagAll) == 0 {
-			b += styleHelp.Render("No tags yet.") + "\n"
+			b += th.Help.Render("No tags yet.") + "\n"
 		}
 		if es.tagNewMode {
 			b += "\n" + es.input.View() + "\n"
-			b += "\n" + styleHelp.Render("Enter: add · Esc: back")
+			b += "\n" + th.Help.Render("Enter: add · Esc: back")
 			if es.msg != "" {
-				b += "\n" + styleErr.Render(es.msg)
+				b += "\n" + th.Err.Render(es.msg)
 			}
 			return b
 		}
-		b += "\n" + styleHelp.Render("↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel")
+		b += "\n" + th.Help.Render("↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel")
 		if es.msg != "" {
-			b += "\n" + styleErr.Render(es.msg)
+			b += "\n" + th.Err.Render(es.msg)
 		}
 		return b
 	}
-	b := styleTitle.Render("Entries") + "\n\n"
+	b := th.Title.Render("Entries") + "\n\n"
 	if len(es.entries) == 0 {
-		b += styleHelp.Render("No entries in the current range.") + "\n"
-		b += "\n" + styleHelp.Render("Esc: back to the report")
+		b += th.Help.Render("No entries in the current range.") + "\n"
+		b += "\n" + th.Help.Render("Esc: back to the report")
 		return b
 	}
 	for i, e := range es.entries {
@@ -648,15 +648,15 @@ func (m Model) entriesView() string {
 			line += "  " + truncate(tagBadges(e.EntryTags), 20)
 		}
 		if i == es.idx {
-			line = styleAccent.Render(line)
+			line = th.Accent.Render(line)
 		}
 		b += cursor + line + "\n"
 	}
-	b += "\n" + styleHelp.Render("↑/↓ select · e: edit · x: delete · t: tags · h: history · Esc: back")
+	b += "\n" + th.Help.Render("↑/↓ select · e: edit · x: delete · t: tags · h: history · Esc: back")
 	if es.msg != "" {
-		style := styleOK
+		style := th.OK
 		if es.msgErr {
-			style = styleErr
+			style = th.Err
 		}
 		b += "\n" + style.Render(es.msg)
 	}
@@ -665,18 +665,18 @@ func (m Model) entriesView() string {
 
 // entriesEditView renders the multi-field edit form, mirroring logModel's
 // logForm rendering (see log.go view()).
-func entriesEditView(es entriesModel) string {
-	b := styleTitle.Render("Edit entry") + "\n\n"
+func entriesEditView(th theme, es entriesModel) string {
+	b := th.Title.Render("Edit entry") + "\n\n"
 	if es.editStep == 4 {
-		b += "Billable? " + styleAccent.Render("[Y/n]") + "   (Enter = yes)"
+		b += "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
 	} else {
 		labels := []string{"Duration", "Date (YYYY-MM-DD)", "Time (HH:MM)", "Note (optional)"}
 		b += labels[es.editStep] + ":\n\n" + es.input.View()
 	}
 	if es.msg != "" {
-		b += "\n" + styleErr.Render(es.msg)
+		b += "\n" + th.Err.Render(es.msg)
 	}
-	b += "\n\n" + styleHelp.Render("Esc: cancel")
+	b += "\n\n" + th.Help.Render("Esc: cancel")
 	return b
 }
 

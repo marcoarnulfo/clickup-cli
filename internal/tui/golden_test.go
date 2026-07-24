@@ -116,7 +116,7 @@ func TestGoldenHomeWithNotices(t *testing.T) {
 
 func TestGoldenReport(t *testing.T) {
 	t.Parallel()
-	golden(t, "report", newReport(goldenReport(), "").view())
+	golden(t, "report", newReport(goldenReport(), "").view(testTheme(true)))
 }
 
 func TestGoldenExport(t *testing.T) {
@@ -151,7 +151,7 @@ func TestGoldenRange(t *testing.T) {
 
 func TestGoldenFilters(t *testing.T) {
 	t.Parallel()
-	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view())
+	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view(testTheme(true)))
 }
 
 func TestGoldenSetup(t *testing.T) {
@@ -176,12 +176,12 @@ func TestGoldenHistory(t *testing.T) {
 		{Field: "billable", Before: "false", After: "true",
 			Date: time.Date(2026, time.July, 14, 11, 5, 0, 0, time.UTC), User: "Marco"},
 	}}
-	golden(t, "history", entriesHistoryView(es, time.UTC))
+	golden(t, "history", entriesHistoryView(testTheme(true), es, time.UTC))
 }
 
 func TestGoldenHistoryEmpty(t *testing.T) {
 	t.Parallel()
-	golden(t, "history_empty", entriesHistoryView(entriesModel{}, time.UTC))
+	golden(t, "history_empty", entriesHistoryView(testTheme(true), entriesModel{}, time.UTC))
 }
 
 func TestGoldenRatesTabs(t *testing.T) {
@@ -198,7 +198,7 @@ func TestGoldenRatesTabs(t *testing.T) {
 	} {
 		rt := newRates(goldenEntries(), cfg)
 		rt.sec = tc.sec
-		golden(t, tc.name, rt.view())
+		golden(t, tc.name, rt.view(testTheme(true)))
 	}
 }
 
@@ -206,7 +206,7 @@ func TestGoldenLog(t *testing.T) {
 	t.Parallel()
 	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"}, screenReport)
 	lg.now = goldenFixedTime
-	golden(t, "log", lg.view())
+	golden(t, "log", lg.view(testTheme(true)))
 }
 
 // The entries browser has no constructor: it is built inline when 'v' is

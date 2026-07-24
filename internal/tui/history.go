@@ -11,21 +11,21 @@ import (
 // from the entries browser: one line per recorded change, chronological
 // (oldest first, as returned by clickup.TimeEntryHistory). Read-only — no
 // selection, no ownership gating, just Esc back to the list.
-func entriesHistoryView(es entriesModel, loc *time.Location) string {
-	b := styleTitle.Render("Entry history") + "\n\n"
+func entriesHistoryView(th theme, es entriesModel, loc *time.Location) string {
+	b := th.Title.Render("Entry history") + "\n\n"
 	if len(es.historyChanges) == 0 {
-		b += styleHelp.Render("No recorded changes for this entry.") + "\n"
+		b += th.Help.Render("No recorded changes for this entry.") + "\n"
 	} else {
 		for _, c := range es.historyChanges {
-			b += historyLine(c, loc) + "\n"
+			b += historyLine(th, c, loc) + "\n"
 		}
 	}
-	b += "\n" + styleHelp.Render("Esc: back to entries")
+	b += "\n" + th.Help.Render("Esc: back to entries")
 	return b
 }
 
 // historyLine formats one HistoryChange as "<when>  <field>: <before> -> <after>  (<user>)".
-func historyLine(c clickup.HistoryChange, loc *time.Location) string {
+func historyLine(th theme, c clickup.HistoryChange, loc *time.Location) string {
 	when := "unknown time"
 	if !c.Date.IsZero() {
 		when = c.Date.In(locOr(loc)).Format("02 Jan 15:04")
@@ -34,5 +34,5 @@ func historyLine(c clickup.HistoryChange, loc *time.Location) string {
 	if who == "" {
 		who = "unknown user"
 	}
-	return fmt.Sprintf("%s  %s: %q -> %q  (%s)", when, styleAccent.Render(c.Field), c.Before, c.After, who)
+	return fmt.Sprintf("%s  %s: %q -> %q  (%s)", when, th.Accent.Render(c.Field), c.Before, c.After, who)
 }

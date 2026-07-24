@@ -873,31 +873,31 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 
 // ------------------------------------------------------------------- view --
 
-func (rt ratesModel) view() string {
-	b := styleTitle.Render("Billing settings") + "\n" + rt.tabs() + "\n\n"
+func (rt ratesModel) view(th theme) string {
+	b := th.Title.Render("Billing settings") + "\n" + rt.tabs(th) + "\n\n"
 
 	if rt.draft.active && rt.draft.step != draftRate {
-		b += rt.draftView()
+		b += rt.draftView(th)
 	} else {
 		switch rt.sec {
 		case secLists:
-			b += rt.listsView()
+			b += rt.listsView(th)
 		case secMembers:
-			b += rt.membersView()
+			b += rt.membersView(th)
 		case secOverrides:
-			b += rt.overridesView()
+			b += rt.overridesView(th)
 		default:
-			b += rt.rulesView()
+			b += rt.rulesView(th)
 		}
 	}
 	if rt.editing {
 		b += "\n" + rt.input.View() + "\n"
 	}
 	if rt.msg != "" {
-		b += "\n" + styleErr.Render(rt.msg) + "\n"
+		b += "\n" + th.Err.Render(rt.msg) + "\n"
 	}
-	b += "\n" + styleHelp.Render(rt.help())
-	b += "\n" + styleHelp.Render("Rate precedence: (list,member) > member > list > default")
+	b += "\n" + th.Help.Render(rt.help())
+	b += "\n" + th.Help.Render("Rate precedence: (list,member) > member > list > default")
 	return b
 }
 

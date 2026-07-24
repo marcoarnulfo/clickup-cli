@@ -879,26 +879,26 @@ func (m Model) View() string {
 	case screenLoading:
 		return m.theme.Title.Render("Loading hours…")
 	case screenReport:
-		return m.rep.view()
+		return m.rep.view(m.theme)
 	case screenExport:
 		return m.export.view(m.theme)
 	case screenRates:
-		return m.ratesScreen.view()
+		return m.ratesScreen.view(m.theme)
 	case screenLog:
 		m.logScreen.now = m.now()
-		return m.logScreen.view()
+		return m.logScreen.view(m.theme)
 	case screenMembers:
 		return m.membersScreen.view(m.theme)
 	case screenRange:
 		return m.rangeScreen.view(m.theme)
 	case screenFilters:
-		return m.filtersScreen.view()
+		return m.filtersScreen.view(m.theme)
 	case screenListBrowser:
 		return m.browserScreen.view(m.theme)
 	case screenBudget:
 		return m.budgetScreen.view(m.theme)
 	case screenEntries:
-		return m.entriesView()
+		return m.entriesView(m.theme)
 	case screenError:
 		return m.theme.Err.Render("Error: ") + m.err.Error() + "\n\n" +
 			m.theme.Help.Render("press a key to return home")
