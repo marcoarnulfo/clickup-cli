@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
@@ -39,25 +41,6 @@ func TestDefaultPaletteKeepsCurrentDarkColors(t *testing.T) {
 	}
 }
 
-// Task 2 ships Light == Dark on purpose: the adaptive values land in Task 4,
-// so this task cannot change a single rendered byte. Task 4 deletes this test.
-func TestDefaultPaletteIsNotYetAdaptive(t *testing.T) {
-	t.Parallel()
-	p := defaultPalette()
-	for _, tc := range []struct {
-		name string
-		c    lipgloss.AdaptiveColor
-	}{
-		{"Primary", p.Primary}, {"Accent", p.Accent}, {"Muted", p.Muted},
-		{"Danger", p.Danger}, {"Success", p.Success},
-	} {
-		if tc.c.Light != tc.c.Dark {
-			t.Errorf("%s: Light %q != Dark %q; the adaptive split belongs to Task 4",
-				tc.name, tc.c.Light, tc.c.Dark)
-		}
-	}
-}
-
 // A theme built on a private renderer must not disturb the package default.
 func TestThemeRendererIsIsolated(t *testing.T) {
 	t.Parallel()
@@ -67,5 +50,86 @@ func TestThemeRendererIsIsolated(t *testing.T) {
 	_ = newTheme(r, defaultPalette())
 	if after := lipgloss.ColorProfile(); after != before {
 		t.Errorf("building a theme changed the default color profile: %v -> %v", before, after)
+	}
+}
+
+// paletteTheme renders with real colors, so the palette goldens capture the
+// exact escape sequences each token produces.
+func paletteTheme(dark bool) theme {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.TrueColor)
+	r.SetHasDarkBackground(dark)
+	return newTheme(r, defaultPalette())
+}
+
+// paletteSample renders one labelled line per style, so a single golden pins
+// every token's color.
+func paletteSample(th theme) string {
+	var b strings.Builder
+	for _, row := range []struct {
+		name string
+		st   lipgloss.Style
+	}{
+		{"Title", th.Title}, {"Help", th.Help}, {"Err", th.Err},
+		{"OK", th.OK}, {"Accent", th.Accent}, {"Box", th.Box},
+	} {
+		fmt.Fprintf(&b, "%-8s%s\n", row.name, row.st.Render(row.name))
+	}
+	return b.String()
+}
+
+func TestGoldenPaletteDark(t *testing.T) {
+	t.Parallel()
+	golden(t, "palette_dark", paletteSample(paletteTheme(true)))
+}
+
+func TestGoldenPaletteLight(t *testing.T) {
+	t.Parallel()
+	golden(t, "palette_light", paletteSample(paletteTheme(false)))
+}
+
+// The four tokens that are unreadable on white must differ between
+// backgrounds. Muted must NOT: 240 already clears 7:1 on white, so changing it
+// would be churn dressed up as accessibility.
+func TestPaletteIsAdaptive(t *testing.T) {
+	t.Parallel()
+	p := defaultPalette()
+	for _, tc := range []struct {
+		name string
+		c    lipgloss.AdaptiveColor
+	}{
+		{"Primary", p.Primary}, {"Accent", p.Accent},
+		{"Danger", p.Danger}, {"Success", p.Success},
+	} {
+		if tc.c.Light == tc.c.Dark {
+			t.Errorf("%s is not adaptive: Light == Dark == %q", tc.name, tc.c.Dark)
+		}
+	}
+	if p.Muted.Light != p.Muted.Dark {
+		t.Errorf("Muted was adapted (%q/%q) but reads fine on both backgrounds",
+			p.Muted.Light, p.Muted.Dark)
+	}
+}
+
+// NO_COLOR is honored by termenv inside lipgloss's renderer; this pins that
+// contract so a future lipgloss bump cannot silently break it.
+func TestNoColorProducesNoEscapes(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(r.Output().EnvColorProfile())
+	th := newTheme(r, defaultPalette())
+	out := paletteSample(th)
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("NO_COLOR=1 still produced escape sequences:\n%q", out)
+	}
+}
+
+// CLICOLOR_FORCE is the force-color variable termenv implements (FORCE_COLOR,
+// the npm convention, is deliberately not supported).
+func TestCliColorForceKeepsColor(t *testing.T) {
+	t.Setenv("CLICOLOR_FORCE", "1")
+	r := lipgloss.NewRenderer(io.Discard)
+	if got := r.Output().EnvColorProfile(); got == termenv.Ascii {
+		t.Error("CLICOLOR_FORCE=1 resolved to the Ascii profile, expected color")
 	}
 }

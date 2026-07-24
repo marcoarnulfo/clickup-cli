@@ -52,18 +52,24 @@ func newTheme(r *lipgloss.Renderer, p palette) theme {
 	}
 }
 
-// defaultPalette is the built-in palette. Light and Dark are deliberately
-// identical here: this keeps the theme refactor byte-for-byte invisible. The
-// adaptive Light values land with #63's second half.
+// defaultPalette is the built-in palette. Dark keeps the xterm indices the TUI
+// has always shipped, so a dark terminal renders exactly as before and a user's
+// customized 256-color palette is still honored (a hex triple would override
+// it). Light overrides only the tokens that are illegible on white, measured as
+// WCAG contrast against #FFFFFF:
+//
+//	205 -> 127   205 (#FF5FAF) is ~1.9:1 on white; 127 (#AF00AF) is ~7.5:1
+//	196 -> 124   196 (#FF0000) is ~4:1, under the 4.5:1 floor; 124 (#AF0000) ~8:1
+//	 42 ->  28    42 (#00D787) is ~1.8:1 on white;  28 (#008700) is ~6.5:1
+//
+// Muted (240, #585858) is left alone: it already clears 7:1 on white. Adaptive
+// means legible on both backgrounds, not different on both.
 func defaultPalette() palette {
-	dup := func(c string) lipgloss.AdaptiveColor {
-		return lipgloss.AdaptiveColor{Light: c, Dark: c}
-	}
 	return palette{
-		Primary: dup("205"), // magenta, ClickUp-ish
-		Accent:  dup("205"),
-		Muted:   dup("240"),
-		Danger:  dup("196"),
-		Success: dup("42"),
+		Primary: lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Accent:  lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Muted:   lipgloss.AdaptiveColor{Light: "240", Dark: "240"},
+		Danger:  lipgloss.AdaptiveColor{Light: "124", Dark: "196"},
+		Success: lipgloss.AdaptiveColor{Light: "28", Dark: "42"},
 	}
 }
