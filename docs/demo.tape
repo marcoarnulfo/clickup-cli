@@ -86,7 +86,8 @@ Sleep 700ms
 
 # Time-entry browser (v1.8, #94): 'v' from the report lists this range's
 # entries; glance at edit, at the delete confirm (declined, so nothing is
-# actually removed), and at the read-only history, then back to the report
+# actually removed), at the tag picker (#125: toggle an existing tag, add a
+# new one, save), and at the read-only history, then back to the report
 Type "v"
 Sleep 1400ms
 Type "e"
@@ -97,6 +98,24 @@ Type "x"
 Sleep 1200ms
 Type "n"
 Sleep 700ms
+Type "t"
+Sleep 1400ms
+Type " "
+Sleep 800ms
+Down
+Sleep 400ms
+Down
+Sleep 400ms
+Type " "
+Sleep 800ms
+Type "n"
+Sleep 700ms
+Type "launch"
+Sleep 700ms
+Enter
+Sleep 900ms
+Enter
+Sleep 1600ms
 Type "h"
 Sleep 1400ms
 Escape

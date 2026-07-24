@@ -11,18 +11,19 @@ import (
 
 // TimeEntry is a single time entry normalized from the ClickUp domain.
 type TimeEntry struct {
-	ID       string
-	TaskID   string
-	TaskName string
-	ListID   string
-	ListName string // the "project"
-	UserID   int
-	UserName string
-	Start    time.Time
-	Duration time.Duration
-	Tags     []string
-	Status   string
-	Billable bool
+	ID        string
+	TaskID    string
+	TaskName  string
+	ListID    string
+	ListName  string // the "project"
+	UserID    int
+	UserName  string
+	Start     time.Time
+	Duration  time.Duration
+	Tags      []string
+	EntryTags []string // the entry's own time-tracking tags (distinct from Tags = task tags)
+	Status    string
+	Billable  bool
 	// Description is the ClickUp time entry's free-text note. Carried through
 	// (not just aggregated over) so an edit (#94) can prefill and preserve it —
 	// without this, resubmitting a blank note would wipe the entry's ClickUp

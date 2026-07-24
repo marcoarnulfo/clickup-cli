@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -43,6 +44,7 @@ const (
 	entriesConfirmDelete             // Task 6
 	entriesEdit                      // Task 7
 	entriesHistory                   // Task 8
+	entriesTags                      // Task 3 (#125)
 )
 
 type entriesModel struct {
@@ -69,6 +71,14 @@ type entriesModel struct {
 	// history (Task 8): read-only change list opened with 'h', for ANY entry
 	// (not ownership-gated — it's read-only).
 	historyChanges []clickup.HistoryChange
+
+	// tag picker (#125)
+	tagAll     []string        // workspace tags ∪ the entry's current tags, sorted+deduped
+	tagSel     map[string]bool // selected set (seeded from EntryTags)
+	tagIdx     int
+	tagNewMode bool // typing a new tag name
+	tagLoading bool
+	tagEntryID string
 }
 
 // canEdit reports whether the authenticated user owns the entry. The userID != 0
@@ -157,10 +167,93 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.screen = screenLoading
 				return m, m.historyCmd(id)
 			}
+		case "t":
+			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
+				e := es.entries[es.idx]
+				es.mode = entriesTags
+				es.msg = "" // clear any prior success/error (e.g. "Entry saved.") from the picker
+				es.msgErr = false
+				es.tagLoading = true
+				es.tagEntryID = e.ID
+				es.tagIdx = 0
+				es.tagNewMode = false
+				es.tagSel = map[string]bool{}
+				for _, tg := range e.EntryTags {
+					es.tagSel[tg] = true
+				}
+				es.tagAll = append([]string(nil), e.EntryTags...) // shown until the fetch lands
+				m.entriesScreen = es
+				return m, m.tagsFetchCmd()
+			}
 		}
 	case entriesHistory:
 		if msg.String() == "esc" {
 			es.mode = entriesList
+		}
+	case entriesTags:
+		if es.tagNewMode {
+			switch msg.Type {
+			case tea.KeyEnter:
+				name := strings.TrimSpace(es.input.Value())
+				es.tagNewMode = false
+				if name != "" {
+					if !es.tagSel[name] {
+						es.tagSel[name] = true
+					}
+					if !slices.Contains(es.tagAll, name) {
+						es.tagAll = unionSortedTags(es.tagAll, []string{name})
+					}
+					// move cursor to the new tag
+					if i := slices.Index(es.tagAll, name); i >= 0 {
+						es.tagIdx = i
+					}
+				}
+				m.entriesScreen = es
+				return m, nil
+			case tea.KeyEsc:
+				es.tagNewMode = false
+				m.entriesScreen = es
+				return m, nil
+			}
+			var cmd tea.Cmd
+			es.input, cmd = es.input.Update(msg)
+			m.entriesScreen = es
+			return m, cmd
+		}
+		switch msg.String() {
+		case "esc":
+			es.mode = entriesList
+		case "up", "k":
+			if es.tagIdx > 0 {
+				es.tagIdx--
+			}
+		case "down", "j":
+			if es.tagIdx < len(es.tagAll)-1 {
+				es.tagIdx++
+			}
+		case " ", "space": // space toggles the tag under the cursor (house idiom, cf. updateMembers)
+			if len(es.tagAll) > 0 {
+				name := es.tagAll[es.tagIdx]
+				es.tagSel[name] = !es.tagSel[name]
+			}
+		case "n":
+			es.tagNewMode = true
+			es.input = newTextInput("New tag name")
+		case "enter":
+			desired := selectedTags(es.tagSel)
+			id := es.tagEntryID
+			es.mode = entriesList
+			m.entriesScreen = es
+			if m.demo { // record the demo override BEFORE building the cmd
+				if m.demoOverrides == nil {
+					m.demoOverrides = map[string]report.TimeEntry{}
+				}
+				base := entryByID(es.entries, id)
+				base.EntryTags = desired
+				m.demoOverrides[id] = base
+			}
+			m.screen = screenLoading
+			return m, m.setTagsCmd(id, desired)
 		}
 	case entriesConfirmDelete:
 		switch msg.String() {
@@ -357,6 +450,86 @@ func (m Model) updateEntryCmd(id string, start time.Time, dur time.Duration, not
 	}
 }
 
+// tagsMsg carries the workspace's time-entry tags for the picker.
+type tagsMsg struct{ tags []string }
+
+// tagsFetchCmd fetches the workspace's time-entry tags (the entry id isn't
+// needed — tags are workspace-scoped; the target entry is es.tagEntryID).
+func (m Model) tagsFetchCmd() tea.Cmd {
+	if m.demo {
+		return demoTagsFetchCmd()
+	}
+	c := m.client
+	teamID := m.cfg.WorkspaceID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		tags, err := c.TimeEntryTags(ctx, teamID)
+		if err != nil {
+			return entriesErr(err)
+		}
+		return tagsMsg{tags: tags}
+	}
+}
+
+// selectedTags returns the selected tag names, sorted (stable request bodies).
+func selectedTags(sel map[string]bool) []string {
+	var out []string
+	for name, on := range sel {
+		if on {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// entryByID returns a copy of the entry with the given id (zero value if absent).
+func entryByID(entries []report.TimeEntry, id string) report.TimeEntry {
+	for _, e := range entries {
+		if e.ID == id {
+			return e
+		}
+	}
+	return report.TimeEntry{}
+}
+
+// setTagsCmd saves the entry's tags (real API, replace-PUT) or relies on the
+// demo override already recorded on the Model (see the entriesTags "enter"
+// handler, which sets m.demoOverrides before this cmd is built) and reloads
+// the browser either way.
+func (m Model) setTagsCmd(entryID string, desired []string) tea.Cmd {
+	mm := m
+	if m.demo { // override already recorded in updateEntries
+		return func() tea.Msg { return reloadForBrowser(mm, "Tags saved.") }
+	}
+	c := m.client
+	teamID := m.cfg.WorkspaceID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := c.SetTimeEntryTags(ctx, teamID, entryID, desired); err != nil {
+			return entriesErr(err)
+		}
+		return reloadForBrowser(mm, "Tags saved.")
+	}
+}
+
+// unionSortedTags merges two tag lists, deduped and sorted, so a current tag
+// missing from the workspace fetch still appears in the picker.
+func unionSortedTags(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range append(append([]string(nil), a...), b...) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // historyCmd fetches entry id's change history (real: clickup.TimeEntryHistory;
 // demo: demoHistoryCmd) and returns historyMsg on success. A fetch error routes
 // through entriesErr (Task 6) so it shows inline in the browser, never a
@@ -413,6 +586,42 @@ func (m Model) entriesView() string {
 	if es.mode == entriesHistory {
 		return entriesHistoryView(es, m.loc)
 	}
+	if es.mode == entriesTags {
+		b := styleTitle.Render("Tags") + "  " + styleAccent.Render(truncate(tagPickerTaskName(es), 40)) + "\n\n"
+		if es.tagLoading {
+			b += styleHelp.Render("Loading tags…") + "\n"
+			return b + "\n" + styleHelp.Render("Esc: cancel")
+		}
+		for i, name := range es.tagAll {
+			cursor := "  "
+			box := "[ ]"
+			if es.tagSel[name] {
+				box = "[x]"
+			}
+			line := box + " " + name
+			if i == es.tagIdx {
+				cursor = "▸ "
+				line = styleAccent.Render(line)
+			}
+			b += cursor + line + "\n"
+		}
+		if len(es.tagAll) == 0 {
+			b += styleHelp.Render("No tags yet.") + "\n"
+		}
+		if es.tagNewMode {
+			b += "\n" + es.input.View() + "\n"
+			b += "\n" + styleHelp.Render("Enter: add · Esc: back")
+			if es.msg != "" {
+				b += "\n" + styleErr.Render(es.msg)
+			}
+			return b
+		}
+		b += "\n" + styleHelp.Render("↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel")
+		if es.msg != "" {
+			b += "\n" + styleErr.Render(es.msg)
+		}
+		return b
+	}
 	b := styleTitle.Render("Entries") + "\n\n"
 	if len(es.entries) == 0 {
 		b += styleHelp.Render("No entries in the current range.") + "\n"
@@ -435,12 +644,15 @@ func (m Model) entriesView() string {
 		if !canEdit(e, m.userID) {
 			line += " — read-only"
 		}
+		if len(e.EntryTags) > 0 {
+			line += "  " + truncate(tagBadges(e.EntryTags), 20)
+		}
 		if i == es.idx {
 			line = styleAccent.Render(line)
 		}
 		b += cursor + line + "\n"
 	}
-	b += "\n" + styleHelp.Render("↑/↓ select · e: edit · x: delete · h: history · Esc: back")
+	b += "\n" + styleHelp.Render("↑/↓ select · e: edit · x: delete · t: tags · h: history · Esc: back")
 	if es.msg != "" {
 		style := styleOK
 		if es.msgErr {
@@ -477,6 +689,30 @@ func ownerLabel(e report.TimeEntry, userID int) string {
 		return e.UserName
 	}
 	return fmt.Sprintf("user %d", e.UserID)
+}
+
+// tagPickerTaskName returns the task name of the entry currently open in the
+// tag picker (looked up by es.tagEntryID), or "" if it's no longer present
+// (e.g. it was deleted in another session while the picker was open).
+func tagPickerTaskName(es entriesModel) string {
+	for _, e := range es.entries {
+		if e.ID == es.tagEntryID {
+			return e.TaskName
+		}
+	}
+	return ""
+}
+
+// tagBadges renders tags compactly for the row list, e.g. "#focus #client-A".
+func tagBadges(tags []string) string {
+	out := ""
+	for i, t := range tags {
+		if i > 0 {
+			out += " "
+		}
+		out += "#" + t
+	}
+	return out
 }
 
 // locOr returns loc, or time.Local when nil (mirrors the Model's loc handling).

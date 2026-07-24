@@ -16,7 +16,7 @@
 - 💶 **Motore di fatturazione**: tariffe orarie di default, per-lista, per-membro e per-(lista,membro), split billable/non billable, arrotondamento configurabile e subtotali per valuta (multi-valuta, senza FX).
 - 🎯 **Budget per lista** con vista burn-down, per vedere a colpo d'occhio quanto budget di ogni progetto è già fatturato.
 - ⏱️ **Log ore** su ClickUp dalla TUI: guidato (lista → task), da ID/URL del task, o con timer start/stop.
-- ⏲️ **Timer live e gestione delle voci**: un indicatore live nella home per il timer in corso, e un browser per modificare, cancellare o consultare lo storico delle voci passate.
+- ⏲️ **Timer live e gestione delle voci**: un indicatore live nella home per il timer in corso, e un browser per modificare, cancellare, modificare i tag o consultare lo storico delle voci passate.
 - 📤 **Export** in CSV / JSON / Markdown / HTML self-contained (stampabile in PDF) / fattura CSV riga per riga.
 - ⌨️ TUI interattiva, guidata da tastiera (basata su [Charm](https://charm.sh) bubbletea).
 - 🔒 Il token resta in locale (file di config o variabile `CLICKUP_TOKEN`).
@@ -136,7 +136,7 @@ di setup.
 | `p` | Report | Apre la schermata **Impostazioni di fatturazione** (tariffe, valute, budget, arrotondamento, timezone) |
 | `b` | Report | Apre la vista **Burn-down budget** |
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status/billable) |
-| `v` | Report | Apre il **browser delle voci ore** (edit/delete/history) |
+| `v` | Report | Apre il **browser delle voci ore** (edit/delete/tag/history) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `c` | Home | Salta al timer in corso (visibile solo quando un timer è attivo) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
@@ -232,14 +232,18 @@ le voci del periodo corrente, dalla più recente, navigabili con `↑`/`↓` (an
   evidenziata — **solo sulle tue voci**
 - `x`: cancella la voce evidenziata, con conferma `[y/N]` — **solo sulle tue
   voci**
+- `t`: modifica i **tag** della voce evidenziata — **solo sulle tue voci**.
+  Sono i tag propri della voce ore (mostrati come `#focus #client-A` nella
+  riga), distinti dai tag del task. Apre un picker: `↑`/`↓` per muoversi,
+  `space` per attivare/disattivare un tag, `n` per crearne uno nuovo, `Enter`
+  per salvare, `Esc` per annullare
 - `h`: consulta lo storico delle modifiche della voce (sola lettura) —
   disponibile su **qualsiasi** voce, non solo le tue
 - `Esc`: torna al report
 
-Modifica e cancellazione sono vincolate alla proprietà: una voce registrata da
-un collega compare nel browser (scope team) ma `e`/`x` non fanno nulla su di
-essa — funziona solo `h`. La modifica dei tag dal browser non è ancora
-supportata.
+Modifica, cancellazione e tag sono vincolati alla proprietà: una voce
+registrata da un collega compare nel browser (scope team) ma `e`/`x`/`t` non
+fanno nulla su di essa — funziona solo `h`.
 
 #### Schermata Log ore
 
