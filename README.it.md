@@ -465,6 +465,16 @@ disco):
 CLICKUP_TOKEN=pk_xxx clup
 ```
 
+### Colori
+
+I colori si adattano automaticamente a uno sfondo del terminale chiaro o scuro.
+Due variabili d'ambiente standard ne cambiano il comportamento:
+
+- `NO_COLOR` (qualsiasi valore non vuoto) disattiva completamente i colori
+  ([no-color.org](https://no-color.org/)).
+- `CLICOLOR_FORCE=1` mantiene i colori anche quando l'output è rediretto su file
+  o su un altro comando.
+
 ### Controllo aggiornamenti
 
 Una volta al giorno, `clup` chiede a GitHub se esiste una release più recente e, in
