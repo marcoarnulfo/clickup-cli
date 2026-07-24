@@ -118,6 +118,11 @@ func TestPaletteIsAdaptive(t *testing.T) {
 // EnvColorProfile() consult the environment at all instead of short-circuiting
 // to Ascii regardless of NO_COLOR. termenv.WithUnsafe() bypasses the TTY check.
 func TestNoColorProducesNoEscapes(t *testing.T) {
+	// Neutralize the ambient environment: a developer or CI runner that
+	// exports NO_COLOR (or CLICOLOR=0) must not make the baseline guard
+	// below fire spuriously. The test controls its own environment.
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
 	t.Setenv("COLORTERM", "truecolor")
 
 	// Guard: without NO_COLOR the profile must resolve to a colored one, or
@@ -141,6 +146,8 @@ func TestNoColorProducesNoEscapes(t *testing.T) {
 // CLICOLOR_FORCE is the force-color variable termenv implements (FORCE_COLOR,
 // the npm convention, is deliberately not supported).
 func TestCliColorForceKeepsColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("CLICOLOR", "")
 	t.Setenv("CLICOLOR_FORCE", "1")
 	r := lipgloss.NewRenderer(io.Discard)
 	if got := r.Output().EnvColorProfile(); got == termenv.Ascii {
