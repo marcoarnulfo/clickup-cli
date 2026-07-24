@@ -38,9 +38,15 @@ one establishes.
   `newTextInput` / `newNumberInput` helpers live in `setup.go` and are not
   touched by this work.
 - Those styles are read at **146 sites across 16 files**.
-- 12 sub-model `view()` methods take no styling parameter; 4 render helpers
-  (`historyLine`, `browserRow`, `ratesModel.tabs`, `billingRow`) use styles
-  outside a `view()`.
+- 12 sub-model `view()` methods take no styling parameter. Styles are also read
+  outside a `view()` by `historyLine`, `browserRow`, `ratesModel.tabs`,
+  `billingRow`, `entriesEditView`, `entriesHistoryView` and the five
+  `ratesModel` section renderers (`listsView`, `membersView`, `overridesView`,
+  `rulesView`, `draftView`). The compiler finds them all once a signature
+  changes, but they are named here so a task's "Produces" list can be checked.
+- `report.go:225` builds an ad-hoc `lipgloss.NewStyle().Bold(true)` inline. It
+  carries no color, so no color-var grep finds it, but it is package-level
+  style state inside a view and must be folded into the theme.
 - Views never read `Model.width`/`Model.height` — the fields are stored on
   `tea.WindowSizeMsg` and never consumed. **Rendering is therefore already
   independent of terminal size**, so golden files need no width pinning.
@@ -71,16 +77,23 @@ type palette struct {
 }
 
 type theme struct {
-    p palette // unexported: views consume styles, never raw colors
-    Title, Help, Err, OK, Accent, Box lipgloss.Style
+    Title, Help, Err, OK, Accent, Box, Header lipgloss.Style
 }
 
 func newTheme(r *lipgloss.Renderer, p palette) theme
 ```
 
-The 6 styles are exactly today's 6, so the refactor is verifiable as a no-op.
+Six styles are exactly today's six; `Header` is the seventh and is not new
+either — it is the bare `lipgloss.NewStyle().Bold(true)` that `report.go`
+builds inline today, given a name so it stops bypassing the theme. The refactor
+therefore stays verifiable as a no-op.
+
+The theme does **not** keep the palette as a field: nothing in this tranche
+would read it, and a write-only field is dead weight staticcheck is right to
+flag. Tranche D adds it back when the YAML loader gives it a consumer.
+
 Styles that tranche C will need (`TableHeader`, `Zebra`, `Total`, gauges) are
-**not** added now: they would be dead code and staticcheck would flag them.
+**not** added now, for the same reason.
 
 The palette ships the 5 tokens that have a consumer today. `Warning` and
 `Border` from #63's wish list are deliberately omitted for the same reason;
@@ -88,9 +101,17 @@ they arrive with the code that uses them.
 
 ### 4.3 Renderer injection
 
-`newTheme` takes a `*lipgloss.Renderer`. Production passes
-`lipgloss.DefaultRenderer()`. Tests pass `lipgloss.NewRenderer(io.Discard)`
-with a pinned profile and background, so:
+`newTheme` takes a `*lipgloss.Renderer` and **forces background detection while
+building** (it calls `r.HasDarkBackground()` before returning). This matters:
+lipgloss resolves an `AdaptiveColor` lazily, at the first `Render`, by querying
+the terminal over OSC-11. By then bubbletea owns the terminal and its input
+reader races termenv for the reply — termenv times out and falls back to
+"dark", so light-terminal users would never actually see the light palette.
+`New()` runs before `tea.NewProgram`, so detecting there is safe; tests set the
+background explicitly, so the query never fires under test.
+
+Production passes `lipgloss.DefaultRenderer()`. Tests pass
+`lipgloss.NewRenderer(io.Discard)` with a pinned profile and background, so:
 
 - golden output is deterministic regardless of the terminal running the suite,
 - light and dark themes coexist in one test binary,
@@ -120,6 +141,15 @@ Screen goldens stay human-readable in PR diffs; a color change fails in exactly
 one place with a clear message, instead of turning every file into a wall of
 escape codes.
 
+**Known limit of the Ascii goldens.** termenv returns the string untouched
+under the Ascii profile, stripping bold as well as color. A screen golden
+therefore proves that text, layout, borders and margins survived the
+refactor — but a swapped *role* (rendering with `th.Err` where `th.OK` belongs)
+renders byte-identically and slips through. The mitigation is procedural, not
+mechanical: the 146-site substitution is 1:1 and mechanical, so the task
+reviewer checks the mapping on the diff. The palette goldens then catch any
+role that reaches production with the wrong color.
+
 ### 4.6 `NO_COLOR` already works
 
 lipgloss builds its default renderer through `termenv.EnvColorProfile()`, which
@@ -129,6 +159,28 @@ therefore needs **a regression test and documentation, not code**.
 `FORCE_COLOR` (the npm convention, named in #74) is **not** implemented:
 `CLICOLOR_FORCE` is the standard termenv supports, and adding a second
 force-color variable by hand is unjustified surface area.
+
+### 4.7 Adaptive values stay indexed, and only where contrast demands it
+
+The `Dark` side keeps today's **xterm indices verbatim** (`205`, `240`, `196`,
+`42`) rather than being rewritten as hex. Two reasons: an indexed color follows
+a user's customized 256-color terminal palette while a hex triple overrides it,
+and hand-converting indices to hex is exactly the kind of silent off-by-one this
+tranche cannot afford (205 is `#FF5FAF`, not `#FF5FD7` — one digit apart from
+206). Keeping the index means dark-terminal users provably see no change.
+
+Only the tokens that are genuinely unreadable on white get a `Light` variant,
+measured as WCAG contrast against `#FFFFFF`:
+
+| Token | Dark | Light | Why |
+|---|---|---|---|
+| Primary, Accent | `205` | `127` | `205` on white is ~1.9:1 — unreadable |
+| Danger | `196` | `124` | `196` is ~4:1, below the 4.5:1 floor |
+| Success | `42` | `28` | `42` on white is ~1.8:1 — unreadable |
+| Muted | `240` | `240` | already ~7:1 on white; changing it would be churn |
+
+`Muted` staying identical is deliberate: "adaptive" means *legible on both*, not
+*different on both*.
 
 ## 5. File structure
 
@@ -148,16 +200,20 @@ force-color variable by hand is unjustified surface area.
 1. **Golden harness.** Helper, `-update`, `testTheme`, and screen goldens
    generated **against the current code**, before anything is touched. No
    production change at all.
-2. **`theme.go` + the 9 small files** (`app.go`, `home`, `setup`, `export`,
-   `budget`, `history`, `members`, `range`, `listbrowser`). The initial palette
-   sets `Light == Dark` to today's values (205/240/196/42), so the task-1
-   goldens must stay **byte-identical**.
-3. **The 6 large files** (`report`, `entries`, `log`, `filters`, `rates`,
-   `rates_view`), then `styles.go` is deleted. Goldens still byte-identical.
-4. **The real adaptive palette.** `Light` values diverge from `Dark`;
-   `palette_light` / `palette_dark` goldens are added, plus regression tests for
-   `NO_COLOR` and `CLICOLOR_FORCE`. Screen goldens remain byte-identical —
-   layout does not move.
+2. **`theme.go` + the 8 small files** (`app.go`, `home`, `setup`, `export`,
+   `budget`, `members`, `range`, `listbrowser`). The initial palette sets
+   `Light == Dark` to today's values (205/240/196/42), so the task-1 goldens
+   must stay **byte-identical**.
+3. **The 7 remaining files** (`report`, `entries`, `log`, `filters`, `rates`,
+   `rates_view`, `history`), then `styles.go` is deleted. Goldens still
+   byte-identical.
+   `history.go` belongs here, not in task 2, even though it is small: it holds
+   `entriesHistoryView`, which `entries.go` calls — splitting them across tasks
+   would leave task 2 unable to compile within its own file list.
+4. **The real adaptive palette.** The four tokens of §4.7 gain their `Light`
+   variants; `palette_light` / `palette_dark` goldens are added, plus regression
+   tests for `NO_COLOR` and `CLICOLOR_FORCE`. Screen goldens remain
+   byte-identical — layout does not move.
 5. **Docs.** `CHANGELOG`, both READMEs (color environment variables),
    `CONTRIBUTING` (how to regenerate goldens with `-update`, and that the
    resulting diff must be read, not rubber-stamped).
@@ -168,9 +224,9 @@ force-color variable by hand is unjustified surface area.
 
 - The existing suite is the primary net: it must stay green unchanged through
   tasks 2 and 3 (only `.view()` call sites gain an argument).
-- Screen goldens cover, at minimum: home, report, entries browser, rates
-  (each tab), log, filters, budget, range, members, export, setup, list browser,
-  history — one representative state each.
+- Screen goldens cover: home (plain and with every notice line), report, entries
+  browser, rates (each of the four tabs), log, filters, budget (populated and
+  empty), range, members, export, setup, list browser and history — 18 files.
 - Golden tests are parallel-safe: each builds its own renderer.
 - `TestNoColorEnvDisablesColor` asserts that a theme built from a renderer whose
   profile resolves under `NO_COLOR=1` emits no escape sequences.
@@ -183,7 +239,9 @@ force-color variable by hand is unjustified surface area.
 
 - `internal/report` and `internal/duration` stay pure and are untouched.
 - No new `go.mod` dependencies. `termenv` is promoted from indirect to direct
-  (it is already in the build graph via lipgloss).
+  (it is already in the build graph via lipgloss) — this needs an explicit
+  `go mod tidy`, and the resulting `go.mod`/`go.sum` diff is expected, not
+  accidental.
 - bubbletea value receivers; explicit write-back before every return.
 - Demo mode keeps working identically (it renders through the same views).
 - Everything in the repo in ENGLISH; Conventional Commits; **no

@@ -30,8 +30,8 @@
 | `internal/tui/theme.go` (create) | `palette`, `theme`, `newTheme`, `defaultPalette` — the only place a color literal may appear | 2 |
 | `internal/tui/theme_test.go` (create) | `testTheme` / `paletteTheme` helpers, palette goldens, `NO_COLOR` regression test | 2, 4 |
 | `internal/tui/app.go` (modify) | `theme` field on `Model`, built in `New()`; `View()` passes it to every sub-view | 2 |
-| 8 small view files (modify) | `home`, `setup`, `export`, `budget`, `history`, `members`, `range`, `listbrowser` | 2 |
-| 6 large view files (modify) | `report`, `entries`, `log`, `filters`, `rates`, `rates_view` | 3 |
+| 7 small view files (modify) | `home`, `setup`, `export`, `budget`, `members`, `range`, `listbrowser` | 2 |
+| 7 remaining view files (modify) | `report`, `entries`, `log`, `filters`, `rates`, `rates_view`, `history` | 3 |
 | `internal/tui/styles.go` (delete) | Holds nothing but the vars `theme.go` replaces | 3 |
 | `CHANGELOG.md`, `README.md`, `README.it.md`, `CONTRIBUTING.md` (modify) | User-facing colors + contributor workflow for goldens | 5 |
 
@@ -43,7 +43,8 @@ Adds the regression net **before** anything is refactored. No production file is
 
 **Files:**
 - Create: `internal/tui/golden_test.go`
-- Create: `internal/tui/testdata/` (17 `.golden` files, generated in Step 4: `home`, `home_notices`, `report`, `export`, `budget`, `budget_empty`, `members`, `range`, `filters`, `setup`, `listbrowser`, `rates_lists`, `rates_members`, `rates_overrides`, `rates_rules`, `log`, `entries`)
+- Create: `internal/tui/testdata/` (19 `.golden` files, generated in Step 4: `home`, `home_notices`, `report`, `export`, `budget`, `budget_empty`, `members`, `range`, `filters`, `setup`, `listbrowser`, `history`, `history_empty`, `rates_lists`, `rates_members`, `rates_overrides`, `rates_rules`, `log`, `entries`)
+- Modify: `go.mod`, `go.sum` (`termenv` promoted from indirect to direct — see Step 6)
 
 **Interfaces:**
 - Consumes: nothing.
@@ -62,12 +63,12 @@ package tui
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
@@ -81,7 +82,10 @@ var updateGolden = flag.Bool("update", false, "rewrite testdata/*.golden files")
 // TestMain pins the default renderer's color profile for the whole package.
 // Without it a screen golden captured on a color-capable terminal would carry
 // ANSI escapes and fail in CI, where the same code renders plain text.
+// CLICKUP_DEMO is cleared because New() switches to fixture data when it is
+// set, which would make every golden depend on the developer's shell.
 func TestMain(m *testing.M) {
+	os.Unsetenv("CLICKUP_DEMO")
 	lipgloss.SetColorProfile(termenv.Ascii)
 	os.Exit(m.Run())
 }
@@ -128,6 +132,7 @@ func goldenReport() report.Report {
 	return report.Report{
 		Start: start, End: start.AddDate(0, 1, 0),
 		Scope: "me", GroupBy: report.GroupByList, DefaultCurrency: "EUR",
+		Timezone: "UTC", // reportModel.view prints this; unset renders a dangling "tz "
 		Buckets: []report.Bucket{
 			{Label: "Website", Key: "l1", Hours: 12.5, BillableHours: 12.5, BilledHours: 12.5,
 				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}},
@@ -172,8 +177,10 @@ func TestGoldenHomeWithNotices(t *testing.T) {
 	t.Parallel()
 	m := goldenModel()
 	m.home.errText = "request failed: 500"
+	// The timer line is the string app.go builds for a running timer; keep it
+	// verbatim so the golden depicts something the app actually renders.
 	golden(t, "home_notices", m.home.view("July 2026", "team", "Members: 2/3", "v1.9.0",
-		"⏱  running on Landing page — 00:12:30   (0.21h)"))
+		"⏱  running on Landing page — 00:12:30   (c: manage)"))
 }
 
 func TestGoldenReport(t *testing.T) {
@@ -228,6 +235,22 @@ func TestGoldenListBrowser(t *testing.T) {
 		spaces: []clickup.Space{{ID: "s1", Name: "Clients"}, {ID: "s2", Name: "Internal"}},
 	}
 	golden(t, "listbrowser", bs.view())
+}
+
+func TestGoldenHistory(t *testing.T) {
+	t.Parallel()
+	es := entriesModel{historyChanges: []clickup.HistoryChange{
+		{Field: "duration", Before: "1h", After: "1h30m",
+			Date: time.Date(2026, time.July, 14, 11, 0, 0, 0, time.UTC), User: "Marco"},
+		{Field: "billable", Before: "false", After: "true",
+			Date: time.Date(2026, time.July, 14, 11, 5, 0, 0, time.UTC), User: "Marco"},
+	}}
+	golden(t, "history", entriesHistoryView(es, time.UTC))
+}
+
+func TestGoldenHistoryEmpty(t *testing.T) {
+	t.Parallel()
+	golden(t, "history_empty", entriesHistoryView(entriesModel{}, time.UTC))
 }
 
 func TestGoldenRatesTabs(t *testing.T) {
@@ -291,7 +314,18 @@ Then **read every generated file** (`ls testdata/` then open each). Each must co
 Run: `go test ./internal/tui -run TestGolden -count=2`
 Expected: PASS. `-count=2` proves the output is stable across runs in the same process.
 
-- [ ] **Step 6: Run the full gate**
+- [ ] **Step 6: Promote termenv to a direct dependency**
+
+`golden_test.go` imports `github.com/muesli/termenv`, which `go.mod` currently
+lists as `// indirect`. The build works either way, but the marker is now wrong.
+
+Run: `go mod tidy`
+Expected: `go.mod`'s `termenv v0.16.0` line loses its `// indirect` comment and
+moves into the first `require` block. This diff is **expected** — do not revert
+it. No module version may change; if `go mod tidy` bumps or removes anything
+else, stop and report it.
+
+- [ ] **Step 7: Run the full gate**
 
 ```bash
 gofmt -l .
@@ -302,39 +336,41 @@ go test ./... -race
 ```
 Expected: no output from `gofmt`/`vet`/`staticcheck`, build clean, all tests PASS.
 
-- [ ] **Step 7: Confirm no production file changed**
+- [ ] **Step 8: Confirm no production code changed**
 
 Run: `git status --short`
-Expected: only `internal/tui/golden_test.go` and `internal/tui/testdata/*.golden` appear. If any other file is listed, revert it.
+Expected: exactly `internal/tui/golden_test.go`, `internal/tui/testdata/*.golden`, `go.mod` and `go.sum`. Any other file listed means production code was touched — revert it.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add internal/tui/golden_test.go internal/tui/testdata
+git add internal/tui/golden_test.go internal/tui/testdata go.mod go.sum
 git commit -m "test(tui): add golden-file regression harness (#75)"
 ```
 
 ---
 
-### Task 2: The theme, and the nine small files
+### Task 2: The theme, and the eight small files
 
-Introduces `theme.go` and migrates the files that read styles least. The 6 large files keep using the package vars in this task — both groups compile side by side, because `styles.go` is not deleted until Task 3.
+Introduces `theme.go` and migrates the files that read styles least. The remaining files keep using the package vars in this task — both groups compile side by side, because `styles.go` is not deleted until Task 3.
+
+`history.go` is **not** in this task despite being small: it holds `entriesHistoryView`, which `entries.go` (a Task 3 file) calls, so migrating it here would force edits outside this task's file list. It goes with Task 3.
 
 **Files:**
 - Create: `internal/tui/theme.go`, `internal/tui/theme_test.go`
-- Modify: `internal/tui/app.go`, `home.go`, `setup.go`, `export.go`, `budget.go`, `history.go`, `members.go`, `range.go`, `listbrowser.go`
+- Modify: `internal/tui/app.go`, `home.go`, `setup.go`, `export.go`, `budget.go`, `members.go`, `range.go`, `listbrowser.go`
 - Modify: `internal/tui/golden_test.go`, `budget_test.go`, `home_test.go` (call sites gain the argument)
 
 **Interfaces:**
 - Consumes: `golden`, `goldenModel`, `goldenReport`, `goldenEntries` from Task 1.
 - Produces:
   - `type palette struct { Primary, Accent, Muted, Danger, Success lipgloss.AdaptiveColor }`
-  - `type theme struct { p palette; Title, Help, Err, OK, Accent, Box lipgloss.Style }`
+  - `type theme struct { Title, Help, Err, OK, Accent, Box, Header lipgloss.Style }`
   - `func newTheme(r *lipgloss.Renderer, p palette) theme`
   - `func defaultPalette() palette`
   - `Model.theme theme`, set in `New()`
   - `func testTheme(dark bool) theme` (test-only, Ascii profile)
-  - Migrated signatures: `homeModel.view(th theme, rangeLabel, scope, membersNote, latestVersion, timerLine string) string`, and `view(th theme) string` for `setupModel`, `exportModel`, `budgetModel`, `membersModel`, `rangeModel`, `listBrowserModel`; `historyLine(th theme, c clickup.HistoryChange, loc *time.Location) string`; `browserRow(th theme, label string, sel bool) string`.
+  - Migrated signatures: `homeModel.view(th theme, rangeLabel, scope, membersNote, latestVersion, timerLine string) string`, and `view(th theme) string` for `setupModel`, `exportModel`, `budgetModel`, `membersModel`, `rangeModel`, `listBrowserModel`; `browserRow(th theme, label string, sel bool) string`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -383,7 +419,7 @@ func TestDefaultPaletteKeepsCurrentDarkColors(t *testing.T) {
 }
 
 // Task 2 ships Light == Dark on purpose: the adaptive values land in Task 4,
-// so this task cannot change a single rendered byte.
+// so this task cannot change a single rendered byte. Task 4 deletes this test.
 func TestDefaultPaletteIsNotYetAdaptive(t *testing.T) {
 	t.Parallel()
 	p := defaultPalette()
@@ -442,29 +478,39 @@ type palette struct {
 // theme is the styled surface the views render through. It travels as an
 // explicit argument rather than living in package state, so no view can render
 // with a half-built theme and tests can hold two themes at once.
+//
+// The palette is deliberately not kept as a field: nothing reads it in this
+// tranche, and a write-only field is dead weight. It comes back when a
+// user-supplied theme (#82) needs to be inspected.
 type theme struct {
-	p palette // views consume the styles below, never the raw colors
-
 	Title  lipgloss.Style
 	Help   lipgloss.Style
 	Err    lipgloss.Style
 	OK     lipgloss.Style
 	Accent lipgloss.Style
 	Box    lipgloss.Style
+	Header lipgloss.Style // bold, uncolored: the report's column header row
 }
 
 // newTheme builds the styles for a palette on a specific renderer. Production
 // passes lipgloss.DefaultRenderer(); tests pass a renderer with a pinned color
 // profile and background so output is deterministic.
 func newTheme(r *lipgloss.Renderer, p palette) theme {
+	// Resolve the terminal background now, while we still own the terminal.
+	// lipgloss otherwise resolves AdaptiveColor lazily, at the first Render,
+	// by querying the terminal over OSC-11 — by then bubbletea's input reader
+	// is competing for the reply, termenv times out and falls back to "dark",
+	// and a light terminal never gets the light palette.
+	_ = r.HasDarkBackground()
+
 	return theme{
-		p:      p,
 		Title:  r.NewStyle().Bold(true).Foreground(p.Primary).MarginBottom(1),
 		Help:   r.NewStyle().Foreground(p.Muted),
 		Err:    r.NewStyle().Foreground(p.Danger).Bold(true),
 		OK:     r.NewStyle().Foreground(p.Success),
 		Accent: r.NewStyle().Foreground(p.Accent),
 		Box:    r.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1),
+		Header: r.NewStyle().Bold(true),
 	}
 }
 
@@ -517,7 +563,7 @@ In `New(cfg config.Config) Model`, add `theme` to the struct literal:
 
 Add `"github.com/charmbracelet/lipgloss"` to `app.go`'s imports if it is not already there.
 
-- [ ] **Step 6: Migrate the nine small files**
+- [ ] **Step 6: Migrate the seven small view files**
 
 Mechanical substitution inside these files only: `styleTitle`→`th.Title`, `styleHelp`→`th.Help`, `styleErr`→`th.Err`, `styleOK`→`th.OK`, `styleAccent`→`th.Accent`, `styleBox`→`th.Box`.
 
@@ -533,7 +579,12 @@ Signatures — `th theme` goes **first**, before existing parameters:
 | `range.go` | `func (rs rangeModel) view() string` | `func (rs rangeModel) view(th theme) string` |
 | `listbrowser.go` | `func (bs listBrowserModel) view() string` | `func (bs listBrowserModel) view(th theme) string` |
 | `listbrowser.go` | `func browserRow(label string, sel bool) string` | `func browserRow(th theme, label string, sel bool) string` |
-| `history.go` | `func historyLine(c clickup.HistoryChange, loc *time.Location) string` | `func historyLine(th theme, c clickup.HistoryChange, loc *time.Location) string` |
+
+**The substitution is 1:1 and must stay 1:1.** Screen goldens render under the
+Ascii profile, where termenv strips color *and* bold — so rendering with
+`th.Err` where `th.OK` belongs produces a byte-identical golden and passes every
+check in this task. Nothing but care catches a swapped role here. Do the
+substitution mechanically, one symbol at a time, and never "improve" a mapping.
 
 In `app.go`'s `View()`, pass `m.theme` to the migrated cases and to the two inline uses:
 
@@ -561,10 +612,10 @@ In `app.go`'s `View()`, pass `m.theme` to the migrated cases and to the two inli
 
 The `screenReport`, `screenRates`, `screenLog`, `screenFilters` and `screenEntries` cases are **left untouched** — those views migrate in Task 3.
 
-Find every remaining caller of the changed functions with:
+Find every remaining caller of the one changed helper with:
 
 ```bash
-grep -rn 'historyLine(\|browserRow(' internal/tui/
+grep -rn 'browserRow(' internal/tui/
 ```
 
 and pass `th` (inside a view) or the test's theme (in a test).
@@ -581,7 +632,7 @@ func TestGoldenHome(t *testing.T) {
 }
 ```
 
-Apply the same change to `TestGoldenHomeWithNotices`, `TestGoldenExport`, `TestGoldenBudget`, `TestGoldenBudgetEmpty`, `TestGoldenMembers`, `TestGoldenRange`, `TestGoldenSetup`, `TestGoldenListBrowser`. Leave `TestGoldenReport`, `TestGoldenFilters`, `TestGoldenRatesTabs`, `TestGoldenLog` and `TestGoldenEntriesBrowser` alone — they migrate in Task 3.
+Apply the same change to `TestGoldenHomeWithNotices`, `TestGoldenExport`, `TestGoldenBudget`, `TestGoldenBudgetEmpty`, `TestGoldenMembers`, `TestGoldenRange`, `TestGoldenSetup`, `TestGoldenListBrowser`. Leave `TestGoldenReport`, `TestGoldenFilters`, `TestGoldenRatesTabs`, `TestGoldenLog`, `TestGoldenHistory`, `TestGoldenHistoryEmpty` and `TestGoldenEntriesBrowser` alone — they migrate in Task 3.
 
 Then fix the remaining compile errors in `budget_test.go` (2 call sites) and `home_test.go` (1 call site) by passing `testTheme(true)`. Compile errors are the checklist here:
 
@@ -619,22 +670,22 @@ git commit -m "refactor(tui): add theme registry and migrate the small views (#5
 
 ---
 
-### Task 3: The six large files, and the end of package styles
+### Task 3: The remaining files, and the end of package styles
 
 Completes the migration and deletes `styles.go`. After this task, `grep -rn 'styleTitle\|styleHelp\|styleErr\|styleOK\|styleAccent\|styleBox\|colAccent\|colDim\|colErr\|colOK' internal/` returns nothing.
 
 **Files:**
-- Modify: `internal/tui/report.go`, `entries.go`, `log.go`, `filters.go`, `rates.go`, `rates_view.go`, `app.go`
+- Modify: `internal/tui/report.go`, `entries.go`, `log.go`, `filters.go`, `rates.go`, `rates_view.go`, `history.go`, `app.go`
 - Delete: `internal/tui/styles.go`
-- Modify: `internal/tui/golden_test.go`, `report_test.go`, `rates_test.go`, `entries_test.go` (call sites gain the argument)
+- Modify: `internal/tui/golden_test.go`, `report_test.go`, `rates_test.go`, `history_test.go` (call sites gain the argument)
 
 **Interfaces:**
 - Consumes: `theme`, `testTheme`, `Model.theme` from Task 2.
-- Produces: `view(th theme) string` for `reportModel`, `logModel`, `filtersModel`, `ratesModel`; `Model.entriesView(th theme) string`; `func (rt ratesModel) tabs(th theme) string`; `func billingRow(th theme, sel bool, line string) string`.
+- Produces: `view(th theme) string` for `reportModel`, `logModel`, `filtersModel`, `ratesModel`; `Model.entriesView(th theme) string`; `func (rt ratesModel) tabs(th theme) string`; `func billingRow(th theme, sel bool, line string) string`; `func historyLine(th theme, c clickup.HistoryChange, loc *time.Location) string`; `func entriesHistoryView(th theme, es entriesModel, loc *time.Location) string`. The same first-parameter change applies to `entriesEditView` and to `ratesModel`'s five section renderers (`listsView`, `membersView`, `overridesView`, `rulesView`, `draftView`) — the compiler enumerates them.
 
-- [ ] **Step 1: Migrate the six files**
+- [ ] **Step 1: Migrate the seven files**
 
-Same mechanical substitution as Task 2 (`styleX` → `th.X`). Signatures:
+Same mechanical substitution as Task 2 (`styleX` → `th.X`), and the same warning applies: under the Ascii profile the goldens cannot tell `th.Err` from `th.OK`, so keep the mapping strictly 1:1. Signatures:
 
 | File | Before | After |
 |---|---|---|
@@ -644,9 +695,20 @@ Same mechanical substitution as Task 2 (`styleX` → `th.X`). Signatures:
 | `rates.go` | `func (rt ratesModel) view() string` | `func (rt ratesModel) view(th theme) string` |
 | `rates_view.go` | `func (rt ratesModel) tabs() string` | `func (rt ratesModel) tabs(th theme) string` |
 | `rates_view.go` | `func billingRow(sel bool, line string) string` | `func billingRow(th theme, sel bool, line string) string` |
+| `rates_view.go` | `listsView`, `membersView`, `overridesView`, `rulesView`, `draftView` | each takes `th theme` as its first parameter |
+| `history.go` | `func entriesHistoryView(es entriesModel, loc *time.Location) string` | `func entriesHistoryView(th theme, es entriesModel, loc *time.Location) string` |
+| `history.go` | `func historyLine(c clickup.HistoryChange, loc *time.Location) string` | `func historyLine(th theme, c clickup.HistoryChange, loc *time.Location) string` |
 | `entries.go` | `entriesView` and its render helpers | each takes `th theme` as its first parameter |
 
-`entries.go` is the one file to read before editing rather than substituting blindly: `entriesView` fans out to per-mode renderers (list, confirm-delete, edit, history, tags) and to helpers such as `tagBadges`. Thread `th` through every one of them; the compiler finds them all.
+`entries.go` is the one file to read before editing rather than substituting blindly: `entriesView` fans out to per-mode renderers (list, confirm-delete, edit, history, tags) and to helpers such as `tagBadges`. It also calls `entriesHistoryView` (at `entries.go:587`), which changes signature in this same task. Thread `th` through every one of them; the compiler finds them all.
+
+Also fold in the one inline style that no grep finds — `report.go:225` builds `lipgloss.NewStyle().Bold(true)` directly on the global default renderer, inside a view:
+
+```go
+	header := th.Header.Render(...)   // was: lipgloss.NewStyle().Bold(true).Render(...)
+```
+
+Drop `report.go`'s `lipgloss` import if that was its only use.
 
 In `app.go`'s `View()`, pass `m.theme` to the five remaining cases:
 
@@ -677,12 +739,19 @@ grep -rn 'styleTitle\|styleHelp\|styleErr\|styleOK\|styleAccent\|styleBox\|colAc
 ```
 Expected: no output. (One legitimate hit is allowed: `entries.go`'s `msgErr bool` comment, which names `styleErr`/`styleOK` in prose. Reword it to "render msg with th.Err; false → th.OK" so the grep stays clean.)
 
+Then confirm no inline style survives either:
+
+```bash
+grep -rn 'lipgloss.NewStyle()' internal/tui/ | grep -v theme.go
+```
+Expected: no output — `theme.go` is the only file allowed to build styles.
+
 - [ ] **Step 4: Build and fix the test call sites**
 
 Run: `go build ./... && go vet ./...`
 Expected: the remaining errors are all test call sites. Fix them by passing `testTheme(true)`:
-- `golden_test.go`: `TestGoldenReport`, `TestGoldenFilters`, `TestGoldenRatesTabs`, `TestGoldenLog` (`TestGoldenEntriesBrowser` calls `m.View()`, which needs no change).
-- `report_test.go` (3 sites), `rates_test.go` (8 sites), `entries_test.go` (uses `mm.View()` — no change).
+- `golden_test.go`: `TestGoldenReport`, `TestGoldenFilters`, `TestGoldenRatesTabs`, `TestGoldenLog`, `TestGoldenHistory`, `TestGoldenHistoryEmpty` (`TestGoldenEntriesBrowser` calls `m.View()`, which needs no change).
+- `report_test.go` (3 sites), `rates_test.go` (8 sites), `history_test.go` (2 sites, both calling `entriesHistoryView`), `entries_test.go` (uses `mm.View()` — no change).
 
 - [ ] **Step 5: Verify the goldens still did not move**
 
@@ -698,7 +767,7 @@ go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 go build ./...
 go test ./... -race
 ```
-Expected: all clean/green. staticcheck must not report an unused `theme.p` field — it is read by `newTheme`'s caller chain; if it does flag it, that means nothing consumes the palette, which Task 4 fixes. Note it and continue.
+Expected: all clean/green, with no exceptions. staticcheck being clean is a hard gate here, not a judgement call.
 
 - [ ] **Step 7: Commit**
 
@@ -762,8 +831,9 @@ func TestGoldenPaletteLight(t *testing.T) {
 	golden(t, "palette_light", paletteSample(paletteTheme(false)))
 }
 
-// Every token must differ between backgrounds: a token with the same value on
-// both is a token that was never adapted.
+// The four tokens that are unreadable on white must differ between
+// backgrounds. Muted must NOT: 240 already clears 7:1 on white, so changing it
+// would be churn dressed up as accessibility.
 func TestPaletteIsAdaptive(t *testing.T) {
 	t.Parallel()
 	p := defaultPalette()
@@ -771,12 +841,16 @@ func TestPaletteIsAdaptive(t *testing.T) {
 		name string
 		c    lipgloss.AdaptiveColor
 	}{
-		{"Primary", p.Primary}, {"Accent", p.Accent}, {"Muted", p.Muted},
+		{"Primary", p.Primary}, {"Accent", p.Accent},
 		{"Danger", p.Danger}, {"Success", p.Success},
 	} {
 		if tc.c.Light == tc.c.Dark {
 			t.Errorf("%s is not adaptive: Light == Dark == %q", tc.name, tc.c.Dark)
 		}
+	}
+	if p.Muted.Light != p.Muted.Dark {
+		t.Errorf("Muted was adapted (%q/%q) but reads fine on both backgrounds",
+			p.Muted.Light, p.Muted.Dark)
 	}
 }
 
@@ -809,29 +883,37 @@ func TestCliColorForceKeepsColor(t *testing.T) {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/tui -run 'TestGoldenPalette|TestPaletteIsAdaptive|TestNoColor|TestCliColorForce' -v`
-Expected: `TestPaletteIsAdaptive` FAILS with five "is not adaptive" errors; the two palette goldens FAIL with "no such file or directory". `TestNoColorProducesNoEscapes` and `TestCliColorForceKeepsColor` should already PASS — they pin behavior lipgloss already has.
+Expected: `TestPaletteIsAdaptive` FAILS with four "is not adaptive" errors (Primary, Accent, Danger, Success — its Muted assertion already passes); the two palette goldens FAIL with "no such file or directory". `TestNoColorProducesNoEscapes` and `TestCliColorForceKeepsColor` should already PASS — they pin behavior lipgloss already has.
 
 - [ ] **Step 3: Make the palette adaptive**
 
 Replace `defaultPalette` in `internal/tui/theme.go`:
 
 ```go
-// defaultPalette is the built-in palette. The Dark values are the exact colors
-// the TUI has always shipped (xterm 205/240/196/42 as hex), so nothing changes
-// for users on a dark terminal. The Light values are darker variants chosen for
-// legibility on a white background, where the originals wash out.
+// defaultPalette is the built-in palette. Dark keeps the xterm indices the TUI
+// has always shipped, so a dark terminal renders exactly as before and a user's
+// customized 256-color palette is still honored (a hex triple would override
+// it). Light overrides only the tokens that are illegible on white, measured as
+// WCAG contrast against #FFFFFF:
+//
+//	205 -> 127   205 (#FF5FAF) is ~1.9:1 on white; 127 (#AF00AF) is ~7.5:1
+//	196 -> 124   196 (#FF0000) is ~4:1, under the 4.5:1 floor; 124 (#AF0000) ~8:1
+//	 42 ->  28    42 (#00D787) is ~1.8:1 on white;  28 (#008700) is ~6.5:1
+//
+// Muted (240, #585858) is left alone: it already clears 7:1 on white. Adaptive
+// means legible on both backgrounds, not different on both.
 func defaultPalette() palette {
 	return palette{
-		Primary: lipgloss.AdaptiveColor{Light: "#A21A8C", Dark: "#FF5FD7"},
-		Accent:  lipgloss.AdaptiveColor{Light: "#A21A8C", Dark: "#FF5FD7"},
-		Muted:   lipgloss.AdaptiveColor{Light: "#6E6E6E", Dark: "#585858"},
-		Danger:  lipgloss.AdaptiveColor{Light: "#C40000", Dark: "#FF0000"},
-		Success: lipgloss.AdaptiveColor{Light: "#007A33", Dark: "#00D75F"},
+		Primary: lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Accent:  lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Muted:   lipgloss.AdaptiveColor{Light: "240", Dark: "240"},
+		Danger:  lipgloss.AdaptiveColor{Light: "124", Dark: "196"},
+		Success: lipgloss.AdaptiveColor{Light: "28", Dark: "42"},
 	}
 }
 ```
 
-Also update `TestDefaultPaletteKeepsCurrentDarkColors` in `theme_test.go`: the expected `Dark` values become the hex spellings (`"#FF5FD7"`, `"#FF5FD7"`, `"#585858"`, `"#FF0000"`, `"#00D75F"`), and rename it to `TestDefaultPaletteDarkMatchesShippedColors`. These are the same colors xterm 205/240/196/42 resolve to — verify with `printf '\033[38;5;205mX\033[0m\n'` against `printf '\033[38;2;255;95;215mX\033[0m\n'` if you want to see it.
+`TestDefaultPaletteKeepsCurrentDarkColors` from Task 2 asserts these exact `Dark` values (`"205"`, `"205"`, `"240"`, `"196"`, `"42"`) and must keep passing untouched — it is what proves dark terminals are unaffected. **Do not convert any index to hex**: the conversions are error-prone (205 is `#FF5FAF`, one digit from 206's `#FF5FD7`) and a hex triple stops honoring a user's customized terminal palette.
 
 - [ ] **Step 4: Generate the palette goldens and verify**
 
@@ -888,14 +970,14 @@ git commit -m "feat(tui): adapt the palette to light and dark terminals (#63, #7
 
 - [ ] **Step 1: CHANGELOG**
 
-Under `## [Unreleased]`, in the existing `### Added` section (create `### Changed` if the entries below fit better there — the colors are a change, the env vars an addition):
+Add a new `### Changed` section under `## [Unreleased]`, after the existing `### Added` section:
 
 ```markdown
 ### Changed
 - Colors now adapt to the terminal background: on a light background the
   palette switches to darker, legible variants. Dark terminals render exactly
-  as before. `NO_COLOR=1` disables color entirely and `CLICOLOR_FORCE=1` keeps
-  it when output is piped.
+  as before, down to the same 256-color indices. `NO_COLOR=1` disables color
+  entirely and `CLICOLOR_FORCE=1` keeps it when output is piped.
 ```
 
 - [ ] **Step 2: README.md**
@@ -916,7 +998,7 @@ environment variables override the behavior:
 
 - [ ] **Step 3: README.it.md**
 
-The same subsection in Italian, in the matching position (the `CLICKUP_TOKEN` paragraph is around line 490):
+The same subsection in Italian, in the matching position (the `CLICKUP_TOKEN` paragraph is around line 460):
 
 ```markdown
 ### Colori
@@ -978,7 +1060,9 @@ git commit -m "docs: document adaptive colors, color env vars and golden files"
 ## Definition of done
 
 - `grep -rn 'styleTitle\|styleHelp\|styleErr\|styleOK\|styleAccent\|styleBox\|colAccent\|colDim\|colErr\|colOK' internal/ cmd/` returns nothing.
-- `internal/tui/styles.go` no longer exists; `internal/tui/theme.go` is the only file holding color literals.
+- `grep -rn 'lipgloss.NewStyle()' internal/tui/ | grep -v theme.go` returns nothing.
+- `internal/tui/styles.go` no longer exists; `internal/tui/theme.go` is the only file holding color literals or building styles.
+- `go.mod` lists `github.com/muesli/termenv` as a direct dependency.
 - `go test ./... -race` passes; `go test ./internal/tui -update` leaves `testdata/` unchanged.
 - The screen goldens are byte-identical to the ones generated in Task 1.
 - Issues #75, #54, #63 close; #74 keeps its mouse-support and downconvert items for tranche D.
