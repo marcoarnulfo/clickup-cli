@@ -113,9 +113,23 @@ func TestPaletteIsAdaptive(t *testing.T) {
 
 // NO_COLOR is honored by termenv inside lipgloss's renderer; this pins that
 // contract so a future lipgloss bump cannot silently break it.
+//
+// io.Discard is never a TTY, so termenv.WithUnsafe() is required to make
+// EnvColorProfile() consult the environment at all instead of short-circuiting
+// to Ascii regardless of NO_COLOR. termenv.WithUnsafe() bypasses the TTY check.
 func TestNoColorProducesNoEscapes(t *testing.T) {
+	t.Setenv("COLORTERM", "truecolor")
+
+	// Guard: without NO_COLOR the profile must resolve to a colored one, or
+	// the assertion below would pass no matter what NO_COLOR does. Removing
+	// this guard re-opens the hole this test exists to close.
+	base := lipgloss.NewRenderer(io.Discard, termenv.WithUnsafe())
+	if base.Output().EnvColorProfile() == termenv.Ascii {
+		t.Fatal("baseline profile is already Ascii; the NO_COLOR assertion below would be vacuous")
+	}
+
 	t.Setenv("NO_COLOR", "1")
-	r := lipgloss.NewRenderer(io.Discard)
+	r := lipgloss.NewRenderer(io.Discard, termenv.WithUnsafe())
 	r.SetColorProfile(r.Output().EnvColorProfile())
 	th := newTheme(r, defaultPalette())
 	out := paletteSample(th)
