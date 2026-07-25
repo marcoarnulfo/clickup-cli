@@ -36,10 +36,19 @@ Counts exclude `_test.go` files.
   clauses match space IDs, not keys.)
 - **12 `msg.Type == tea.Key…` comparisons** — `log` 5, `setup` 3, `entries` 2,
   `app` 1, `rates` 1 — mostly inside text-input steps. #82 cannot remap
-  `esc`/`enter` inside a form unless these migrate too.
-- **62 `.screen = screen…` assignments** across 13 files: `app` 22, `report` 8,
-  `entries` 6, `home` 6, `log` 6, `range` 3, `filters` 2, `members` 2,
-  `listbrowser` 2, `rates` 2, `budget` 1, `export` 1, `setup` 1.
+  `esc`/`enter` inside a form unless these migrate too. One of them,
+  `rates.go:472`, is a `KeyRunes` **class** filter for numeric fields, not a key
+  match: it cannot become a binding and is carved out explicitly.
+- **7 switch-style `case tea.KeyEnter:` arms** — `entries` 2, `range` 3,
+  `rates` 2 — which no `msg.Type ==` grep finds. They are hardcoded key dispatch
+  for the same reason and migrate too.
+- **66 screen transitions**, not 62: 62 literal `.screen = screen…`
+  assignments across 13 files (`app` 22, `report` 8, `entries` 6, `home` 6,
+  `log` 6, `range` 3, `filters` 2, `members` 2, `listbrowser` 2, `rates` 2,
+  `budget` 1, `export` 1, `setup` 1) **plus 4 indirect ones** —
+  `listbrowser.go:78` (`= bs.origin`) and `log.go:276`, `:354`, `:483`
+  (`= lg.origin`) — which a literal grep misses and which are exactly the
+  origin-field reads this tranche removes.
 - **Two screens already carry an `origin` field**: `listBrowserModel.origin`
   (entered from Log or Rates) and **`logModel.origin`** (entered from Home or
   Report). Both are ad-hoc navigation state.
@@ -66,6 +75,19 @@ state change must re-sync — the failure mode tranche A avoided by refusing to
 put the theme on each sub-model), and per-sub-model `keys()` methods (the
 contextual state lives on the root `Model`, so they would need it anyway,
 spread over twelve files).
+
+**`keysFor` covers all 14 screens, not the 12 with handlers.** `screenLoading`
+and `screenError` have no key handler but do accept `q` today, and once the
+global quit check reads `keysFor(m).Quit` a missing case would silently disable
+it — leaving Loading, which swallows every other key, with no exit at all.
+
+**Modes are part of the screen's identity.** A screen's accepted labels depend on
+its mode or step: `entriesModel.mode` and `tagNewMode`, `logModel.step` and its
+`formField` sub-steps, `ratesModel.editing` and the three-step `draft`,
+`rangeModel` editing, `setupModel` step, `entriesModel.editStep`. All of that
+state is reachable from the root `Model`. One exception is structural:
+`ratesModel.updateDraft` has a `ratesModel` receiver and cannot call
+`keysFor(m)` — its keymap must be passed in as a parameter.
 
 ### 4.2 The keymap carries its own help ordering, from day one
 
@@ -125,15 +147,26 @@ The stack is reached only through a small transition API:
 **Truncating push:** `goTo(s)` where `s` is already in `nav` truncates the stack
 above it instead of appending. `nav` therefore never holds a duplicate, its
 depth is bounded by the 14 screen constants, and unbounded growth is impossible
-by construction — not by remembering to clear at the right moment.
+by construction — not by remembering to clear at the right moment. It is a
+structural invariant, not a rule anyone has to apply.
 
-This matters because "returning to Home clears the stack" is **not** sufficient.
-Counter-example that never touches Home: Report → `n` → Log → save →
-`r` → reload → the `entriesMsg` handler lands on Report again. Each cycle would
-append one Report.
+**The report screen re-roots.** Report is reachable three ways — Home `enter`,
+Report `r`, and the logDone `r` reload — and all three arrive through
+`entriesMsg`, a `replace` from Loading. Classified naively, they would leave
+`nav` in three different states, including empty (making Report's own back keys
+no-ops) and `[Home, Report]` with `screen == Report` (making the first `esc` a
+visible dead key that returns Report to itself). The `entriesMsg` handler
+therefore re-roots explicitly: `resetTo(screenHome).goTo(screenReport)`. That is
+exactly today's semantics — Report's back target is unconditionally Home — and
+it makes every arrival path converge on the same chain.
 
-Both `origin` fields are deleted. Keeping one of them would reproduce exactly the
-two-mechanism ambiguity this decision exists to remove.
+**Both `origin` fields are deleted**, because keeping one would reproduce the
+two-mechanism ambiguity this decision exists to remove. But
+`listBrowserModel.origin` is not purely navigation state: `selectBrowsedList`
+(`listbrowser.go:135`) branches on it to decide **which sub-model receives the
+chosen list** — a rates row or the log task-pick flow. That routing decision
+needs an explicit replacement, not just deletion; the parent screen at the top
+of `nav` is the natural discriminator.
 
 ### 4.5 Return edges are not only `esc`
 
@@ -229,9 +262,13 @@ centralized `Back` site per screen.
   mechanically preserves a latent wrong-destination bug.
 - **Three async handlers force a screen with no staleness guard** —
   `membersMsg` (`app.go:768`), `statusesMsg` (`app.go:780`), `historyMsg`
-  (`app.go:701`) — unlike `tagsMsg` and `spacesMsg`, which have one. Navigate
-  away while one is in flight and the late reply yanks you back. The navigation
-  task adds the guards.
+  (`app.go:701`) — unlike `tagsMsg` and `spacesMsg`, which have one.
+  **The guard is not the same shape for all three.** `tagsMsg`'s works because
+  its fetch is dispatched while staying on `screenEntries`; `h` instead
+  dispatches from `screenLoading` (`entries.go:167`), so a
+  `if m.screen != screenEntries` guard on `historyMsg` would drop every reply
+  and strand the user on Loading — which swallows all keys but quit. The
+  history guard must accept `screenLoading`.
 - **The quit exclusion set must be reproduced exactly.** `screenListBrowser` is
   excluded from `q`-quits despite having no text input, and `entries` is
   excluded even in list mode. "Screens with text inputs" is *not* the rule; an
@@ -244,6 +281,16 @@ Report has no `esc` today — going back is `m` or `s`. Under "`esc` = pop
 everywhere" it gains `esc` → Home. This is an improvement and is called out
 here, in the CHANGELOG, and in the README key table, rather than arriving as a
 side effect.
+
+It does **not** arrive by itself: a plan that only classifies existing
+transition sites would ship without it, because Report has no `esc` site to
+classify. The binding, the handler arm, the parity-test update and a transition
+test are an explicit deliverable of the navigation task.
+
+Report's on-screen help line cannot mention the new key: help strings are
+rendered, and every golden must stay byte-identical through this tranche. `esc`
+becomes discoverable when B2 replaces the inline help lines with the generated
+footer — which is precisely what the keymap registry exists to feed.
 
 ## 8. Testing and constraints
 
