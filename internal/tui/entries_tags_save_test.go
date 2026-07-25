@@ -27,7 +27,7 @@ func TestNewTagAddsAndSelects(t *testing.T) {
 		next, _ = m.Update(keyRunes(string(r)))
 		m = next.(Model)
 	}
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.entriesScreen.tagNewMode {
 		t.Errorf("enter did not leave new-tag mode")
@@ -56,7 +56,7 @@ func TestSaveRecordsDemoOverrideAndReloads(t *testing.T) {
 
 	// toggle client-A on (cursor may be anywhere; set selection directly then save)
 	m.entriesScreen.tagSel["client-A"] = true
-	next, cmd := m.Update(key("enter")) // save
+	next, cmd := m.Update(keyMsg("enter")) // save
 	mm := next.(Model)
 	if cmd == nil {
 		t.Fatalf("save did not dispatch a cmd")

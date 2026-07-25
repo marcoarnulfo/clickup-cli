@@ -47,7 +47,7 @@ func TestCFromHomeEscReturnsHome(t *testing.T) {
 	m.runningTimer = &clickup.RunningTimer{TaskName: "Fix", Start: now.Add(-time.Minute)}
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 	mm := m2.(Model)
-	back, _ := mm.Update(key("esc"))
+	back, _ := mm.Update(keyMsg("esc"))
 	if s := back.(Model).screen; s != screenHome {
 		t.Errorf("esc from timer screen (origin Home) -> screen = %v, want screenHome", s)
 	}

@@ -19,7 +19,7 @@ func TestHistoryOpensFromAnyEntry(t *testing.T) {
 	other := report.TimeEntry{ID: "e2", TaskName: "Deploy", UserID: 999, Start: time.Now()}
 	m = browserWithEntries(m, other)
 
-	m2, cmd := m.Update(key("h"))
+	m2, cmd := m.Update(keyMsg("h"))
 	mm := m2.(Model)
 	if cmd == nil {
 		t.Fatal("h did not dispatch a command")
@@ -58,7 +58,7 @@ func TestHistoryEscReturnsToList(t *testing.T) {
 	m.screen = screenEntries
 	m.entriesScreen = entriesModel{mode: entriesHistory, historyChanges: []clickup.HistoryChange{{Field: "duration"}}}
 
-	m2, _ := m.Update(key("esc"))
+	m2, _ := m.Update(keyMsg("esc"))
 	mm := m2.(Model)
 	if mm.entriesScreen.mode != entriesList {
 		t.Errorf("esc from history did not return to entriesList: mode=%v", mm.entriesScreen.mode)

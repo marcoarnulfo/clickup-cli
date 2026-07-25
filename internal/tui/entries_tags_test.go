@@ -68,10 +68,10 @@ func TestSpaceTogglesTag(t *testing.T) {
 	own := report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Start: time.Now(), EntryTags: []string{"focus"}}
 	m = browserWithEntries(m, own)
 	m = openTagPicker(m, []string{"focus", "client-A"})
-	// cursor on the first tag; space toggles it off. key(" ") delivers a space
-	// whose String() == " " (key("space") would send the 5-rune string "space").
+	// cursor on the first tag; space toggles it off. keyMsg(" ") delivers a space
+	// whose String() == " " (keyMsg("space") would send the 5-rune string "space").
 	before := m.entriesScreen.tagSel[m.entriesScreen.tagAll[0]]
-	m2, _ := m.Update(key(" "))
+	m2, _ := m.Update(keyMsg(" "))
 	after := m2.(Model).entriesScreen.tagSel[m.entriesScreen.tagAll[0]]
 	if before == after {
 		t.Errorf("space did not toggle the tag under the cursor")

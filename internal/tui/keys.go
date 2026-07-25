@@ -4,43 +4,43 @@ package tui
 // package-scope identifier, and importing bubbles/key under its default
 // name collides with it (Go rejects an import name that matches any
 // package-level declaration, even one in a different file).
-import bkey "github.com/charmbracelet/bubbles/key"
+import "github.com/charmbracelet/bubbles/key"
 
 // keyDefaults is the screen-independent binding table: every key the TUI
 // knows, defined exactly once, with its help text. User-configurable
 // keybindings (#82) will override entries here and nothing else.
 type keyDefaults struct {
-	Quit bkey.Binding
-	Back bkey.Binding
+	Quit key.Binding
+	Back key.Binding
 
 	// Home (home.go's updateHome switch, migrated in full here since Home is
 	// the one screen this task fully covers).
-	PrevMonth   bkey.Binding
-	NextMonth   bkey.Binding
-	ToggleWeek  bkey.Binding
-	Range       bkey.Binding
-	ToggleScope bkey.Binding
-	LogHours    bkey.Binding
-	Timer       bkey.Binding
-	Members     bkey.Binding
-	Generate    bkey.Binding
+	PrevMonth   key.Binding
+	NextMonth   key.Binding
+	ToggleWeek  key.Binding
+	Range       key.Binding
+	ToggleScope key.Binding
+	LogHours    key.Binding
+	Timer       key.Binding
+	Members     key.Binding
+	Generate    key.Binding
 	// … one field per distinct action, added as screens arrive in Tasks 3-4 …
 }
 
 func defaultKeys() keyDefaults {
 	return keyDefaults{
-		Quit: bkey.NewBinding(bkey.WithKeys("q"), bkey.WithHelp("q", "quit")),
-		Back: bkey.NewBinding(bkey.WithKeys("esc"), bkey.WithHelp("esc", "back")),
+		Quit: key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		Back: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 
-		PrevMonth:   bkey.NewBinding(bkey.WithKeys("left", "h"), bkey.WithHelp("◂/h", "prev month (this_month only)")),
-		NextMonth:   bkey.NewBinding(bkey.WithKeys("right", "l"), bkey.WithHelp("▸/l", "next month (this_month only)")),
-		ToggleWeek:  bkey.NewBinding(bkey.WithKeys("w"), bkey.WithHelp("w", "this week/month")),
-		Range:       bkey.NewBinding(bkey.WithKeys("d"), bkey.WithHelp("d", "range")),
-		ToggleScope: bkey.NewBinding(bkey.WithKeys("t"), bkey.WithHelp("t", "me/team")),
-		LogHours:    bkey.NewBinding(bkey.WithKeys("n"), bkey.WithHelp("n", "log hours")),
-		Timer:       bkey.NewBinding(bkey.WithKeys("c"), bkey.WithHelp("c", "manage timer")),
-		Members:     bkey.NewBinding(bkey.WithKeys("f"), bkey.WithHelp("f", "select members")),
-		Generate:    bkey.NewBinding(bkey.WithKeys("enter"), bkey.WithHelp("enter", "generate report")),
+		PrevMonth:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("◂/h", "prev month (this_month only)")),
+		NextMonth:   key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("▸/l", "next month (this_month only)")),
+		ToggleWeek:  key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "this week/month")),
+		Range:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "range")),
+		ToggleScope: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "me/team")),
+		LogHours:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "log hours")),
+		Timer:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "manage timer")),
+		Members:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "select members")),
+		Generate:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "generate report")),
 	}
 }
 
@@ -48,30 +48,30 @@ func defaultKeys() keyDefaults {
 // and the ? overlay (#69) will render them in. A zero Binding is disabled
 // and matches nothing — that is how contextual keys are switched off.
 type keyMap struct {
-	Quit bkey.Binding
-	Back bkey.Binding
+	Quit key.Binding
+	Back key.Binding
 
-	PrevMonth   bkey.Binding
-	NextMonth   bkey.Binding
-	ToggleWeek  bkey.Binding
-	Range       bkey.Binding
-	ToggleScope bkey.Binding
-	LogHours    bkey.Binding
-	Timer       bkey.Binding
-	Members     bkey.Binding
-	Generate    bkey.Binding
+	PrevMonth   key.Binding
+	NextMonth   key.Binding
+	ToggleWeek  key.Binding
+	Range       key.Binding
+	ToggleScope key.Binding
+	LogHours    key.Binding
+	Timer       key.Binding
+	Members     key.Binding
+	Generate    key.Binding
 
-	short []bkey.Binding
-	full  [][]bkey.Binding
+	short []key.Binding
+	full  [][]key.Binding
 }
 
-func (k keyMap) ShortHelp() []bkey.Binding  { return k.short }
-func (k keyMap) FullHelp() [][]bkey.Binding { return k.full }
+func (k keyMap) ShortHelp() []key.Binding  { return k.short }
+func (k keyMap) FullHelp() [][]key.Binding { return k.full }
 
 // allBindings returns every binding field, so the parity tests do not have
 // to know the struct's shape. Keep it in sync when a field is added.
-func (k keyMap) allBindings() []bkey.Binding {
-	return []bkey.Binding{
+func (k keyMap) allBindings() []key.Binding {
+	return []key.Binding{
 		k.Quit, k.Back,
 		k.PrevMonth, k.NextMonth, k.ToggleWeek, k.Range, k.ToggleScope,
 		k.LogHours, k.Timer, k.Members, k.Generate,
@@ -92,7 +92,7 @@ func keysFor(m Model) keyMap {
 	case screenLoading, screenError:
 		// No key handler, but both accept q today; a zero keyMap would
 		// silently disable it and leave Loading with no exit at all.
-		return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+		return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 	case screenSetup:
 		return setupKeys()
 	case screenReport:
@@ -143,8 +143,8 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 	// SetEnabled mutates the copy in k, so it must run BEFORE short/full are
 	// built from those fields — the slices hold value copies, not references.
 	k.Members.SetEnabled(m.scope == "team")
-	k.short = []bkey.Binding{k.Generate, k.Range, k.Members, k.Quit}
-	k.full = [][]bkey.Binding{
+	k.short = []key.Binding{k.Generate, k.Range, k.Members, k.Quit}
+	k.full = [][]key.Binding{
 		{k.PrevMonth, k.NextMonth, k.ToggleWeek},
 		{k.Range, k.ToggleScope, k.Members},
 		{k.Generate, k.LogHours, k.Timer},
@@ -170,21 +170,21 @@ func entriesKeys() keyMap     { return keyMap{} }
 // minimal placeholders too, but q DOES quit these screens today, so Quit is
 // the one binding each carries until its handler migrates in Task 3.
 func reportKeys(d keyDefaults) keyMap {
-	return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+	return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 }
 
 func exportKeys(d keyDefaults) keyMap {
-	return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+	return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 }
 
 func membersKeys(d keyDefaults) keyMap {
-	return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+	return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 }
 
 func filtersKeys(d keyDefaults) keyMap {
-	return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+	return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 }
 
 func budgetKeys(d keyDefaults) keyMap {
-	return keyMap{Quit: d.Quit, short: []bkey.Binding{d.Quit}}
+	return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
 }

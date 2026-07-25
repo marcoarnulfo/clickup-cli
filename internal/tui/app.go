@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	bkey "github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -599,7 +599,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
-		if bkey.Matches(msg, keysFor(m).Quit) {
+		if key.Matches(msg, keysFor(m).Quit) {
 			return m, tea.Quit
 		}
 		if msg.Type == tea.KeyCtrlC {
