@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
@@ -56,8 +57,9 @@ func (m Model) memberFilterNote() string {
 }
 
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "g":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.GroupBy):
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		if _, ok := m.locOrErr(); !ok {
 			return m, nil
@@ -68,21 +70,21 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.report.Scope = m.scope
 			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		}
-	case "m", "s":
+	case key.Matches(msg, k.ChangeRange):
 		m.screen = screenHome
-	case "r":
+	case key.Matches(msg, k.Reload):
 		m.screen = screenLoading
 		return m, m.reloadEntriesCmd(screenReport)
-	case "e":
+	case key.Matches(msg, k.Export):
 		m.export = newExport(m.report)
 		m.screen = screenExport
-	case "p":
+	case key.Matches(msg, k.Rates):
 		m.ratesScreen = newRates(m.entries, m.cfg)
 		m.screen = screenRates
-	case "n":
+	case key.Matches(msg, k.LogHours):
 		m.logScreen = newLog(m.entries, m.cfg, screenReport)
 		m.screen = screenLog
-	case "f":
+	case key.Matches(msg, k.Filters):
 		missing := m.tasksMissingStatus()
 		if len(missing) == 0 {
 			m.assignStatuses()
@@ -96,11 +98,11 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, demoStatusEnrichCmd(m.entries)
 		}
 		return m, statusEnrichCmd(m.client, missing)
-	case "b":
+	case key.Matches(msg, k.Budget):
 		if !m.openBudgetView() {
 			return m, nil
 		}
-	case "v":
+	case key.Matches(msg, k.OpenEntries):
 		m = m.openEntries()
 		var cmd tea.Cmd
 		if m.userID == 0 {

@@ -3,6 +3,7 @@ package tui
 import (
 	"slices"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -115,22 +116,23 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	cur := &fs.sections[fs.sec]
-	switch msg.String() {
-	case "tab":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.NextField):
 		fs.sec = (fs.sec + 1) % len(fs.sections)
 		fs.row = 0
-	case "shift+tab":
+	case key.Matches(msg, k.PrevField):
 		fs.sec = (fs.sec - 1 + len(fs.sections)) % len(fs.sections)
 		fs.row = 0
-	case "up", "k":
+	case key.Matches(msg, k.Up):
 		if fs.row > 0 {
 			fs.row--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if fs.row < len(cur.options)-1 {
 			fs.row++
 		}
-	case " ", "space":
+	case key.Matches(msg, k.ToggleItem):
 		if len(cur.options) > 0 {
 			opt := cur.options[fs.row]
 			if cur.radio {
@@ -143,7 +145,7 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				cur.selected[opt] = !cur.selected[opt]
 			}
 		}
-	case "a":
+	case key.Matches(msg, k.SelectAll):
 		if cur.radio {
 			break // "all/none" doesn't apply to a single-choice dimension
 		}
@@ -151,7 +153,7 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for _, o := range cur.options {
 			cur.selected[o] = !all
 		}
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		m.filterLists = fs.sections[0].selected
 		m.filterTags = fs.sections[1].selected
 		m.filterStatuses = fs.sections[2].selected
@@ -161,7 +163,7 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenReport
 		}
 		return m, nil
-	case "esc":
+	case key.Matches(msg, k.Back):
 		m.screen = screenReport
 		return m, nil
 	}

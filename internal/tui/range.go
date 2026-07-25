@@ -3,6 +3,7 @@ package tui
 import (
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -45,10 +46,11 @@ func newRange(current string) rangeModel {
 
 func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rs := m.rangeScreen
+	k := keysFor(m) // reflects rs.editing as it stood before this keypress
 
 	if rs.editing {
-		switch msg.Type {
-		case tea.KeyEnter:
+		switch {
+		case key.Matches(msg, k.Confirm):
 			if rs.field == 0 {
 				rs.field = 1
 				rs.fromInput.Blur()
@@ -74,12 +76,15 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
 			m.screen = screenHome
 			return m, nil
-		case tea.KeyEsc:
+		case key.Matches(msg, k.Back):
+			// Closes the custom-date editor and stays on screenRange (the
+			// two-step "back to the preset list" behavior) — it does NOT
+			// navigate away, unlike Back everywhere else on this screen.
 			rs.editing = false
 			rs.msg = ""
 			m.rangeScreen = rs
 			return m, nil
-		case tea.KeyTab, tea.KeyShiftTab:
+		case key.Matches(msg, k.NextField), key.Matches(msg, k.PrevField):
 			// Only two fields, so Tab and Shift+Tab both just swap focus between them.
 			if rs.field == 0 {
 				rs.field = 1
@@ -103,16 +108,16 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	switch msg.String() {
-	case "up", "k":
+	switch {
+	case key.Matches(msg, k.Up):
 		if rs.idx > 0 {
 			rs.idx--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if rs.idx < len(rangePresets)-1 {
 			rs.idx++
 		}
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		p := rangePresets[rs.idx]
 		if p.id == report.PresetCustom {
 			rs.editing = true
@@ -135,7 +140,7 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
 		m.screen = screenHome
 		return m, nil
-	case "esc":
+	case key.Matches(msg, k.Back):
 		m.screen = screenHome
 		return m, nil
 	}

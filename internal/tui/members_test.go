@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -77,6 +78,19 @@ func TestMembersAllNoneEmptyRosterNoPanic(t *testing.T) {
 	m = u.(Model)
 	if len(m.membersScreen.selected) != 0 {
 		t.Errorf("selected = %v, want empty on an empty roster", m.membersScreen.selected)
+	}
+}
+
+// TestMembersKeyLabels pins the exact label set members.go's updateMembers
+// accepts today, plus q. The old switch also had a "space" case arm, but
+// bubbletea maps the space rune to KeySpace whose String() is " ", so that
+// arm never fired — dropped here deliberately, not a regression (#59 Task 3).
+func TestMembersKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := membersFixture()
+	want := []string{" ", "a", "down", "enter", "esc", "j", "k", "q", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("members labels = %v, want %v", got, want)
 	}
 }
 

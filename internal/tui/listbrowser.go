@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 )
@@ -55,18 +56,19 @@ func (m Model) updateListBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if bs.loading {
 		return m, nil
 	}
-	switch msg.String() {
-	case "up", "k":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Up):
 		if bs.idx > 0 {
 			bs.idx--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if bs.idx < bs.itemCount()-1 {
 			bs.idx++
 		}
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		return m.browserEnter(bs)
-	case "esc":
+	case key.Matches(msg, k.Back):
 		switch bs.level {
 		case browseFolderLists:
 			bs.level = browseSpaceContents

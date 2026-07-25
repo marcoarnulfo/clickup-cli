@@ -1,11 +1,24 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 )
+
+// TestListBrowserKeyLabels pins the label set updateListBrowser accepts at
+// every drill-down level (only the action taken differs, not the labels).
+// Quit stays off today (see TestQuitBindingPerScreen).
+func TestListBrowserKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := browserFixture(screenLog)
+	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("list browser labels = %v, want %v", got, want)
+	}
+}
 
 func browserFixture(origin screen) Model {
 	m := Model{screen: screenListBrowser}

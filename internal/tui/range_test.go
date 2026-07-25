@@ -1,12 +1,38 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+// TestRangeListModeKeyLabels pins the label set updateRange accepts while
+// browsing the preset list (rangeScreen.editing == false), plus q — the
+// screen's Quit stays off today (see TestQuitBindingPerScreen).
+func TestRangeListModeKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("range list-mode labels = %v, want %v", got, want)
+	}
+}
+
+// TestRangeEditingModeKeyLabels pins the DIFFERENT label set accepted while
+// the custom-date editor is open: no up/down (they'd be typed into the
+// focused field instead), plus tab/shift+tab to swap fields.
+func TestRangeEditingModeKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m.rangeScreen.editing = true
+	want := []string{"enter", "esc", "shift+tab", "tab"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("range editing-mode labels = %v, want %v", got, want)
+	}
+}
 
 func TestRangeSelectPreset(t *testing.T) {
 	m := Model{screen: screenRange, preset: report.PresetThisMonth, rangeScreen: newRange(report.PresetThisMonth)}
@@ -176,6 +202,32 @@ func TestRangeEditingTabSwitchesField(t *testing.T) {
 	}
 	if !m.rangeScreen.fromInput.Focused() || m.rangeScreen.toInput.Focused() {
 		t.Error("Shift+Tab should focus 'from' and blur 'to'")
+	}
+}
+
+// #59 Task 3 step 3: esc in list mode returns to Home.
+func TestRangeEscListModeReturnsHome(t *testing.T) {
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	next, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEsc})
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("esc from range list -> %v, want screenHome", got)
+	}
+}
+
+// #59 Task 3 step 3: esc in editing mode does NOT navigate — it only closes
+// the custom-date editor, staying on screenRange with editing == false. This
+// is the two-step "back to the preset list" behavior; asserting a screen
+// change here would delete it without any golden file noticing.
+func TestRangeEscEditingModeClosesEditorNotScreen(t *testing.T) {
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m.rangeScreen.editing = true
+	next, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEsc})
+	nm := next.(Model)
+	if nm.screen != screenRange {
+		t.Errorf("esc from range editing -> %v, want to stay on screenRange", nm.screen)
+	}
+	if nm.rangeScreen.editing {
+		t.Error("esc from range editing should clear editing, got still true")
 	}
 }
 

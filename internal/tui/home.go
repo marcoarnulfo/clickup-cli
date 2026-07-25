@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -27,55 +28,52 @@ const (
 )
 
 func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "left", "h":
-		if m.preset != report.PresetThisMonth || m.periodMode == periodModeWeek {
-			break
-		}
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.PrevMonth):
+		// The this_month/week-mode gate lives entirely in homeKeys' Enabled()
+		// now: PrevMonth only matches when it holds, so there is no guard to
+		// repeat here (see TestHomeMonthNavKeysMatchGuard).
 		m.month--
 		if m.month < time.January {
 			m.month = time.December
 			m.year--
 		}
-	case "right", "l":
-		if m.preset != report.PresetThisMonth || m.periodMode == periodModeWeek {
-			break
-		}
+	case key.Matches(msg, k.NextMonth):
 		m.month++
 		if m.month > time.December {
 			m.month = time.January
 			m.year++
 		}
-	case "w":
+	case key.Matches(msg, k.ToggleWeek):
 		if m.periodMode == periodModeWeek {
 			m.periodMode = periodModeMonth
 		} else {
 			m.periodMode = periodModeWeek
 		}
-	case "d":
+	case key.Matches(msg, k.Range):
 		m.rangeScreen = newRange(m.preset)
 		m.screen = screenRange
 		return m, nil
-	case "t":
+	case key.Matches(msg, k.ToggleScope):
 		if m.scope == "me" {
 			m.scope = "team"
 		} else {
 			m.scope = "me"
 		}
-	case "n":
+	case key.Matches(msg, k.LogHours):
 		m.logScreen = newLog(m.entries, m.cfg, screenHome)
 		m.screen = screenLog
-	case "c":
-		if m.runningTimer != nil {
-			m.logScreen = newLog(m.entries, m.cfg, screenHome)
-			m.logScreen.timer = m.runningTimer
-			m.logScreen.step = logTimerRunning
-			m.screen = screenLog
-		}
-	case "f":
-		if m.scope != "team" {
-			break
-		}
+	case key.Matches(msg, k.Timer):
+		// The running-timer gate also lives entirely in homeKeys' Enabled()
+		// now (see TestHomeTimerKeyMatchesGuard).
+		m.logScreen = newLog(m.entries, m.cfg, screenHome)
+		m.logScreen.timer = m.runningTimer
+		m.logScreen.step = logTimerRunning
+		m.screen = screenLog
+	case key.Matches(msg, k.Members):
+		// The team-scope gate lives entirely in homeKeys' Enabled() now (see
+		// TestHomeMembersKeyIsTeamScopeOnly).
 		if len(m.teamMembers) > 0 {
 			m.membersScreen = newMembers(m.teamMembers, m.selectedMembers)
 			m.screen = screenMembers
@@ -87,7 +85,7 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, demoMembersCmd()
 		}
 		return m, loadMembersCmd(m.client, m.cfg.WorkspaceID, screenHome)
-	case "enter":
+	case key.Matches(msg, k.Generate):
 		m.home.errText = "" // clear any previous inline error before retrying
 		m.screen = screenLoading
 		// loadEntriesCmd derives the team assignees on its own when scope=="team".

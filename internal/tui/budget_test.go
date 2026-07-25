@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -41,5 +42,23 @@ func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 	full := strings.Repeat("#", budgetBarWidth)
 	if !strings.Contains(out, full) {
 		t.Errorf("renderBudgetBar(150) = %q, want a fully filled bar", out)
+	}
+}
+
+// #59 Task 3 step 3: esc and b both close the budget view back to Report —
+// neither has a test that would fail if it went mute.
+func TestBudgetEscReturnsReport(t *testing.T) {
+	m := Model{screen: screenBudget}
+	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyEsc})
+	if got := next.(Model).screen; got != screenReport {
+		t.Errorf("esc from budget -> %v, want screenReport", got)
+	}
+}
+
+func TestBudgetBReturnsReport(t *testing.T) {
+	m := Model{screen: screenBudget}
+	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if got := next.(Model).screen; got != screenReport {
+		t.Errorf("b from budget -> %v, want screenReport", got)
 	}
 }

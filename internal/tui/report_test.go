@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,17 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
+
+// TestReportKeyLabels pins the exact label set report.go's updateReport
+// accepts today (every case label, verbatim), plus q.
+func TestReportKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenReport}
+	want := []string{"b", "e", "f", "g", "m", "n", "p", "q", "r", "s", "v"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("report labels = %v, want %v", got, want)
+	}
+}
 
 // #53: the group cycle grows a "tag" stop between "day" and the team-only
 // "member" stop, for both scopes.
@@ -204,6 +216,43 @@ func TestReportBOpensBudgetView(t *testing.T) {
 	}
 	if mm.budgetScreen.lines[0].PercentUsed != 100 {
 		t.Errorf("budget line PercentUsed = %v, want 100 (2h @ 50/h == the 100 budget)", mm.budgetScreen.lines[0].PercentUsed)
+	}
+}
+
+// #59 Task 3 step 3: m, s, r and e have no test that would fail if any of
+// them went mute.
+func TestReportMReturnsHome(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(keyMsg("m"))
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("m from report -> %v, want screenHome", got)
+	}
+}
+
+func TestReportSReturnsHome(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(keyMsg("s"))
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("s from report -> %v, want screenHome", got)
+	}
+}
+
+func TestReportRReloadsEntries(t *testing.T) {
+	m := newTestModelOnReport()
+	next, cmd := m.Update(keyMsg("r"))
+	if got := next.(Model).screen; got != screenLoading {
+		t.Errorf("r from report -> %v, want screenLoading", got)
+	}
+	if cmd == nil {
+		t.Error("r from report should return a reload command")
+	}
+}
+
+func TestReportEOpensExport(t *testing.T) {
+	m := newTestModelOnReport()
+	next, _ := m.Update(keyMsg("e"))
+	if got := next.(Model).screen; got != screenExport {
+		t.Errorf("e from report -> %v, want screenExport", got)
 	}
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 )
@@ -42,31 +43,32 @@ func (m Model) updateMembers(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if mm.loading {
 		return m, nil
 	}
-	switch msg.String() {
-	case "up", "k":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Up):
 		if mm.idx > 0 {
 			mm.idx--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if mm.idx < len(mm.members)-1 {
 			mm.idx++
 		}
-	case " ", "space":
+	case key.Matches(msg, k.ToggleItem):
 		if len(mm.members) > 0 {
 			id := mm.members[mm.idx].ID
 			mm.selected[id] = !mm.selected[id]
 		}
-	case "a":
+	case key.Matches(msg, k.SelectAll):
 		on := !mm.allSelected() // all selected -> clear; else select all
 		for _, mem := range mm.members {
 			mm.selected[mem.ID] = on
 		}
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		m.selectedMembers = mm.selected
 		m.membersScreen = mm
 		m.screen = screenHome
 		return m, nil
-	case "esc":
+	case key.Matches(msg, k.Back):
 		m.screen = screenHome // discard: don't write mm back to root
 		return m, nil
 	}
