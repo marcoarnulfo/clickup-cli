@@ -568,7 +568,8 @@ func TestEntriesEditKeyMatchesOwnershipGuard(t *testing.T) {
 - [ ] **Step 5: Verify no string key dispatch survives**
 
 ```bash
-grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key[A-Z]|case tea\.Key[A-Z]' internal/tui/*.go | grep -v _test | grep -v demo.go
+grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key|case tea\.Key' internal/tui/*.go \
+  | grep -v _test | grep -v demo.go | grep -v 'case tea\.KeyMsg:'
 ```
 **Expected: exactly one line** — `rates.go`'s numeric class filter
 (`msg.Type == tea.KeyRunes`, Step 1). It is a key-*class* test, not a key
@@ -577,10 +578,11 @@ comparison, and it stays. Any other line is a missed migration.
 Two details of the pattern are deliberate:
 
 - The `[a-z0-9]` class matters — `log.go` has `case "1"`, `"2"`, `"3"`.
-- The trailing `[A-Z]` on the `tea.Key` alternatives excludes `app.go:600`'s
-  `case tea.KeyMsg:`. That is `Update`'s message-type arm, not a key
-  comparison; it stays forever, and a pattern that matches it can never
-  return nothing.
+- The final `grep -v` drops `app.go`'s `case tea.KeyMsg:`. That is `Update`'s
+  message-type arm, not a key comparison; it stays forever, so a pipeline that
+  matches it can never return nothing. Excluding it by regex class does not
+  work — `KeyMsg` starts with a capital letter like every other `tea.Key…`
+  constant, so it has to be filtered by name.
 
 - [ ] **Step 6: Verify parity, gate, commit**
 
@@ -918,7 +920,7 @@ git commit -m "docs: document the back-stack navigation and correct the key tabl
 
 ## Definition of done
 
-- `grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key[A-Z]|case tea\.Key[A-Z]' internal/tui/*.go` (excluding tests and `demo.go`) returns **exactly one line**: `rates.go`'s numeric class filter. The `[A-Z]` suffix is what keeps `app.go`'s `case tea.KeyMsg:` — `Update`'s message-type arm, which must survive — out of the pattern.
+- `grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key|case tea\.Key' internal/tui/*.go`, excluding tests, `demo.go` and the literal `case tea.KeyMsg:` line, returns **exactly one line**: `rates.go`'s numeric class filter. `case tea.KeyMsg:` is `Update`'s message-type arm and must survive; it can only be filtered by name, not by regex class.
 - `grep -rnE '\.screen = ' internal/tui/*.go` (excluding tests and `nav.go`) returns nothing.
 - Neither `logModel` nor `listBrowserModel` has an `origin` field, and `selectBrowsedList` routes by the parent chain.
 - Report accepts `esc`, with a transition test proving it.
