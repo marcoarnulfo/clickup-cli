@@ -1,9 +1,8 @@
 package tui
 
-// bkey aliases bubbles/key: log_test.go's helper func key(s string) is a
-// package-scope identifier, and importing bubbles/key under its default
-// name collides with it (Go rejects an import name that matches any
-// package-level declaration, even one in a different file).
+// An import name shares the package block with package-level declarations, so
+// log_test.go's tea.KeyMsg helper is named keyMsg rather than key: that is what
+// lets bubbles/key keep its own name here and in every handler.
 import "github.com/charmbracelet/bubbles/key"
 
 // keyDefaults is the screen-independent binding table: every key the TUI
