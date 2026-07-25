@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -42,6 +43,19 @@ func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 	full := strings.Repeat("#", budgetBarWidth)
 	if !strings.Contains(out, full) {
 		t.Errorf("renderBudgetBar(150) = %q, want a fully filled bar", out)
+	}
+}
+
+// TestBudgetKeyLabels pins the exact label set budget.go's updateBudget
+// accepts today (every case label, verbatim), plus q — handled globally in
+// app.go, in no case clause of budget.go itself. A dropped label is caught by
+// the two transition tests below; this catches an invented one.
+func TestBudgetKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenBudget}
+	want := []string{"b", "esc", "q"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("budget labels = %v, want %v", got, want)
 	}
 }
 

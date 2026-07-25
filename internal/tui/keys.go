@@ -257,7 +257,7 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 	if m.rangeScreen.editing {
 		k.NextField = d.NextField
 		k.PrevField = d.PrevField
-		k.short = []key.Binding{k.Confirm, k.NextField, k.Back}
+		k.short = []key.Binding{k.Confirm, k.NextField, k.PrevField, k.Back}
 		return k
 	}
 	k.Up = d.Up
