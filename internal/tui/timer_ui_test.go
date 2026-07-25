@@ -20,7 +20,7 @@ func TestHomeShowsRunningTimerLine(t *testing.T) {
 	}
 }
 
-func TestCFromHomeOpensTimerScreenWithOrigin(t *testing.T) {
+func TestCFromHomeOpensTimerScreenWithHomeParent(t *testing.T) {
 	now := time.Now()
 	m := newTestModel()
 	m.now = fixedNow(now)
