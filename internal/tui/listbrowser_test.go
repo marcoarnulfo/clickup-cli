@@ -20,8 +20,12 @@ func TestListBrowserKeyLabels(t *testing.T) {
 	}
 }
 
+// browserFixture builds a Model on screenListBrowser with nav seeded to the
+// chain a real open implies (Home -> Report -> origin), so pop() and the
+// selectBrowsedList discriminator (which reads the top of nav) see the same
+// parent a live goTo(screenListBrowser) from origin would have pushed.
 func browserFixture(origin screen) Model {
-	m := Model{screen: screenListBrowser}
+	m := Model{screen: screenListBrowser, nav: []screen{screenHome, screenReport, origin}}
 	m.browserContents = map[string]browserSpaceContents{
 		"s1": {
 			folders:    []clickup.Folder{{ID: "f1", Name: "Backend", Lists: []clickup.List{{ID: "l1", Name: "API"}}}},
@@ -29,7 +33,6 @@ func browserFixture(origin screen) Model {
 		},
 	}
 	m.browserScreen = listBrowserModel{
-		origin: origin,
 		level:  browseSpaces,
 		spaces: []clickup.Space{{ID: "s1", Name: "Engineering"}},
 	}
@@ -105,7 +108,7 @@ func TestBrowserEscGoesUpThenBackToOrigin(t *testing.T) {
 
 func TestSpacesMsgPopulatesAndDemoCmds(t *testing.T) {
 	m := Model{screen: screenListBrowser}
-	m.browserScreen = listBrowserModel{origin: screenLog, loading: true}
+	m.browserScreen = listBrowserModel{loading: true}
 	u, _ := m.Update(spacesMsg{spaces: []clickup.Space{{ID: "s1", Name: "Eng"}}})
 	m = u.(Model)
 	if m.browserScreen.loading || len(m.browserScreen.spaces) != 1 || len(m.browserSpaces) != 1 {
@@ -121,21 +124,26 @@ func TestSpacesMsgPopulatesAndDemoCmds(t *testing.T) {
 
 func TestOpenListBrowserCacheHitAndMiss(t *testing.T) {
 	// cache hit: browserSpaces already populated -> opens directly, no command.
-	hit := Model{browserSpaces: []clickup.Space{{ID: "s1", Name: "Eng"}}}
-	u, cmd := hit.openListBrowser(screenRates)
+	// openListBrowser no longer takes an origin: it's whatever screen the
+	// Model was on (goTo pushes it), so the fixture is ON that screen.
+	hit := Model{screen: screenRates, browserSpaces: []clickup.Space{{ID: "s1", Name: "Eng"}}}
+	u, cmd := hit.openListBrowser()
 	hit = u
 	if hit.screen != screenListBrowser || len(hit.browserScreen.spaces) != 1 || cmd != nil {
 		t.Fatalf("cache hit: screen=%v spaces=%d cmd=%v", hit.screen, len(hit.browserScreen.spaces), cmd)
 	}
-	if hit.browserScreen.origin != screenRates {
-		t.Errorf("origin = %v, want rates", hit.browserScreen.origin)
+	if len(hit.nav) == 0 || hit.nav[len(hit.nav)-1] != screenRates {
+		t.Errorf("nav = %v, want top screenRates", hit.nav)
 	}
 	// cache miss in demo mode: loading + a command that yields spacesMsg.
-	miss := Model{demo: true}
-	u2, cmd2 := miss.openListBrowser(screenLog)
+	miss := Model{screen: screenLog, demo: true}
+	u2, cmd2 := miss.openListBrowser()
 	miss = u2
 	if miss.screen != screenListBrowser || !miss.browserScreen.loading || cmd2 == nil {
 		t.Fatalf("cache miss: screen=%v loading=%v cmd=%v", miss.screen, miss.browserScreen.loading, cmd2)
+	}
+	if len(miss.nav) == 0 || miss.nav[len(miss.nav)-1] != screenLog {
+		t.Errorf("nav = %v, want top screenLog", miss.nav)
 	}
 	if _, ok := cmd2().(spacesMsg); !ok {
 		t.Error("cache miss should load spaces (demo)")
@@ -144,7 +152,7 @@ func TestOpenListBrowserCacheHitAndMiss(t *testing.T) {
 
 func TestSpaceContentsMsgPopulatesCache(t *testing.T) {
 	m := Model{screen: screenListBrowser}
-	m.browserScreen = listBrowserModel{origin: screenLog, spaceID: "s1", loading: true, level: browseSpaces}
+	m.browserScreen = listBrowserModel{spaceID: "s1", loading: true, level: browseSpaces}
 	u, _ := m.Update(spaceContentsMsg{
 		spaceID:    "s1",
 		folders:    []clickup.Folder{{ID: "f1", Name: "F", Lists: []clickup.List{{ID: "l1", Name: "L"}}}},

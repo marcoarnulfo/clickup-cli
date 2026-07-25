@@ -163,7 +163,6 @@ func TestGoldenSetup(t *testing.T) {
 func TestGoldenListBrowser(t *testing.T) {
 	t.Parallel()
 	bs := listBrowserModel{
-		origin: screenLog,
 		spaces: []clickup.Space{{ID: "s1", Name: "Clients"}, {ID: "s2", Name: "Internal"}},
 	}
 	golden(t, "listbrowser", bs.view(testTheme(true)))
@@ -207,7 +206,7 @@ func TestGoldenRatesTabs(t *testing.T) {
 
 func TestGoldenLog(t *testing.T) {
 	t.Parallel()
-	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"}, screenReport)
+	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
 	golden(t, "log", lg.view(testTheme(true)))
 }
@@ -230,7 +229,7 @@ func TestGoldenEntriesBrowser(t *testing.T) {
 
 func TestGoldenLogForm(t *testing.T) {
 	t.Parallel()
-	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"}, screenReport)
+	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
 	lg = enterForm(lg) // sets step AND initializes the text inputs
 	golden(t, "log_form", lg.view(testTheme(true)))

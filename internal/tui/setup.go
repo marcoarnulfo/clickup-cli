@@ -125,7 +125,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = config.Save(m.cfg)
 			m.client = clickup.New(m.cfg.Token)
 			m.home = newHome()
-			m.screen = screenHome
+			m = m.resetTo(screenHome)
 			return m, nil
 		}
 		var cmd tea.Cmd

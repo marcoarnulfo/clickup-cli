@@ -47,11 +47,6 @@ type logModel struct {
 	step logStep
 	mode logMode
 
-	// origin is the screen the log flow was entered from (Home or Report);
-	// Esc (and logDone's Enter) return here instead of a hardcoded screen, so
-	// 'c' from Home's live-timer indicator comes back to Home, not Report.
-	origin screen
-
 	// now is stamped by the root (app.go View()) before each render, so the
 	// ticking timer screen never calls time.Now() itself.
 	now time.Time
@@ -81,10 +76,9 @@ type logModel struct {
 }
 
 // newLog builds the screen from the known lists (entries ∪ config.Rates),
-// in deterministic order for a stable view. origin is the screen to return
-// to on Esc/done (screenHome or screenReport) — required, not defaulted,
-// because screenSetup == 0 would otherwise silently mean "Setup".
-func newLog(entries []report.TimeEntry, cfg config.Config, origin screen) logModel {
+// in deterministic order for a stable view. Esc/done return to whoever pushed
+// screenLog via pop() (Home or Report) — see Model.nav.
+func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	names := map[string]string{}
 	var order []string
 	remember := func(id, name string) {
@@ -117,7 +111,7 @@ func newLog(entries []report.TimeEntry, cfg config.Config, origin screen) logMod
 	for i, id := range order {
 		lists[i] = taskListChoice{id: id, name: names[id]}
 	}
-	return logModel{lists: lists, origin: origin}
+	return logModel{lists: lists}
 }
 
 type logDoneMsg struct{ summary string }
@@ -272,10 +266,10 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	lg := m.logScreen
 	k := keysFor(m) // reflects lg.step/lg.formField as they stood before this keypress
 
-	// Back returns to the log flow's origin screen from any non-input step
+	// Back returns to whoever pushed the log flow from any non-input step
 	// (inputs handle Back locally in logIDInput/logForm).
 	if key.Matches(msg, k.Back) && lg.step != logIDInput && lg.step != logForm {
-		m.screen = lg.origin
+		m = m.pop()
 		return m, nil
 	}
 
@@ -310,14 +304,15 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case logTimerRunning:
 		if key.Matches(msg, k.StopTimer) {
 			m.logScreen = lg
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.timerStopCmd()
 		}
-		// Esc is caught by the outer guard above and returns to lg.origin; the
-		// case that used to live here hardcoded screenReport instead, which
-		// was unreachable dead code (the guard always ran first) AND a latent
-		// wrong-destination bug (it would ignore lg.origin == screenHome) —
-		// deleted rather than migrated, see #59 Task 4 step 3.
+		// Esc is caught by the outer guard above and pops back to whoever
+		// pushed the log flow; the case that used to live here hardcoded
+		// screenReport instead, which was unreachable dead code (the guard
+		// always ran first) AND a latent wrong-destination bug (it would
+		// ignore an origin of screenHome) — deleted rather than migrated,
+		// see #59 Task 4 step 3.
 		m.logScreen = lg
 		return m, nil
 
@@ -339,7 +334,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			lg.msg = ""
 			if lg.mode == modeTimer {
 				m.logScreen = lg
-				m.screen = screenLoading
+				m = m.replace(screenLoading)
 				return m, m.timerStartCmd(id, "")
 			}
 			lg = enterForm(lg)
@@ -354,7 +349,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case logForm:
 		if key.Matches(msg, k.Back) {
-			m.screen = lg.origin
+			m = m.pop()
 			return m, nil
 		}
 		if lg.formField == 3 { // billable toggle (keypress, not a text field)
@@ -371,7 +366,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			day, _ := time.Parse("2006-01-02", lg.dateStr)
 			start := time.Date(day.Year(), day.Month(), day.Day(), 9, 0, 0, 0, time.Local)
 			m.logScreen = lg
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.logCreateCmd(lg.taskID, start, dur, lg.noteStr, lg.billable)
 		}
 		if key.Matches(msg, k.Confirm) {
@@ -435,7 +430,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if lg.listIdx == browseIdx {
 				m.logScreen = lg
-				return m.openListBrowser(screenLog)
+				return m.openListBrowser()
 			}
 			if len(lg.lists) > 0 {
 				lg.loading = true
@@ -462,7 +457,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				lg.taskID = t.ID
 				if lg.mode == modeTimer {
 					m.logScreen = lg
-					m.screen = screenLoading
+					m = m.replace(screenLoading)
 					return m, m.timerStartCmd(t.ID, "")
 				}
 				id := t.ID
@@ -478,12 +473,12 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case logDone:
 		switch {
 		case key.Matches(msg, k.Reload):
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			// screenLog isn't a retryableErrMsg-aware origin: falls through to
 			// the existing screenError, unchanged behavior (out of scope for #38).
 			return m, m.reloadEntriesCmd(screenLog)
 		case key.Matches(msg, k.Back), key.Matches(msg, k.Confirm):
-			m.screen = lg.origin
+			m = m.pop()
 			return m, nil
 		}
 	}

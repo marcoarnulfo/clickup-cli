@@ -160,11 +160,11 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filterBillable = billableFromSelection(fs.sections[3].selected)
 		m.filtersScreen = fs
 		if m.applyReport() {
-			m.screen = screenReport
+			m = m.pop()
 		}
 		return m, nil
 	case key.Matches(msg, k.Back):
-		m.screen = screenReport
+		m = m.pop()
 		return m, nil
 	}
 	m.filtersScreen = fs

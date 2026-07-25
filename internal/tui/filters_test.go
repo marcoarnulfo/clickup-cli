@@ -16,7 +16,7 @@ func filtersFixture() Model {
 		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress", Billable: true},
 		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: false},
 	}
-	m := Model{screen: screenFilters, entries: entries, now: time.Now}
+	m := Model{screen: screenFilters, entries: entries, now: time.Now, nav: []screen{screenHome, screenReport}}
 	m.filtersScreen = newFilters(entries, nil, nil, nil, nil)
 	return m
 }

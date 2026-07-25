@@ -17,8 +17,8 @@ func TestRatesBOpensBrowser(t *testing.T) {
 	m.ratesScreen = newRates(nil, config.Config{})
 	u, _ := m.updateRates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = u.(Model)
-	if m.screen != screenListBrowser || m.browserScreen.origin != screenRates {
-		t.Fatalf("'b' should open the browser for rates; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	if m.screen != screenListBrowser || len(m.nav) == 0 || m.nav[len(m.nav)-1] != screenRates {
+		t.Fatalf("'b' should open the browser for rates; screen=%v nav=%v", m.screen, m.nav)
 	}
 }
 
@@ -38,8 +38,8 @@ func TestRatesBIsGatedToListsSection(t *testing.T) {
 	m.ratesScreen.sec = secLists
 	u, _ = m.updateRates(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	m = u.(Model)
-	if m.screen != screenListBrowser || m.browserScreen.origin != screenRates {
-		t.Fatalf("'b' inside Lists should open the browser; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	if m.screen != screenListBrowser || len(m.nav) == 0 || m.nav[len(m.nav)-1] != screenRates {
+		t.Fatalf("'b' inside Lists should open the browser; screen=%v nav=%v", m.screen, m.nav)
 	}
 }
 
@@ -72,6 +72,7 @@ func billingFixture(t *testing.T, cfg config.Config) Model {
 		month:  time.July,
 		preset: report.PresetThisMonth,
 		loc:    time.UTC,
+		nav:    []screen{screenReport}, // Rates is only ever reached from Report
 	}
 	m.entries = billingEntries()
 	m.ratesScreen = newRates(m.entries, cfg)

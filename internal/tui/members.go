@@ -66,10 +66,10 @@ func (m Model) updateMembers(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, k.Confirm):
 		m.selectedMembers = mm.selected
 		m.membersScreen = mm
-		m.screen = screenHome
+		m = m.pop()
 		return m, nil
 	case key.Matches(msg, k.Back):
-		m.screen = screenHome // discard: don't write mm back to root
+		m = m.pop() // discard: don't write mm back to root
 		return m, nil
 	}
 	m.membersScreen = mm

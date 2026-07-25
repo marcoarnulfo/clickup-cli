@@ -21,7 +21,7 @@ func (m Model) updateBudget(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := keysFor(m)
 	switch {
 	case key.Matches(msg, k.Back), key.Matches(msg, k.Budget):
-		m.screen = screenReport
+		m = m.pop()
 		return m, nil
 	}
 	return m, nil

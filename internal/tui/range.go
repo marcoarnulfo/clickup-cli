@@ -74,7 +74,7 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.customStart = from
 			m.customEnd = to
 			m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
-			m.screen = screenHome
+			m = m.pop()
 			return m, nil
 		case key.Matches(msg, k.Back):
 			// Closes the custom-date editor and stays on screenRange (the
@@ -138,10 +138,10 @@ func (m Model) updateRange(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.preset = p.id
 		m.periodMode = periodModeMonth // an explicit range pick always wins over week mode (#4)
-		m.screen = screenHome
+		m = m.pop()
 		return m, nil
 	case key.Matches(msg, k.Back):
-		m.screen = screenHome
+		m = m.pop()
 		return m, nil
 	}
 	m.rangeScreen = rs

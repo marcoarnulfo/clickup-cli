@@ -31,8 +31,8 @@ func TestCFromHomeOpensTimerScreenWithOrigin(t *testing.T) {
 	if mm.screen != screenLog || mm.logScreen.step != logTimerRunning {
 		t.Fatalf("c did not open the timer screen: screen=%v step=%v", mm.screen, mm.logScreen.step)
 	}
-	if mm.logScreen.origin != screenHome {
-		t.Errorf("origin = %v, want screenHome", mm.logScreen.origin)
+	if len(mm.nav) == 0 || mm.nav[len(mm.nav)-1] != screenHome {
+		t.Errorf("nav = %v, want top screenHome", mm.nav)
 	}
 }
 

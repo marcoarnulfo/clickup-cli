@@ -62,7 +62,7 @@ func TestBudgetKeyLabels(t *testing.T) {
 // #59 Task 3 step 3: esc and b both close the budget view back to Report —
 // neither has a test that would fail if it went mute.
 func TestBudgetEscReturnsReport(t *testing.T) {
-	m := Model{screen: screenBudget}
+	m := Model{screen: screenBudget, nav: []screen{screenReport}}
 	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyEsc})
 	if got := next.(Model).screen; got != screenReport {
 		t.Errorf("esc from budget -> %v, want screenReport", got)
@@ -70,7 +70,7 @@ func TestBudgetEscReturnsReport(t *testing.T) {
 }
 
 func TestBudgetBReturnsReport(t *testing.T) {
-	m := Model{screen: screenBudget}
+	m := Model{screen: screenBudget, nav: []screen{screenReport}}
 	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
 	if got := next.(Model).screen; got != screenReport {
 		t.Errorf("b from budget -> %v, want screenReport", got)

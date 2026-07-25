@@ -132,7 +132,7 @@ func enterEditForm(es entriesModel, now time.Time, loc *time.Location) entriesMo
 // userID retry, when m.userID == 0, is dispatched by the caller in updateReport.)
 func (m Model) openEntries() Model {
 	m.entriesScreen = entriesModel{entries: sortEntriesByStartDesc(m.visibleEntries())}
-	m.screen = screenEntries
+	m = m.goTo(screenEntries)
 	return m
 }
 
@@ -144,7 +144,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case entriesList:
 		switch {
 		case key.Matches(msg, k.Back):
-			m.screen = screenReport
+			m = m.pop()
 			return m, nil
 		case key.Matches(msg, k.Up):
 			if es.idx > 0 {
@@ -162,7 +162,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Read-only, not ownership-gated: history is allowed on ANY entry.
 			id := es.entries[es.idx].ID
 			m.entriesScreen = es
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.historyCmd(id)
 		case key.Matches(msg, k.Tags):
 			e := es.entries[es.idx]
@@ -247,7 +247,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				base.EntryTags = desired
 				m.demoOverrides[id] = base
 			}
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.setTagsCmd(id, desired)
 		}
 	case entriesConfirmDelete:
@@ -262,7 +262,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.demoDeleted[id] = true
 			}
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.deleteEntryCmd(id)
 		default: // any other key cancels
 			es.mode = entriesList
@@ -392,7 +392,7 @@ func (m Model) submitEntriesEdit(es entriesModel) (tea.Model, tea.Cmd) {
 		base.Start, base.Duration, base.Description, base.Billable = start, dur, note, billable
 		m.demoOverrides[id] = base
 	}
-	m.screen = screenLoading
+	m = m.replace(screenLoading)
 	return m, m.updateEntryCmd(id, start, dur, note, billable)
 }
 

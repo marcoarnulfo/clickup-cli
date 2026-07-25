@@ -61,6 +61,7 @@ func entriesFixture(owned bool) Model {
 	}
 	m := newTestModel()
 	m.screen = screenEntries
+	m.nav = []screen{screenReport} // the entries browser is only ever reached from Report
 	m.userID = 1
 	m.entriesScreen = entriesModel{entries: []report.TimeEntry{{ID: "e1", UserID: owner, TaskName: "X"}}}
 	return m

@@ -1216,7 +1216,7 @@ func TestSpacesMsgStaleAfterNavigatingAway(t *testing.T) {
 // populate and clear loading.
 func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 	m := Model{screen: screenListBrowser}
-	m.browserScreen = listBrowserModel{origin: screenLog, loading: true}
+	m.browserScreen = listBrowserModel{loading: true}
 	spaces := []clickup.Space{{ID: "s1", Name: "Engineering"}}
 	updated, _ := m.Update(spacesMsg{spaces: spaces})
 	mm := updated.(Model)

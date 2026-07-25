@@ -51,7 +51,7 @@ func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			e.idx++
 		}
 	case key.Matches(msg, k.Back):
-		m.screen = screenReport
+		m = m.pop()
 		m.export = e
 		return m, nil
 	case key.Matches(msg, k.Confirm):

@@ -437,12 +437,12 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		rt = rt.clearSelected()
 	case key.Matches(msg, k.BrowseList):
 		m.ratesScreen = rt
-		return m.openListBrowser(screenRates)
+		return m.openListBrowser()
 	case key.Matches(msg, k.Save):
 		return m.saveRates(rt)
 	case key.Matches(msg, k.Back):
 		// Discard unsaved changes and return to the report.
-		m.screen = screenReport
+		m = m.pop()
 		return m, nil
 	}
 	m.ratesScreen = rt
@@ -867,7 +867,7 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
-	m.screen = screenReport
+	m = m.pop()
 	return m, nil
 }
 

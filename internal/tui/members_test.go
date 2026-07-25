@@ -16,6 +16,7 @@ func membersFixture() Model {
 		teamMembers:     mems,
 		selectedMembers: sel,
 		membersScreen:   newMembers(mems, sel),
+		nav:             []screen{screenHome},
 	}
 }
 

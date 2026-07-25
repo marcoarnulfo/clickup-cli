@@ -14,7 +14,7 @@ import (
 // screen's Quit stays off today (see TestQuitBindingPerScreen).
 func TestRangeListModeKeyLabels(t *testing.T) {
 	t.Parallel()
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	want := []string{"down", "enter", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("range list-mode labels = %v, want %v", got, want)
@@ -26,7 +26,7 @@ func TestRangeListModeKeyLabels(t *testing.T) {
 // focused field instead), plus tab/shift+tab to swap fields.
 func TestRangeEditingModeKeyLabels(t *testing.T) {
 	t.Parallel()
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	m.rangeScreen.editing = true
 	want := []string{"enter", "esc", "shift+tab", "tab"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
@@ -35,7 +35,7 @@ func TestRangeEditingModeKeyLabels(t *testing.T) {
 }
 
 func TestRangeSelectPreset(t *testing.T) {
-	m := Model{screen: screenRange, preset: report.PresetThisMonth, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, preset: report.PresetThisMonth, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	// move to "last_7d" and confirm (order: this_month, last_month, last_7d, ...)
 	m.rangeScreen.idx = 2
 	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
@@ -55,6 +55,7 @@ func TestRangeSelectPresetClearsWeekMode(t *testing.T) {
 	m := Model{
 		screen: screenRange, preset: report.PresetThisMonth, periodMode: periodModeWeek,
 		rangeScreen: newRange(report.PresetThisMonth),
+		nav:         []screen{screenHome},
 	}
 	m.rangeScreen.idx = 2 // "last_7d"
 	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
@@ -69,7 +70,7 @@ func TestRangeSelectPresetClearsWeekMode(t *testing.T) {
 
 // Same regression, for the custom-range commit path.
 func TestRangeCustomValidDatesClearsWeekMode(t *testing.T) {
-	m := Model{screen: screenRange, periodMode: periodModeWeek, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, periodMode: periodModeWeek, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	m.rangeScreen.idx = 5 // "custom"
 	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
@@ -90,7 +91,7 @@ func TestRangeCustomValidDatesClearsWeekMode(t *testing.T) {
 }
 
 func TestRangeCustomValidDates(t *testing.T) {
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	m.rangeScreen.idx = 5 // "custom"
 	u, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
@@ -114,7 +115,7 @@ func TestRangeCustomValidDates(t *testing.T) {
 }
 
 func TestRangeCustomInvalidStays(t *testing.T) {
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	rs := m.rangeScreen
 	rs.idx = 5
 	rs.editing = true
@@ -137,6 +138,7 @@ func TestRangeCustomReopenPrefills(t *testing.T) {
 	end := time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC)
 	m := Model{
 		screen:      screenRange,
+		nav:         []screen{screenHome},
 		preset:      report.PresetCustom,
 		customStart: start,
 		customEnd:   end,
@@ -159,6 +161,7 @@ func TestRangeCustomReopenPrefills(t *testing.T) {
 func TestRangeCustomReopenEmptyWhenNotCustomPreset(t *testing.T) {
 	m := Model{
 		screen:      screenRange,
+		nav:         []screen{screenHome},
 		preset:      report.PresetThisMonth,
 		customStart: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		customEnd:   time.Date(2026, 6, 20, 0, 0, 0, 0, time.UTC),
@@ -176,7 +179,7 @@ func TestRangeCustomReopenEmptyWhenNotCustomPreset(t *testing.T) {
 }
 
 func TestRangeEditingTabSwitchesField(t *testing.T) {
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	rs := m.rangeScreen
 	rs.idx = 5
 	m.rangeScreen = rs
@@ -207,7 +210,7 @@ func TestRangeEditingTabSwitchesField(t *testing.T) {
 
 // #59 Task 3 step 3: esc in list mode returns to Home.
 func TestRangeEscListModeReturnsHome(t *testing.T) {
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	next, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEsc})
 	if got := next.(Model).screen; got != screenHome {
 		t.Errorf("esc from range list -> %v, want screenHome", got)
@@ -219,7 +222,7 @@ func TestRangeEscListModeReturnsHome(t *testing.T) {
 // is the two-step "back to the preset list" behavior; asserting a screen
 // change here would delete it without any golden file noticing.
 func TestRangeEscEditingModeClosesEditorNotScreen(t *testing.T) {
-	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth)}
+	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	m.rangeScreen.editing = true
 	next, _ := m.updateRange(tea.KeyMsg{Type: tea.KeyEsc})
 	nm := next.(Model)

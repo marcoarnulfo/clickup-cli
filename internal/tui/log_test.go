@@ -37,6 +37,10 @@ func newTestModelOnReport() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
 	m := New(cfg)
 	m.screen = screenReport
+	// Report is only ever reached from Home: seed that parent so pop()
+	// (esc/m/s and everything built on top of this fixture) lands where the
+	// real app would land instead of no-oping on an empty chain.
+	m.nav = []screen{screenHome}
 	m.entries = []report.TimeEntry{{ID: "e1", ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1", Billable: true}}
 	start, end := report.MonthRange(m.year, m.month, nil)
 	p, err := service.PricingFromConfig(cfg)
@@ -235,7 +239,7 @@ func TestGuidedListPickIssuesCmd(t *testing.T) {
 
 func TestGuidedTaskListMsgPopulatesPicker(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logListPick
 	m.screen = screenLog
 	next, _ := m.Update(taskListMsg{tasks: []clickup.Task{{ID: "x1", Name: "One"}, {ID: "x2", Name: "Two"}}})
@@ -250,7 +254,7 @@ func TestGuidedTaskListMsgPopulatesPicker(t *testing.T) {
 
 func TestGuidedTaskSelectToForm(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTaskPick
 	m.logScreen.mode = modeGuided
 	m.logScreen.tasks = []clickup.Task{{ID: "x1", Name: "One"}}
@@ -265,7 +269,7 @@ func TestGuidedTaskSelectToForm(t *testing.T) {
 func TestLogDoneMsgShowsConfirm(t *testing.T) {
 	m := newTestModelOnReport()
 	m.screen = screenLoading
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	next, _ := m.Update(logDoneMsg{summary: "1h30 on task123"})
 	nm := next.(Model)
 	if nm.screen != screenLog || nm.logScreen.step != logDone {
@@ -296,7 +300,7 @@ func TestTimerPickRoutes(t *testing.T) {
 
 func TestTimerMsgSetsRunning(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.screen = screenLog
 	rt := &clickup.RunningTimer{TaskID: "x1", TaskName: "One"}
 	next, _ := m.Update(timerMsg{timer: rt})
@@ -308,7 +312,7 @@ func TestTimerMsgSetsRunning(t *testing.T) {
 
 func TestTimerMsgNilNoRunning(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTimerRunning
 	m.screen = screenLog
 	next, _ := m.Update(timerMsg{timer: nil})
@@ -320,7 +324,7 @@ func TestTimerMsgNilNoRunning(t *testing.T) {
 
 func TestNewLogIncludesConfigLists(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40, Rates: map[string]float64{"111": 60, "222": 30}}
-	lg := newLog(nil, cfg, screenReport)
+	lg := newLog(nil, cfg)
 	got := map[string]bool{}
 	for _, l := range lg.lists {
 		got[l.id] = true
@@ -341,7 +345,7 @@ func TestTimerMsgIgnoredWhenAway(t *testing.T) {
 
 func TestTimerRunningStopIssuesCmd(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTimerRunning
 	m.logScreen.timer = &clickup.RunningTimer{TaskID: "x1"}
 	m.screen = screenLog
@@ -357,7 +361,7 @@ func TestTimerRunningStopIssuesCmd(t *testing.T) {
 
 func TestLogErrKeepsFormOnLogScreen(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logForm
 	m.logScreen.taskID = "task123"
 	m.logScreen.loading = true
@@ -390,7 +394,7 @@ func TestLogErrClassification(t *testing.T) {
 
 func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 	m := Model{screen: screenLog, demo: true}
-	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, config.Config{}, screenReport)
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, config.Config{})
 	m.logScreen.step = logListPick
 	// move down onto the "Browse all…" row (index len(lists) == 1)
 	u, _ := m.updateLog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
@@ -400,8 +404,8 @@ func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 	}
 	u, _ = m.updateLog(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
-	if m.screen != screenListBrowser || m.browserScreen.origin != screenLog {
-		t.Fatalf("browse row should open the browser for log; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	if m.screen != screenListBrowser || len(m.nav) == 0 || m.nav[len(m.nav)-1] != screenLog {
+		t.Fatalf("browse row should open the browser for log; screen=%v nav=%v", m.screen, m.nav)
 	}
 }
 
@@ -411,7 +415,7 @@ func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 // silently succeeding, which is the point of these tests — see #32).
 func demoLogModel() Model {
 	m := Model{screen: screenLog, demo: true, cfg: demoConfig(), now: time.Now}
-	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, m.cfg, screenReport)
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, m.cfg)
 	return m
 }
 
@@ -547,7 +551,7 @@ func TestDemoCurrentTimerCmdReflectsModelState(t *testing.T) {
 
 func TestListPickDebounceWhileLoading(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logListPick
 	m.logScreen.loading = true // a listTasksCmd is already in flight
 	m.screen = screenLog
@@ -564,7 +568,7 @@ func TestListPickDebounceWhileLoading(t *testing.T) {
 func TestLogDoneReloadsToLoading(t *testing.T) {
 	t.Parallel()
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logDone
 	m.screen = screenLog
 	next, cmd := m.updateLog(keyMsg("r"))

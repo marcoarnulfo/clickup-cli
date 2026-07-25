@@ -349,10 +349,11 @@ func setupKeys(m Model, d keyDefaults) keyMap {
 // Back is present in almost every step: it mirrors updateLog's own outer
 // guard (originally an Esc-vs-tea.KeyEsc comparison gated on lg.step !=
 // logIDInput/logForm, now key.Matches(msg, k.Back) with the same step
-// exclusion), which returns to lg.origin for every step except logIDInput
-// and logForm — those two handle Back internally with a DIFFERENT
-// destination (one step back within the flow, not out of it), but the
-// accepted LABEL is identical either way, which is all this function models.
+// exclusion), which pops back to whoever pushed the log flow (see
+// Model.nav) for every step except logIDInput and logForm — those two
+// handle Back internally with a DIFFERENT destination (one step back within
+// the flow, not out of it), but the accepted LABEL is identical either way,
+// which is all this function models.
 func logKeys(m Model, d keyDefaults) keyMap {
 	lg := m.logScreen
 	switch lg.step {

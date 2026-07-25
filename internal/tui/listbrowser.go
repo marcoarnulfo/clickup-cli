@@ -20,10 +20,9 @@ type browserSpaceContents struct {
 	folderless []clickup.List
 }
 
-// listBrowserModel is the shared Space→Folder→List drill-down. origin records
-// who opened it, so a selected list is routed back to the right caller.
+// listBrowserModel is the shared Space→Folder→List drill-down. Who opened it
+// (Rates or Log) lives on Model.nav, not here — see selectBrowsedList.
 type listBrowserModel struct {
-	origin  screen // screenLog | screenRates
 	level   browseLevel
 	idx     int
 	loading bool
@@ -77,7 +76,7 @@ func (m Model) updateListBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			bs.level = browseSpaces
 			bs.idx = 0
 		default: // browseSpaces -> back to whoever opened the browser
-			m.screen = bs.origin
+			m = m.pop()
 			return m, nil
 		}
 	}
@@ -133,8 +132,11 @@ func (m Model) browserEnter(bs listBrowserModel) (tea.Model, tea.Cmd) {
 }
 
 // selectBrowsedList routes a chosen list back to whoever opened the browser.
+// The parent screen (Rates or Log) lives at the top of the nav chain — read
+// it BEFORE popping, since pop() consumes it.
 func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
-	if m.browserScreen.origin == screenRates {
+	fromRates := len(m.nav) > 0 && m.nav[len(m.nav)-1] == screenRates
+	if fromRates {
 		rt := m.ratesScreen
 		found := -1
 		for i, row := range rt.rows {
@@ -150,13 +152,13 @@ func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
 		rt.idx = found
 		rt.sec = secLists // the browsed list is a row of the Lists section
 		m.ratesScreen = rt
-		m.screen = screenRates
+		*m = m.pop()
 		return nil
 	}
 	// screenLog: enter the normal task-pick flow for the chosen list.
 	m.logScreen.loading = true
 	m.logScreen.step = logListPick
-	m.screen = screenLog
+	*m = m.pop()
 	return m.tasksCmd(id)
 }
 

@@ -71,29 +71,29 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		}
 	case key.Matches(msg, k.ChangeRange):
-		m.screen = screenHome
+		m = m.pop()
 	case key.Matches(msg, k.Reload):
-		m.screen = screenLoading
+		m = m.replace(screenLoading)
 		return m, m.reloadEntriesCmd(screenReport)
 	case key.Matches(msg, k.Export):
 		m.export = newExport(m.report)
-		m.screen = screenExport
+		m = m.goTo(screenExport)
 	case key.Matches(msg, k.Rates):
 		m.ratesScreen = newRates(m.entries, m.cfg)
-		m.screen = screenRates
+		m = m.goTo(screenRates)
 	case key.Matches(msg, k.LogHours):
-		m.logScreen = newLog(m.entries, m.cfg, screenReport)
-		m.screen = screenLog
+		m.logScreen = newLog(m.entries, m.cfg)
+		m = m.goTo(screenLog)
 	case key.Matches(msg, k.Filters):
 		missing := m.tasksMissingStatus()
 		if len(missing) == 0 {
 			m.assignStatuses()
 			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
-			m.screen = screenFilters
+			m = m.goTo(screenFilters)
 			return m, nil
 		}
 		m.filtersScreen = filtersModel{loadingStatuses: true}
-		m.screen = screenFilters
+		m = m.goTo(screenFilters)
 		if m.demo {
 			return m, demoStatusEnrichCmd(m.entries)
 		}
@@ -136,7 +136,7 @@ func (m *Model) openBudgetView() bool {
 	budgets := service.BudgetsFromConfig(m.cfg)
 	lines := report.BudgetLines(billed, budgets, p, listNamesFromBuckets(perList.Buckets))
 	m.budgetScreen = newBudget(lines)
-	m.screen = screenBudget
+	*m = m.goTo(screenBudget)
 	return true
 }
 

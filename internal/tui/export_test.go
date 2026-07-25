@@ -22,7 +22,7 @@ func TestExportKeyLabels(t *testing.T) {
 
 // #59 Task 3 step 3: esc has no test that would fail if it went mute.
 func TestExportEscReturnsReport(t *testing.T) {
-	m := Model{screen: screenExport, export: newExport(report.Report{})}
+	m := Model{screen: screenExport, export: newExport(report.Report{}), nav: []screen{screenReport}}
 	next, _ := m.updateExport(tea.KeyMsg{Type: tea.KeyEsc})
 	if got := next.(Model).screen; got != screenReport {
 		t.Errorf("esc from export -> %v, want screenReport", got)
