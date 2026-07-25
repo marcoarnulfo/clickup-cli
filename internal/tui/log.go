@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -269,25 +270,26 @@ func (m Model) timerCurrentCmd() tea.Cmd {
 
 func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	lg := m.logScreen
+	k := keysFor(m) // reflects lg.step/lg.formField as they stood before this keypress
 
-	// Esc returns to the log flow's origin screen from any non-input step
-	// (inputs handle Esc locally in later steps).
-	if msg.Type == tea.KeyEsc && lg.step != logIDInput && lg.step != logForm {
+	// Back returns to the log flow's origin screen from any non-input step
+	// (inputs handle Back locally in logIDInput/logForm).
+	if key.Matches(msg, k.Back) && lg.step != logIDInput && lg.step != logForm {
 		m.screen = lg.origin
 		return m, nil
 	}
 
 	switch lg.step {
 	case logModeSelect:
-		switch msg.String() {
-		case "1":
+		switch {
+		case key.Matches(msg, k.PickGuided):
 			lg.mode = modeGuided
 			lg.step = logListPick
-		case "2":
+		case key.Matches(msg, k.PickByID):
 			lg.mode = modeID
 			lg.step = logIDInput
 			lg.input = newTextInput("Task ID or URL")
-		case "3":
+		case key.Matches(msg, k.PickTimer):
 			lg.mode = modeTimer
 			lg.step = logTimerPick
 			m.logScreen = lg
@@ -295,10 +297,10 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case logTimerPick:
-		switch msg.String() {
-		case "1":
+		switch {
+		case key.Matches(msg, k.PickGuided):
 			lg.step = logListPick
-		case "2":
+		case key.Matches(msg, k.PickByID):
 			lg.step = logIDInput
 			lg.input = newTextInput("Task ID or URL")
 		}
@@ -306,26 +308,27 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case logTimerRunning:
-		switch msg.String() {
-		case "s":
+		if key.Matches(msg, k.StopTimer) {
 			m.logScreen = lg
 			m.screen = screenLoading
 			return m, m.timerStopCmd()
-		case "esc":
-			m.screen = screenReport
-			return m, nil
 		}
+		// Esc is caught by the outer guard above and returns to lg.origin; the
+		// case that used to live here hardcoded screenReport instead, which
+		// was unreachable dead code (the guard always ran first) AND a latent
+		// wrong-destination bug (it would ignore lg.origin == screenHome) —
+		// deleted rather than migrated, see #59 Task 4 step 3.
 		m.logScreen = lg
 		return m, nil
 
 	case logIDInput:
-		if msg.Type == tea.KeyEsc {
+		if key.Matches(msg, k.Back) {
 			lg.step = logModeSelect
 			lg.msg = ""
 			m.logScreen = lg
 			return m, nil
 		}
-		if msg.Type == tea.KeyEnter {
+		if key.Matches(msg, k.Confirm) {
 			id := clickup.ExtractTaskID(lg.input.Value())
 			if id == "" {
 				lg.msg = "Enter a valid id or URL"
@@ -350,15 +353,15 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case logForm:
-		if msg.Type == tea.KeyEsc {
+		if key.Matches(msg, k.Back) {
 			m.screen = lg.origin
 			return m, nil
 		}
 		if lg.formField == 3 { // billable toggle (keypress, not a text field)
-			switch msg.String() {
-			case "n", "N":
+			switch {
+			case key.Matches(msg, k.No):
 				lg.billable = false
-			case "y", "Y", "enter":
+			case key.Matches(msg, k.Yes):
 				lg.billable = true
 			default:
 				m.logScreen = lg
@@ -371,7 +374,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenLoading
 			return m, m.logCreateCmd(lg.taskID, start, dur, lg.noteStr, lg.billable)
 		}
-		if msg.Type == tea.KeyEnter {
+		if key.Matches(msg, k.Confirm) {
 			val := lg.input.Value()
 			switch lg.formField {
 			case 0: // duration
@@ -417,16 +420,16 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case logListPick:
 		browseIdx := len(lg.lists) // trailing "Browse all workspace lists…" row
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, k.Up):
 			if lg.listIdx > 0 {
 				lg.listIdx--
 			}
-		case "down", "j":
+		case key.Matches(msg, k.Down):
 			if lg.listIdx < browseIdx {
 				lg.listIdx++
 			}
-		case "enter":
+		case key.Matches(msg, k.Confirm):
 			if lg.loading {
 				break
 			}
@@ -444,16 +447,16 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case logTaskPick:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, k.Up):
 			if lg.taskIdx > 0 {
 				lg.taskIdx--
 			}
-		case "down", "j":
+		case key.Matches(msg, k.Down):
 			if lg.taskIdx < len(lg.tasks)-1 {
 				lg.taskIdx++
 			}
-		case "enter":
+		case key.Matches(msg, k.Confirm):
 			if len(lg.tasks) > 0 {
 				t := lg.tasks[lg.taskIdx]
 				lg.taskID = t.ID
@@ -473,13 +476,13 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case logDone:
-		switch msg.String() {
-		case "r":
+		switch {
+		case key.Matches(msg, k.Reload):
 			m.screen = screenLoading
 			// screenLog isn't a retryableErrMsg-aware origin: falls through to
 			// the existing screenError, unchanged behavior (out of scope for #38).
 			return m, m.reloadEntriesCmd(screenLog)
-		case "esc", "enter":
+		case key.Matches(msg, k.Back), key.Matches(msg, k.Confirm):
 			m.screen = lg.origin
 			return m, nil
 		}

@@ -602,7 +602,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, keysFor(m).Quit) {
 			return m, tea.Quit
 		}
-		if msg.Type == tea.KeyCtrlC {
+		if key.Matches(msg, defaultKeys().ForceQuit) {
 			return m, tea.Quit
 		}
 		return m.routeKey(msg)

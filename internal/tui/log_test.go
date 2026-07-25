@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -499,6 +500,13 @@ func TestDemoTimerStartAndStopNoIO(t *testing.T) {
 
 	m.logScreen.step = logTimerRunning
 	m.logScreen.timer = tm.timer
+	// The real flow routes the timerMsg above through Update (see
+	// TestTimerMsgSetsRunning), which flips m.screen back to screenLog before
+	// the user could ever press 's' here; restore that invariant since this
+	// test pokes logScreen directly instead (m.screen was left at
+	// screenLoading by the timer-start branch above) — keysFor(m) now reads
+	// m.screen to pick the active keymap (#59 Task 4).
+	m.screen = screenLog
 	next, cmd = m.updateLog(keyMsg("s")) // stop
 	m = next.(Model)
 	if cmd == nil {
@@ -546,5 +554,63 @@ func TestListPickDebounceWhileLoading(t *testing.T) {
 	_, cmd := m.Update(keyMsg("enter"))
 	if cmd != nil {
 		t.Error("Enter while loading must not dispatch a second listTasksCmd")
+	}
+}
+
+// TestLogDoneReloadsToLoading is #59 Task 4 step 4's required transition
+// test: logDone's 'r' must still reload (screenLoading + a non-nil cmd) now
+// that it is dispatched via key.Matches(msg, k.Reload) instead of
+// msg.String() == "r".
+func TestLogDoneReloadsToLoading(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen.step = logDone
+	m.screen = screenLog
+	next, cmd := m.updateLog(keyMsg("r"))
+	nm := next.(Model)
+	if nm.screen != screenLoading {
+		t.Errorf("r at logDone should reload to screenLoading, got %v", nm.screen)
+	}
+	if cmd == nil {
+		t.Error("expected reloadEntriesCmd after r at logDone")
+	}
+}
+
+// ---------------------------------------------------------- keymap parity --
+
+// TestLogKeyLabelsPerStep pins the label set log.go's updateLog accepts at
+// each step of the flow, mirroring TestSetupKeyLabelsPerStep's shape.
+// logTimerPick reuses logModeSelect's PickGuided/PickByID labels ("1"/"2")
+// but has no third option (no "3") — there is no timer-within-timer choice.
+// logForm's formField 3 (billable) is the one sub-step with a different set
+// (Yes/No instead of Confirm); logTimerRunning's "esc" is accepted via the
+// handler's outer guard, not its own step switch (see logKeys' doc comment
+// and the deleted dead case at #59 Task 4 step 3).
+func TestLogKeyLabelsPerStep(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		step      logStep
+		formField int
+		want      []string
+	}{
+		{"mode select", logModeSelect, 0, []string{"1", "2", "3", "esc"}},
+		{"timer pick", logTimerPick, 0, []string{"1", "2", "esc"}},
+		{"list pick", logListPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
+		{"task pick", logTaskPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
+		{"id input", logIDInput, 0, []string{"enter", "esc"}},
+		{"form duration", logForm, 0, []string{"enter", "esc"}},
+		{"form billable", logForm, 3, []string{"N", "Y", "enter", "esc", "n", "y"}},
+		{"timer running", logTimerRunning, 0, []string{"esc", "s"}},
+		{"done", logDone, 0, []string{"enter", "esc", "r"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := Model{screen: screenLog, logScreen: logModel{step: c.step, formField: c.formField}}
+			if got := enabledLabels(keysFor(m)); !slices.Equal(got, c.want) {
+				t.Errorf("log %s labels = %v, want %v", c.name, got, c.want)
+			}
+		})
 	}
 }

@@ -492,6 +492,19 @@ func TestQuitKey(t *testing.T) {
 	}
 }
 
+// TestCtrlCForceQuits pins app.go's unconditional ctrl+c kill switch (#59
+// Task 4 step 4, migrated from a raw "msg.Type == tea.KeyCtrlC" comparison to
+// key.Matches(msg, defaultKeys().ForceQuit)): it must quit even on a screen
+// where 'q' itself does not (screenLog — see TestQuitBindingPerScreen).
+func TestCtrlCForceQuits(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m.screen = screenLog
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c should return a quit command even on a screen where q does not quit")
+	}
+}
+
 func TestSetupTokenStepAcceptsInput(t *testing.T) {
 	m := New(config.Config{})
 	// type a character in the token field

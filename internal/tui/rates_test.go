@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -623,5 +624,114 @@ func TestRatesNewOverrideOnExistingPairUpdatesIt(t *testing.T) {
 	want := []config.Override{{List: "1", Member: 8, Rate: 70}}
 	if got := m.cfg.Billing.RateOverrides; len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("upserted override not persisted: got %v, want %v", got, want)
+	}
+}
+
+// ---------------------------------------------------------- keymap parity --
+
+// TestRatesNormalModeKeyLabels pins the label set updateRates' normal (not
+// editing, no draft) mode accepts today, in the Rules section — chosen as the
+// baseline because none of ListCurrency/ListBudget/NewOverride/BrowseList
+// apply there, so this test is unaffected by the section-gating covered
+// separately (TestRatesListCurrencyAndBudgetKeysGatedToNonEmptyLists,
+// TestRatesNewOverrideKeyGatedToOverridesSection).
+func TestRatesNormalModeKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{sec: secRules}}
+	want := []string{"d", "down", "enter", "esc", "h", "j", "k", "l", "left", "right", "s", "shift+tab", "tab", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("rates normal-mode labels = %v, want %v", got, want)
+	}
+}
+
+// TestRatesListCurrencyAndBudgetKeysGatedToNonEmptyLists mirrors
+// TestHomeMembersKeyIsTeamScopeOnly for 'c'/'g': both require the Lists
+// section AND at least one row (rates.go:427,432), unlike 'b' (BrowseList),
+// which only requires the section (see TestRatesBIsGatedToListsSection at
+// the handler level).
+func TestRatesListCurrencyAndBudgetKeysGatedToNonEmptyLists(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{sec: secMembers, rows: []rateRow{{listID: "1"}}}}
+	if keysFor(m).ListCurrency.Enabled() || keysFor(m).ListBudget.Enabled() {
+		t.Error("ListCurrency/ListBudget enabled outside the Lists section")
+	}
+	m.ratesScreen.sec = secLists
+	m.ratesScreen.rows = nil
+	if keysFor(m).ListCurrency.Enabled() || keysFor(m).ListBudget.Enabled() {
+		t.Error("ListCurrency/ListBudget enabled in the Lists section with no rows")
+	}
+	m.ratesScreen.rows = []rateRow{{listID: "1"}}
+	if !keysFor(m).ListCurrency.Enabled() || !keysFor(m).ListBudget.Enabled() {
+		t.Error("ListCurrency/ListBudget disabled in the Lists section with a row present")
+	}
+}
+
+// TestRatesNewOverrideKeyGatedToOverridesSection mirrors
+// TestHomeMembersKeyIsTeamScopeOnly for 'n': rates.go:437 only opens the
+// override draft in the Overrides section.
+func TestRatesNewOverrideKeyGatedToOverridesSection(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{sec: secLists}}
+	if keysFor(m).NewOverride.Enabled() {
+		t.Error("NewOverride enabled outside the Overrides section")
+	}
+	m.ratesScreen.sec = secOverrides
+	if !keysFor(m).NewOverride.Enabled() {
+		t.Error("NewOverride disabled in the Overrides section")
+	}
+}
+
+// TestRatesDraftPickListKeyLabels and TestRatesDraftPickMemberKeyLabels pin
+// the (identical) label set of the override draft's two picker steps —
+// updateDraft's own switch, now driven by the keyMap passed into it since its
+// ratesModel receiver can't call keysFor itself.
+func TestRatesDraftPickListKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{draft: overrideDraft{active: true, step: draftPickList}}}
+	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("rates draft pick-list labels = %v, want %v", got, want)
+	}
+}
+
+func TestRatesDraftPickMemberKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{draft: overrideDraft{active: true, step: draftPickMember}}}
+	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("rates draft pick-member labels = %v, want %v", got, want)
+	}
+}
+
+// TestRatesDraftRateStepKeyLabels pins the draft's third step: by the time
+// draft.step is draftRate, rt.editing is already true (rates.go's "enter" on
+// draftPickMember sets both), so this step's labels come from the SAME
+// editing branch as every other field edit (TestRatesEditingModeKeyLabels) —
+// there is no dedicated "draft rate" branch in ratesKeys, only the shared
+// editing one, reached here via the draft.
+func TestRatesDraftRateStepKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{
+		editing: true,
+		edit:    editOverrideRate,
+		draft:   overrideDraft{active: true, step: draftRate},
+	}}
+	want := []string{"enter", "esc"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("rates draft rate-step labels = %v, want %v", got, want)
+	}
+}
+
+// TestRatesEditingModeKeyLabels pins the label set while any field's
+// textinput is open (rates.go's updateRatesEditing): only Enter/Esc are
+// app-level bindings — everything else is forwarded to the textinput
+// (including the numeric-only filter, which is a key-class test, not a
+// binding — see rates.go:472).
+func TestRatesEditingModeKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{editing: true, edit: editListRate}}
+	want := []string{"enter", "esc"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("rates editing-mode labels = %v, want %v", got, want)
 	}
 }

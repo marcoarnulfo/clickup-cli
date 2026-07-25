@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
@@ -401,52 +402,45 @@ func (rt ratesModel) listsForMember(member int) int {
 
 func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rt := m.ratesScreen
+	k := keysFor(m) // reflects rt.editing/rt.draft.active as they stood before this keypress
 
 	if rt.editing {
 		return m.updateRatesEditing(rt, msg)
 	}
 	if rt.draft.active {
-		m.ratesScreen = rt.updateDraft(msg)
+		m.ratesScreen = rt.updateDraft(msg, k)
 		return m, nil
 	}
 
-	switch msg.String() {
-	case "tab", "right", "l":
+	switch {
+	case key.Matches(msg, k.NextSection):
 		rt.sec = (rt.sec + 1) % secCount
 		rt.msg = ""
-	case "shift+tab", "left", "h":
+	case key.Matches(msg, k.PrevSection):
 		rt.sec = (rt.sec + secCount - 1) % secCount
 		rt.msg = ""
-	case "up", "k":
+	case key.Matches(msg, k.Up):
 		rt = rt.move(-1)
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		rt = rt.move(+1)
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		rt = rt.startEdit()
-	case "c":
-		if rt.sec == secLists && len(rt.rows) > 0 {
-			rt.editing, rt.edit, rt.msg = true, editListCurrency, ""
-			rt.input = newTextInput("currency (e.g. EUR) — empty: use the default")
-		}
-	case "g":
-		if rt.sec == secLists && len(rt.rows) > 0 {
-			rt.editing, rt.edit, rt.msg = true, editListBudget, ""
-			rt.input = newNumberInput("budget amount — empty: no budget")
-		}
-	case "n":
-		if rt.sec == secOverrides {
-			rt = rt.startDraft()
-		}
-	case "d":
+	case key.Matches(msg, k.ListCurrency):
+		rt.editing, rt.edit, rt.msg = true, editListCurrency, ""
+		rt.input = newTextInput("currency (e.g. EUR) — empty: use the default")
+	case key.Matches(msg, k.ListBudget):
+		rt.editing, rt.edit, rt.msg = true, editListBudget, ""
+		rt.input = newNumberInput("budget amount — empty: no budget")
+	case key.Matches(msg, k.NewOverride):
+		rt = rt.startDraft()
+	case key.Matches(msg, k.ClearValue):
 		rt = rt.clearSelected()
-	case "b":
-		if rt.sec == secLists {
-			m.ratesScreen = rt
-			return m.openListBrowser(screenRates)
-		}
-	case "s":
+	case key.Matches(msg, k.BrowseList):
+		m.ratesScreen = rt
+		return m.openListBrowser(screenRates)
+	case key.Matches(msg, k.Save):
 		return m.saveRates(rt)
-	case "esc":
+	case key.Matches(msg, k.Back):
 		// Discard unsaved changes and return to the report.
 		m.screen = screenReport
 		return m, nil
@@ -457,18 +451,22 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // updateRatesEditing handles keys while an input field is open.
 func (m Model) updateRatesEditing(rt ratesModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Confirm):
 		rt = rt.commit(strings.TrimSpace(rt.input.Value()))
 		m.ratesScreen = rt
 		return m, nil
-	case tea.KeyEsc:
+	case key.Matches(msg, k.Back):
 		rt.editing, rt.edit, rt.msg = false, editNone, ""
 		rt.draft = overrideDraft{} // an abandoned rate abandons the whole draft
 		m.ratesScreen = rt
 		return m, nil
 	}
-	// Numeric-only field: ignore characters that aren't allowed.
+	// Numeric-only field: ignore characters that aren't allowed. This is a
+	// key-CLASS test (tea.KeyRunes), not a key comparison, so it cannot
+	// become a binding — it is the one documented exception to #59 Task 4's
+	// verification grep (step 5).
 	if numericEdit(rt.edit) && msg.Type == tea.KeyRunes {
 		for _, r := range msg.Runes {
 			if !numericRune(r) {
@@ -483,22 +481,24 @@ func (m Model) updateRatesEditing(rt ratesModel, msg tea.KeyMsg) (tea.Model, tea
 	return m, cmd
 }
 
-// updateDraft handles the list/member pickers of a new override.
-func (rt ratesModel) updateDraft(msg tea.KeyMsg) ratesModel {
+// updateDraft handles the list/member pickers of a new override. It takes
+// the keyMap as a parameter (rather than calling keysFor itself) because its
+// receiver is ratesModel, not Model — keysFor needs the whole root Model.
+func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap) ratesModel {
 	n := len(rt.rows)
 	if rt.draft.step == draftPickMember {
 		n = len(rt.members)
 	}
-	switch msg.String() {
-	case "up", "k":
+	switch {
+	case key.Matches(msg, k.Up):
 		if rt.draft.idx > 0 {
 			rt.draft.idx--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if rt.draft.idx < n-1 {
 			rt.draft.idx++
 		}
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		if rt.draft.step == draftPickList {
 			rt.draft.listID = rt.rows[rt.draft.idx].listID
 			rt.draft.step, rt.draft.idx = draftPickMember, 0
@@ -508,7 +508,7 @@ func (rt ratesModel) updateDraft(msg tea.KeyMsg) ratesModel {
 		rt.draft.step = draftRate
 		rt.editing, rt.edit, rt.msg = true, editOverrideRate, ""
 		rt.input = newNumberInput("override rate (Esc to cancel)")
-	case "esc":
+	case key.Matches(msg, k.Back):
 		rt.draft = overrideDraft{}
 	}
 	return rt
