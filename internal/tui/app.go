@@ -709,6 +709,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case historyMsg:
+		// Unlike tagsMsg/membersMsg/statusesMsg below, this fetch is dispatched
+		// FROM screenLoading (entries.go's 'h'), not from the screen it lands
+		// on — so the guard must accept screenLoading, not screenEntries.
+		// screenLoading swallows every key but quit, so nothing can navigate
+		// away before this reply arrives; the guard is still worth having so a
+		// future change to Loading's key handling doesn't silently resurrect a
+		// stale history view.
+		if m.screen != screenLoading {
+			return m, nil // stale: the user is no longer waiting on this fetch
+		}
 		es := m.entriesScreen
 		es.historyChanges = msg.changes
 		es.mode = entriesHistory
@@ -776,6 +786,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tick
 
 	case membersMsg:
+		if m.screen != screenMembers {
+			return m, nil // stale: the user left the members screen before the fetch landed
+		}
 		m.teamMembers = msg.members
 		if len(m.selectedMembers) == 0 {
 			m.selectedMembers = make(map[int]bool, len(msg.members))
@@ -788,6 +801,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case statusesMsg:
+		if m.screen != screenFilters {
+			return m, nil // stale: the user left the filters screen before the fetch landed
+		}
 		if m.taskStatus == nil {
 			m.taskStatus = map[string]string{}
 		}

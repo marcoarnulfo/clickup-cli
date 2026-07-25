@@ -899,7 +899,10 @@ func TestEntriesMsgReappliesCachedStatus(t *testing.T) {
 }
 
 func TestMembersMsgPreservesExistingSelection(t *testing.T) {
-	m := Model{selectedMembers: map[int]bool{1: true}}
+	// screenMembers: the real fetch (home.go's loadMembersCmd) is dispatched
+	// after goTo(screenMembers), so that's where the reply lands too (#59 Task 6
+	// staleness guard).
+	m := Model{screen: screenMembers, selectedMembers: map[int]bool{1: true}}
 	u, _ := m.Update(membersMsg{members: []clickup.Member{{ID: 1, Username: "a"}, {ID: 2, Username: "b"}}})
 	m = u.(Model)
 	if !m.selectedMembers[1] {

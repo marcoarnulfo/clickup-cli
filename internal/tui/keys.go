@@ -545,15 +545,15 @@ func listBrowserKeys(d keyDefaults) keyMap {
 // filters.go, budget.go); q DOES quit these screens today.
 func reportKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
+		Quit: d.Quit, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
 		Export: d.Export, Rates: d.Rates, LogHours: d.LogHours, Filters: d.Filters,
 		Budget: d.Budget, OpenEntries: d.OpenEntries,
 	}
-	k.short = []key.Binding{k.GroupBy, k.Export, k.Filters, k.Budget, k.Quit}
+	k.short = []key.Binding{k.GroupBy, k.Export, k.Filters, k.Budget, k.Back, k.Quit}
 	k.full = [][]key.Binding{
 		{k.GroupBy, k.Export, k.Rates, k.LogHours},
 		{k.Filters, k.Budget, k.OpenEntries},
-		{k.ChangeRange, k.Reload, k.Quit},
+		{k.ChangeRange, k.Reload, k.Back, k.Quit},
 	}
 	return k
 }

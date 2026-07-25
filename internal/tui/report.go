@@ -59,6 +59,8 @@ func (m Model) memberFilterNote() string {
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := keysFor(m)
 	switch {
+	case key.Matches(msg, k.Back):
+		m = m.pop()
 	case key.Matches(msg, k.GroupBy):
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		if _, ok := m.locOrErr(); !ok {

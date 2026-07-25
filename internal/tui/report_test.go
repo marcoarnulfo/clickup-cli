@@ -17,7 +17,7 @@ import (
 func TestReportKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenReport}
-	want := []string{"b", "e", "f", "g", "m", "n", "p", "q", "r", "s", "v"}
+	want := []string{"b", "e", "esc", "f", "g", "m", "n", "p", "q", "r", "s", "v"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("report labels = %v, want %v", got, want)
 	}
@@ -253,6 +253,17 @@ func TestReportEOpensExport(t *testing.T) {
 	next, _ := m.Update(keyMsg("e"))
 	if got := next.(Model).screen; got != screenExport {
 		t.Errorf("e from report -> %v, want screenExport", got)
+	}
+}
+
+// TestReportEscReturnsHome: Report had no esc site for Task 5's classification
+// to migrate (nothing to pop from), so it's added here as the tranche's one
+// intended behavior change. esc pops to Report's parent, same as m/s.
+func TestReportEscReturnsHome(t *testing.T) {
+	m := newTestModelOnReport() // Task 5 seeded its nav with [screenHome]
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("esc from report -> %v, want screenHome", got)
 	}
 }
 
