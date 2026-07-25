@@ -188,14 +188,15 @@ left only by async messages. It — and `screenError`, a dead-end whose any-key
 handler returns Home — must always `replace`, never `goTo`.
 
 There is no global `esc → pop` interception in `Update`. `screenSetup` has no
-`esc` handling at all, and seven screens forward unmatched keys into a
+`esc` handling at all, and five screens forward unmatched keys into a
 `textinput`; a global intercept would break both. `pop()` is wired per screen.
 
 ### 4.7 Migration must preserve the input-forwarding order
 
-Seven screens forward unmatched keys into a `textinput` (`log` ID-input and
-form, `rates` editing, `range` editing, `setup`'s three steps, `entries` edit
-form and new-tag mode). If a handler is restructured so `key.Matches` runs
+Five screens forward unmatched keys into a `textinput`, across nine input
+contexts (`log` ID-input and form, `rates` editing, `range` editing, `setup`'s
+three steps, `entries` edit form and new-tag mode). If a handler is
+restructured so `key.Matches` runs
 *before* the input-forwarding branch, typed characters start firing actions —
 typing "s" into a note field would stop the timer.
 
@@ -221,8 +222,10 @@ The real net is:
    This catches transcription errors — the actual failure mode of a mechanical
    migration — at a fraction of the cost of behavioral tests.
 2. **~11 targeted transition tests** for action keys with no test today: `report`
-   `m`/`s`/`r`/`e`; `entries` list `esc`; `range` `esc` (list and editing);
-   `export` `esc`; `budget` `esc` and `b`-return; `logDone` `r`.
+   `m`/`s`/`r`/`e`; `entries` list `esc`; `range` `esc` in list mode (→ Home)
+   and in editing mode (→ *stays* on Range, closing the editor — a mode change,
+   not a navigation); `export` `esc`; `budget` `esc` and `b`-return;
+   `logDone` `r`.
 3. **A review rule:** every removed `case` label must appear verbatim in a
    `WithKeys`.
 
@@ -238,12 +241,16 @@ of it would assert that `j` moves a cursor.
    hack replaced by a declared property.
 3. **Handler group A** — `home`, `report`, `filters`, `members`, `export`,
    `range`, `listbrowser`, `setup`, `budget`: 48 cases.
-4. **Handler group B** — `log`, `entries`, `rates`: 49 cases, plus the 12
-   `tea.Key…` sites.
-5. **Navigation stack.** The transition API, all 62 sites classified, both
-   `origin` fields deleted.
-6. **Docs.** `CHANGELOG`, both READMEs (the key table is currently wrong — a
-   checkbox in #28), both CONTRIBUTING files if the workflow changes.
+4. **Handler group B** — `log`, `entries`, `rates`: 49 cases, plus 9 of the 12
+   `msg.Type == tea.Key…` sites (including `app.go`'s `ctrl+c`) and 4 of the 7
+   switch-style `case tea.Key…` arms. The remaining 3 and 3 belong to `setup`
+   and `range`, which are group A.
+5. **Navigation stack.** The transition API, all 66 sites classified, both
+   `origin` fields deleted, Report's new `esc`.
+6. **Docs.** `CHANGELOG`, both READMEs. The `q` row already lists the full
+   exclusion set correctly; what the tables lack is Report's new `esc`, and
+   every other row must be re-verified against `keys.go` once it is the single
+   source of truth.
 
 Keymap before navigation is deliberate: the mechanical migration is then
 provable against unchanged navigation semantics (tests green, goldens
@@ -260,9 +267,14 @@ centralized `Back` site per screen.
 - **`log.go:314-316` is unreachable**: the guard at `log.go:275` catches `esc`
   for every non-input step first. Delete it, with a comment — migrating it
   mechanically preserves a latent wrong-destination bug.
-- **Three async handlers force a screen with no staleness guard** —
-  `membersMsg` (`app.go:768`), `statusesMsg` (`app.go:780`), `historyMsg`
-  (`app.go:701`) — unlike `tagsMsg` and `spacesMsg`, which have one.
+- **Three async handlers get a staleness guard** — `membersMsg`
+  (`app.go:768`), `statusesMsg` (`app.go:780`), `historyMsg` (`app.go:701`) —
+  unlike `tagsMsg` and `spacesMsg`, which already have one. Other handlers
+  force a screen unguarded too (`logErrMsg`, `logDoneMsg`, `timerStoppedMsg`,
+  `entriesReloadedMsg`, `entriesErrMsg`), but they can only arrive from a
+  Loading state that swallows keys, so no competing navigation can have
+  happened meanwhile. **Guarding these three is the scope; it is not a claim
+  that every other handler is already guarded.**
   **The guard is not the same shape for all three.** `tagsMsg`'s works because
   its fetch is dispatched while staying on `screenEntries`; `h` instead
   dispatches from `screenLoading` (`entries.go:167`), so a

@@ -18,7 +18,7 @@
 - Pre-commit gate, all clean/green, every task: `gofmt -l .`, `go vet ./...`, `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`, `go build ./...`, `go test ./... -race`.
 - **All goldens in `internal/tui/testdata/` stay byte-identical from Task 1 onward.** This tranche changes input and navigation, never layout. A moved golden is a bug — never run `-update` to silence one after Task 1.
 - **Goldens are not this tranche's safety net.** They verify rendering, not input; a wrong `key.Matches` makes a key silently mute and no golden notices. The net is the per-screen label-parity tests, the targeted transition tests, and the review rule that every removed `case` label must reappear verbatim in a `WithKeys`.
-- **Preserve each handler's step/mode dispatch structure exactly.** Seven screens forward unmatched keys into a `textinput`. If `key.Matches` is hoisted above the input-forwarding branch, typed characters start firing actions — typing "s" into a note field would stop the timer.
+- **Preserve each handler's step/mode dispatch structure exactly.** Five screens (`log`, `entries`, `rates`, `range`, `setup`) forward unmatched keys into a `textinput`, across nine input contexts. If `key.Matches` is hoisted above the input-forwarding branch, typed characters start firing actions — typing "s" into a note field would stop the timer.
 - Demo mode needs no parity work: `demo.go` holds fixtures and commands only, no key handlers and no screen transitions. Its two `case` clauses match space IDs, not keys.
 
 ---
@@ -35,7 +35,8 @@
 | 3 large handlers | `log` 17, `entries` 16, `rates` 16, plus the `tea.Key` sites | 4 |
 | `internal/tui/nav.go` (create) | `nav []screen`, the four transition calls, truncating push | 5 |
 | All 13 files with transitions | 66 sites routed through the API; both `origin` fields deleted | 5 |
-| `CHANGELOG.md`, `README.md`, `README.it.md` | Key tables corrected; Report's new `esc` announced | 6 |
+| `internal/tui/report.go`, `keys.go`, `app.go` | Report's new `esc`; three staleness guards | 6 |
+| `CHANGELOG.md`, `README.md`, `README.it.md` | Report's new `esc` documented; every key row re-verified | 7 |
 
 ---
 
@@ -48,7 +49,7 @@ Captures the screen states later tasks touch, before they are touched. No produc
 - Create: 5 files in `internal/tui/testdata/`
 
 **Interfaces:**
-- Consumes: `golden`, `goldenModel`, `goldenReport`, `goldenEntries`, `goldenFixedTime`, `testTheme` (all in `golden_test.go`, from v1.9 tranche A).
+- Consumes: `golden`, `goldenModel`, `goldenReport`, `goldenEntries`, `goldenFixedTime` (in `golden_test.go`) and `testTheme` (in `theme_test.go`) — all from v1.9 tranche A, same package.
 - Produces: goldens named `log_form`, `entries_edit`, `entries_confirm_delete`, `error`, `loading`.
 
 - [ ] **Step 1: Convert `TestGoldenRatesTabs` to subtests**
@@ -231,7 +232,11 @@ func TestHomeMembersKeyIsTeamScopeOnly(t *testing.T) {
 }
 ```
 
-**Derive `want` by reading `home.go`'s `case` clauses.** Every label, verbatim, including the aliases (`case "left", "h"` means both `left` and `h`). Include contextually gated keys only in the state the test sets up. Getting this list exactly right *is* the task — it is the contract the migration must preserve, and a wrong list either lets a regression through or blocks a correct migration.
+**Derive `want` by reading `home.go`'s `case` clauses.** Every label, verbatim, including the aliases (`case "left", "h"` means both `left` and `h`). Include contextually gated keys only in the state the test sets up.
+
+**Plus the keys handled globally, which appear in no `case` clause of the screen's own file:** `q` (today `app.go:601`, Step 5) and, after Task 4, `ctrl+c`. Both are enabled on Home, so both belong in `want`. A list derived from `home.go` alone will be missing `q` and the first run will fail for the wrong reason.
+
+Getting this list exactly right *is* the task — it is the contract the migration must preserve, and a wrong list either lets a regression through or blocks a correct migration.
 
 - [ ] **Step 2: Run and watch it fail**
 
@@ -432,7 +437,12 @@ Specifics that are not mechanical:
 These action keys have no test that would fail if they went mute:
 
 - `report.go`: `m` → Home, `s` → Home, `r` → Loading, `e` → Export
-- `range.go`: `esc` in list mode and in editing mode → Home
+- `range.go`: `esc` in **list** mode → Home (`range.go:139`). `esc` in
+  **editing** mode does *not* navigate — it closes the custom-date editor and
+  stays on `screenRange` with `editing == false` (`range.go:77-81`). Assert
+  that, not a screen change. Writing the test the other way round and then
+  making it pass would delete the two-step "back to the preset list" behavior:
+  an unannounced regression no golden covers.
 - `export.go`: `esc` → Report
 - `budget.go`: `esc` → Report, and `b` → Report
 
@@ -445,6 +455,8 @@ func TestReportMReturnsHome(t *testing.T) {
 	}
 }
 ```
+
+**Reach the screen under test by driving keys wherever you can**, as above, rather than hand-setting `m.screen`. Task 5 turns these `screen =` assignments into stack operations, and a test that navigated its own way there keeps passing untouched; a test that hand-seeded a screen will need a `nav` seed added in Task 5. Task 5 Step 7 fixes `newTestModelOnReport` centrally, so building on that helper is safe either way.
 
 - [ ] **Step 4: Add the enablement⇔guard tests for this group**
 
@@ -495,10 +507,10 @@ The three densest handlers, each with several modes.
 16 cases, one `msg.Type ==` site, two `case tea.Key…` arms (`rates.go:461,465`). Three specifics:
 
 - The `editing` mode forwards to a `textinput` (`rates.go:459-484`). Key dispatch stays **inside** the existing `if rt.editing { … }` branch.
-- **`rates.go:472` is a `KeyRunes` class filter** for numeric fields — it tests the *kind* of key, not which key. It cannot become a binding. Rewrite it as an explicit check on `msg.Runes` so the Task 5 verification grep does not flag it, and say so in your report.
+- **`rates.go:472` is a `KeyRunes` class filter** for numeric fields — it tests the *kind* of key, not which key. It cannot become a binding. **Leave it exactly as it is** and note it in your report as the one documented exception to Step 5's grep. Do *not* "clean it up" into a `len(msg.Runes) > 0` check: bubbletea delivers space as `Key{Type: KeySpace, Runes: []rune{' '}}`, so a runes-presence test would start intercepting space, which the type test lets through to the input today. This tranche changes no behavior here.
 - **`ratesModel.updateDraft` (`rates.go:487`) has a `ratesModel` receiver** and cannot call `keysFor(m)`. Pass the keyMap in as a parameter. The draft flow has three steps with different label sets — one parity test per step.
 
-Run `go test ./internal/tui -run TestRates -v` (28 cases) before moving on.
+Run `go test ./internal/tui -run TestRates -v` (33 functions — 24 in `rates_test.go`, 9 in `app_test.go`) before moving on.
 
 - [ ] **Step 2: Migrate `entries.go`**
 
@@ -556,9 +568,19 @@ func TestEntriesEditKeyMatchesOwnershipGuard(t *testing.T) {
 - [ ] **Step 5: Verify no string key dispatch survives**
 
 ```bash
-grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key|case tea\.Key' internal/tui/*.go | grep -v _test | grep -v demo.go
+grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key[A-Z]|case tea\.Key[A-Z]' internal/tui/*.go | grep -v _test | grep -v demo.go
 ```
-Expected: no output. The `[a-z0-9]` class matters — `log.go` has `case "1"`, `"2"`, `"3"`.
+**Expected: exactly one line** — `rates.go`'s numeric class filter
+(`msg.Type == tea.KeyRunes`, Step 1). It is a key-*class* test, not a key
+comparison, and it stays. Any other line is a missed migration.
+
+Two details of the pattern are deliberate:
+
+- The `[a-z0-9]` class matters — `log.go` has `case "1"`, `"2"`, `"3"`.
+- The trailing `[A-Z]` on the `tea.Key` alternatives excludes `app.go:600`'s
+  `case tea.KeyMsg:`. That is `Update`'s message-type arm, not a key
+  comparison; it stays forever, and a pattern that matches it can never
+  return nothing.
 
 - [ ] **Step 6: Verify parity, gate, commit**
 
@@ -574,7 +596,7 @@ git commit -m "refactor(tui): route log, entries and rates through the keymap (#
 
 ### Task 5: The navigation stack
 
-The one semantic change in this tranche. Everything before it was mechanical.
+The mechanism, and the routing of every existing transition through it. **No user-visible behavior changes here** — every flow must end on exactly the screen it ends on today. The one intended behavior change (Report's `esc`) is Task 6.
 
 **Files:**
 - Create: `internal/tui/nav.go`, `internal/tui/nav_test.go`
@@ -726,29 +748,7 @@ Run: `go test ./internal/tui -run TestNav -v` → PASS.
 
 **Why `app.go:667` re-roots instead of replacing.** Report is reached three ways — Home `enter`, Report `r`, and the logDone `r` reload — and all three arrive through `entriesMsg`. A plain `replace` would leave the chain empty on the Home path, making Report's own `m`/`s`/`esc` no-ops on the app's most common flow; and on the logDone path it would leave `[Home, Report]` with `screen == Report`, so the first `esc` returns Report to itself — a visible dead key. Re-rooting makes every arrival converge on `nav == [Home]`, which is exactly today's semantics: Report's back target is unconditionally Home.
 
-- [ ] **Step 6: Give Report its `esc`**
-
-This is the tranche's one intended behavior change, and nothing in Steps 1–5 produces it — Report has no `esc` site to classify. Add all four pieces:
-
-1. `Back` to `reportKeys` in `keys.go`
-2. a `case key.Matches(msg, k.Back):` arm in `updateReport` calling `pop()`
-3. `esc` added to Report's parity test's expected label set
-4. a transition test:
-
-```go
-func TestReportEscReturnsHome(t *testing.T) {
-	m := newTestModelOnReport()
-	m.nav = []screen{screenHome}
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if got := next.(Model).screen; got != screenHome {
-		t.Errorf("esc from report → %v, want screenHome", got)
-	}
-}
-```
-
-Report's rendered help line must **not** change: goldens stay byte-identical. `esc` becomes discoverable with B2's generated footer.
-
-- [ ] **Step 7: Replace both `origin` fields**
+- [ ] **Step 6: Replace both `origin` fields**
 
 `logModel.origin` (`log.go:52`) and `listBrowserModel.origin` are now redundant for navigation: `pop()` returns to whichever screen pushed. Delete both fields, `newLog`'s third parameter, `openListBrowser`'s `origin` parameter, and every read.
 
@@ -758,35 +758,47 @@ Report's rendered help line must **not** change: goldens stay byte-identical. `e
 	if len(m.nav) > 0 && m.nav[len(m.nav)-1] == screenRates {
 ```
 
-- [ ] **Step 8: Add the staleness guards**
+- [ ] **Step 7: Fix the test fixtures that hand-seed a screen**
 
-`membersMsg` (`app.go:768`) and `statusesMsg` (`app.go:780`) force a screen with no staleness check, unlike `tagsMsg` (`app.go:710`) and `spacesMsg` (`app.go:794`). Add the same guard shape those two use.
+Many tests construct a Model with a screen set directly and an empty `nav`, so a `pop()` is a no-op and their assertions fail. **This is expected and is the fixtures' problem, not the code's.**
 
-**`historyMsg` (`app.go:701`) needs a different guard.** `tagsMsg`'s works because its fetch is dispatched while staying on `screenEntries`; `h` instead dispatches from `screenLoading` (`entries.go:167`). A `if m.screen != screenEntries` guard there would drop **every** history reply and strand the user on Loading, which swallows all keys but quit. The history guard must accept `screenLoading`.
+**Start with the one-line fix that covers the most call sites.** `newTestModelOnReport()` (`log_test.go:35`) hand-sets `m.screen = screenReport` on a fresh `New(cfg)`, leaving `nav` empty. It has ~18 call sites in `log_test.go` alone, and every transition test Tasks 3 and 4 added is built on it. Report is only ever reached from Home, so add to the helper:
 
-- [ ] **Step 9: Fix the test fixtures that hand-seed a screen**
+```go
+	m.nav = []screen{screenHome}
+```
 
-Many tests construct a Model with a screen set directly and an empty `nav`, so a `pop()` is a no-op and their assertions fail. **This is expected and is the fixtures' problem, not the code's.** Seed the parent chain each fixture implies:
+That single line fixes the whole Report-rooted family at once, including `TestReportMReturnsHome`, the entries-list `esc` test, and the budget/export/`logDone` tests.
 
-| File | Fixture | Seed |
+Then seed the remaining hand-seeded fixtures with the parent chain each one implies:
+
+| File | What to seed | Chain |
 |---|---|---|
-| `range_test.go:12`, `:30`, `:46`, `:113`, `:135` | `Model{screen: screenRange}` | `nav: []screen{screenHome}` |
-| `members_test.go:10` and the esc/confirm tests | members fixture | `nav: []screen{screenHome}` |
-| `filters_test.go:18`, `:66` | filters fixture | `nav: []screen{screenHome, screenReport}` |
-| `listbrowser_test.go:10`, `:43`, `:86` | `browserFixture` | `nav: []screen{screenHome, screenReport, screenLog}` (or `…screenRates` where the test exercises the rates path) |
+| `range_test.go` | every `Model{screen: screenRange, …}` literal (there are 8; the ones that assert `screen == screenHome` after a commit are `TestRangeSelectPreset` and `TestRangeCustomValidDates`, but seed them all — it costs nothing and stops the next test from tripping) | `nav: []screen{screenHome}` |
+| `members_test.go` | the members fixture used by the toggle/confirm/esc tests | `nav: []screen{screenHome}` |
+| `filters_test.go` | the `Model{screen: screenFilters, …}` fixtures (the apply and esc paths both `pop`) | `nav: []screen{screenHome, screenReport}` |
+| `listbrowser_test.go` | every `Model{screen: screenListBrowser}` literal | `nav: []screen{screenHome, screenReport, screenLog}`, or `…, screenRates` where the test exercises the rates path — Step 7's discriminator reads the top of this chain, so the wrong one silently routes the picked list to the wrong sub-model |
 
-Tests that reach their screen by driving keys — `TestLogEscReturnsToReport`, `TestRatesScreenEscDiscardsAndReturns` and the like — need no change: they build the chain by navigating.
+**Line numbers are deliberately absent from that table: they have already drifted once.** Find the fixtures with
+
+```bash
+grep -rn 'Model{screen:\|m.screen = screen' internal/tui/*_test.go
+```
+
+and work through the list. A fixture whose assertions never depend on a `pop()` needs no seed, but seeding it is harmless.
+
+Tests that reach their screen by driving keys — `TestLogEscReturnsToReport`, `TestRatesScreenEscDiscardsAndReturns` and the like — need no change: they build the chain by navigating. **This is the pattern to prefer when writing new tests.**
 
 Separately, these call sites lose the `origin` argument or assertion and must be updated to compile: `rates_test.go:19,40`, `log_test.go:402`, `listbrowser_test.go:95,117,134`, `timer_ui_test.go:34`, `app_test.go:1206`, `golden_test.go:165,207`.
 
-- [ ] **Step 10: Verify no naked assignment survives**
+- [ ] **Step 8: Verify no naked assignment survives**
 
 ```bash
 grep -rnE '\.screen = ' internal/tui/*.go | grep -v _test | grep -v nav.go
 ```
 Expected: no output. A surviving assignment silently desyncs `nav`, and a value-receiver Model makes that invisible at runtime.
 
-- [ ] **Step 11: Trace the four flows by hand**
+- [ ] **Step 9: Trace the four flows by hand**
 
 Before the gate, walk these against the code and confirm `nav` at each step:
 
@@ -797,7 +809,7 @@ Before the gate, walk these against the code and confirm `nav` at each step:
 
 Record the observed chains in your report.
 
-- [ ] **Step 12: Full gate and commit**
+- [ ] **Step 10: Full gate and commit**
 
 ```bash
 gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
@@ -808,13 +820,72 @@ git commit -m "refactor(tui): replace ad-hoc screen assignments with a navigatio
 
 ---
 
-### Task 6: Documentation
+### Task 6: Report's `esc`, and three staleness guards
+
+Task 5 was routing only — no behavior moved. This task is the tranche's **one intended behavior change** plus the three defensive guards the stack makes worth having. Both are small and additive, and they are split out from Task 5 so they arrive as a diff a reviewer can hold in their head rather than as two paragraphs buried in a 13-file refactor.
+
+**Files:**
+- Modify: `internal/tui/keys.go`, `report.go`, `app.go`
+- Modify tests: `internal/tui/keys_test.go`, `report_test.go` (or wherever Report's parity test landed in Task 3)
+
+**Interfaces:**
+- Consumes: `keysFor`, `pop` from Tasks 2–5.
+- Produces: nothing new for later tasks; Task 7 documents the `esc`.
+
+- [ ] **Step 1: Give Report its `esc`**
+
+Nothing in Task 5 produces this — Report has no `esc` site to classify, so the classification table could not create one. Add all four pieces:
+
+1. `Back` to `reportKeys` in `keys.go`
+2. a `case key.Matches(msg, k.Back):` arm in `updateReport` calling `pop()`
+3. `esc` added to Report's parity test's expected label set
+4. a transition test:
+
+```go
+func TestReportEscReturnsHome(t *testing.T) {
+	m := newTestModelOnReport() // Task 5 seeded its nav with [screenHome]
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("esc from report → %v, want screenHome", got)
+	}
+}
+```
+
+Report's rendered help line must **not** change: goldens stay byte-identical. `esc` becomes discoverable with B2's generated footer.
+
+- [ ] **Step 2: Add the staleness guards**
+
+`membersMsg` (`app.go:768`) and `statusesMsg` (`app.go:780`) force a screen with no staleness check, unlike `tagsMsg` (`app.go:710`) and `spacesMsg` (`app.go:794`). Add the same guard shape those two use.
+
+**`historyMsg` (`app.go:701`) needs a different guard.** `tagsMsg`'s works because its fetch is dispatched while staying on `screenEntries`; `h` instead dispatches from `screenLoading` (`entries.go:167`). A `if m.screen != screenEntries` guard there would drop **every** history reply and strand the user on Loading, which swallows all keys but quit. The history guard must accept `screenLoading`.
+
+Other async handlers force a screen unguarded as well (`logErrMsg`, `logDoneMsg`, `timerStoppedMsg`, `entriesReloadedMsg`, `entriesErrMsg`). Leave them: each can only arrive from a Loading state that swallows keys, so no competing navigation can have happened in between. **Do not widen the scope**, and do not read the three above as an exhaustive audit.
+
+- [ ] **Step 3: Prove the history guard does not break `h`**
+
+Run: `go test ./internal/tui -run 'TestHistory|TestEntries' -v`
+Expected: PASS. If a history test now hangs on Loading, the guard rejected `screenLoading` — that is exactly the failure this step exists to catch.
+
+- [ ] **Step 4: Full gate and commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git status --short internal/tui/testdata   # must be empty
+git add internal/tui
+git commit -m "feat(tui): accept esc on the report screen and guard three stale async replies (#59)"
+```
+
+---
+
+### Task 7: Documentation
 
 **Files:** `CHANGELOG.md`, `README.md`, `README.it.md`
 
 - [ ] **Step 1: Correct the README key tables**
 
-Both READMEs carry a key table. Verify **every row** against `keys.go`, which is now the single source of truth. Known wrong today: `q — "Everywhere except setup"` — it is also inert on rates, range, list browser, log and entries (a checkbox in #28). Add Report's new `esc`.
+Both READMEs carry a key table. Verify **every row** against `keys.go`, which is now the single source of truth.
+
+**The `q` row is already correct** — `README.md:142` and `README.it.md:145` both list the full exclusion set (setup / rates / range / list browser / log hours / time entries), with an explanatory paragraph below. Do not "fix" it. The one row missing is Report's new `esc`.
 
 - [ ] **Step 2: CHANGELOG**
 
@@ -847,7 +918,7 @@ git commit -m "docs: document the back-stack navigation and correct the key tabl
 
 ## Definition of done
 
-- `grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key|case tea\.Key' internal/tui/*.go` (excluding tests and `demo.go`) returns nothing.
+- `grep -rnE 'case "[a-z0-9]+"|msg\.String\(\) ==|msg\.Type == tea\.Key[A-Z]|case tea\.Key[A-Z]' internal/tui/*.go` (excluding tests and `demo.go`) returns **exactly one line**: `rates.go`'s numeric class filter. The `[A-Z]` suffix is what keeps `app.go`'s `case tea.KeyMsg:` — `Update`'s message-type arm, which must survive — out of the pattern.
 - `grep -rnE '\.screen = ' internal/tui/*.go` (excluding tests and `nav.go`) returns nothing.
 - Neither `logModel` nor `listBrowserModel` has an `origin` field, and `selectBrowsedList` routes by the parent chain.
 - Report accepts `esc`, with a transition test proving it.
