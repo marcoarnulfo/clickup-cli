@@ -137,6 +137,7 @@ di setup.
 | `b` | Report | Apre la vista **Burn-down budget** |
 | `f` | Report | Apre la schermata **Filtri** (lista/tag/status/billable) |
 | `v` | Report | Apre il **browser delle voci ore** (edit/delete/tag/history) |
+| `Esc` | Report | Torna alla home (stessa destinazione di `m`/`s`) |
 | `n` | Home / Report | Apre la schermata **Log ore** (registra tempo su ClickUp) |
 | `c` | Home | Salta al timer in corso (visibile solo quando un timer è attivo) |
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
