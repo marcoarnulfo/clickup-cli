@@ -134,13 +134,13 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (s setupModel) view() string {
-	b := styleTitle.Render("ClickUp Hours CLI — Setup") + "\n\n"
+func (s setupModel) view(th theme) string {
+	b := th.Title.Render("ClickUp Hours CLI — Setup") + "\n\n"
 	switch s.step {
 	case stepToken:
 		b += "Paste your personal API token:\n\n" + s.input.View()
 		if s.msg != "" {
-			b += "\n\n" + styleHelp.Render(s.msg)
+			b += "\n\n" + th.Help.Render(s.msg)
 		}
 	case stepWorkspace:
 		b += "Choose the workspace:\n\n"
@@ -149,19 +149,19 @@ func (s setupModel) view() string {
 			line := t.Name + " (" + t.ID + ")"
 			if i == s.teamIdx {
 				cursor = "▸ "
-				line = styleAccent.Render(line)
+				line = th.Accent.Render(line)
 			}
 			b += cursor + line + "\n"
 		}
 	case stepRate:
 		b += s.input.View()
 		if s.msg != "" {
-			b += "\n\n" + styleErr.Render(s.msg)
+			b += "\n\n" + th.Err.Render(s.msg)
 		}
 	case stepCurrency:
 		b += s.input.View()
 	}
-	b += "\n\n" + styleHelp.Render("Enter: confirm · Ctrl+C: quit")
+	b += "\n\n" + th.Help.Render("Enter: confirm · Ctrl+C: quit")
 	return b
 }
 

@@ -74,13 +74,13 @@ func (m Model) updateMembers(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (mm membersModel) view() string {
+func (mm membersModel) view(th theme) string {
 	if mm.loading {
-		return styleTitle.Render("Loading members…")
+		return th.Title.Render("Loading members…")
 	}
-	b := styleTitle.Render("Team members") + "\n\n"
+	b := th.Title.Render("Team members") + "\n\n"
 	if len(mm.members) == 0 {
-		b += styleHelp.Render("No members in this workspace.") + "\n"
+		b += th.Help.Render("No members in this workspace.") + "\n"
 	}
 	for i, mem := range mm.members {
 		box := "[ ]"
@@ -91,10 +91,10 @@ func (mm membersModel) view() string {
 		line := box + " " + mem.Username
 		if i == mm.idx {
 			cursor = "▸ "
-			line = styleAccent.Render(line)
+			line = th.Accent.Render(line)
 		}
 		b += cursor + line + "\n"
 	}
-	b += "\n" + styleHelp.Render("↑/↓ move · Space toggle · a: all/none · Enter: confirm · Esc: cancel")
+	b += "\n" + th.Help.Render("↑/↓ move · Space toggle · a: all/none · Enter: confirm · Esc: cancel")
 	return b
 }

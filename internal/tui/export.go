@@ -66,23 +66,23 @@ func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (e exportModel) view() string {
-	b := styleTitle.Render("Export report") + "\n\n"
+func (e exportModel) view(th theme) string {
+	b := th.Title.Render("Export report") + "\n\n"
 	for i, f := range exportFormats {
 		cursor := "  "
 		line := f.label
 		if i == e.idx {
 			cursor = "▸ "
-			line = styleAccent.Render(line)
+			line = th.Accent.Render(line)
 		}
 		b += cursor + line + "\n"
 	}
 	if e.done != "" {
-		b += "\n" + styleOK.Render("Saved: "+e.done)
+		b += "\n" + th.OK.Render("Saved: "+e.done)
 	}
 	if e.err != nil {
-		b += "\n" + styleErr.Render("Error: "+e.err.Error())
+		b += "\n" + th.Err.Render("Error: "+e.err.Error())
 	}
-	b += "\n\n" + styleHelp.Render("↑/↓ select · Enter: export · Esc: back to report")
+	b += "\n\n" + th.Help.Render("↑/↓ select · Enter: export · Esc: back to report")
 	return b
 }

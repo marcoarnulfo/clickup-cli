@@ -6,7 +6,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -212,17 +211,17 @@ func hoursOf(h float64) string {
 	return duration.FormatHours(time.Duration(h * float64(time.Hour)))
 }
 
-func (rm reportModel) view() string {
+func (rm reportModel) view(th theme) string {
 	r := rm.r
 	// Timezone is surfaced here (#83): with no configured `timezone` it reads
 	// "Local" (time.Local.String()), not a portable IANA name — accepted, see
 	// the task's binding amendments. Users wanting a stable zone name across
 	// machines should set `timezone` in the config.
-	title := styleTitle.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s — tz %s",
+	title := th.Title.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s — tz %s",
 		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
-	summary := styleAccent.Render(export.SummaryLine(r))
+	summary := th.Accent.Render(export.SummaryLine(r))
 
-	header := lipgloss.NewStyle().Bold(true).Render(
+	header := th.Header.Render(
 		fmt.Sprintf("%-32s %8s %8s %s", "Item", "Hours", "Billed", "Amount"))
 	rows := header + "\n"
 	for _, b := range r.Buckets {
@@ -237,22 +236,22 @@ func (rm reportModel) view() string {
 	// below is the authoritative total, never re-derived from the bucket rows.
 	var total string
 	if len(r.CurrencySubtotals) <= 1 {
-		total = styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
+		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
 			"TOTAL", r.TotalHours, r.BilledHours, r.TotalAmount, r.DefaultCurrency))
 	} else {
-		total = styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f", "TOTAL", r.TotalHours, r.BilledHours))
+		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f", "TOTAL", r.TotalHours, r.BilledHours))
 		for _, s := range r.CurrencySubtotals {
-			total += "\n" + styleOK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
+			total += "\n" + th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
 				"  subtotal "+s.Currency, s.Hours, s.BilledHours, s.Amount, s.Currency))
 		}
 	}
-	total += "\n" + styleHelp.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
+	total += "\n" + th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
 
-	body := styleBox.Render(rows + total)
-	help := styleHelp.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · v: entries · m/s: change range/scope · r: reload · q: quit")
+	body := th.Box.Render(rows + total)
+	help := th.Help.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · v: entries · m/s: change range/scope · r: reload · q: quit")
 
 	if len(r.Buckets) == 0 {
-		body = styleBox.Render("No hours to show.")
+		body = th.Box.Render("No hours to show.")
 	}
 	return title + "\n\n" + summary + "\n\n" + body + "\n\n" + help
 }

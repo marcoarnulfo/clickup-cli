@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   configured and activates once the maintainer registers an AUR key; Nix is
   deferred to community contributors (see #103).
 
+### Changed
+- Colors now adapt to the terminal background: on a light background the
+  palette switches to darker, legible variants. Dark terminals render exactly
+  as before, down to the same 256-color indices. `NO_COLOR=1` disables color
+  entirely and `CLICOLOR_FORCE=1` keeps it when output is piped.
+
 ## [1.8.0] - 2026-07-23
 
 ### Added

@@ -1,0 +1,14 @@
+Billing settings
+                
+ Lists   Members   Overrides  [Rules]
+
+▸ Default currency       — (using EUR)
+  Rounding increment     — (rounding off)
+  Rounding mode          nearest
+  Rounding scope         per entry
+  Timezone               — (system local)
+
+The default currency and rounding rule apply to every list without its own currency.
+
+Tab: section · ↑/↓ select · Enter: edit/toggle · d: clear · s: save · Esc: cancel
+Rate precedence: (list,member) > member > list > default

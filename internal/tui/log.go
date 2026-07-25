@@ -489,34 +489,34 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (lg logModel) view() string {
-	b := styleTitle.Render("Log hours") + "\n\n"
+func (lg logModel) view(th theme) string {
+	b := th.Title.Render("Log hours") + "\n\n"
 	switch lg.step {
 	case logModeSelect:
 		b += "Choose the mode:\n\n"
-		b += "  " + styleAccent.Render("1") + ") Guided — pick list and task\n"
-		b += "  " + styleAccent.Render("2") + ") Task ID/URL — straight to the form\n"
-		b += "  " + styleAccent.Render("3") + ") Timer — start/stop stopwatch\n"
+		b += "  " + th.Accent.Render("1") + ") Guided — pick list and task\n"
+		b += "  " + th.Accent.Render("2") + ") Task ID/URL — straight to the form\n"
+		b += "  " + th.Accent.Render("3") + ") Timer — start/stop stopwatch\n"
 	case logTimerPick:
 		b += "Timer — how do you pick the task?\n\n"
-		b += "  " + styleAccent.Render("1") + ") Guided (list → task)\n"
-		b += "  " + styleAccent.Render("2") + ") Task ID/URL\n"
+		b += "  " + th.Accent.Render("1") + ") Guided (list → task)\n"
+		b += "  " + th.Accent.Render("2") + ") Task ID/URL\n"
 	case logTimerRunning:
 		if lg.timer == nil {
-			b += styleHelp.Render("No timer running.") + "\n"
-			b += "\n" + styleHelp.Render("Esc: back")
+			b += th.Help.Render("No timer running.") + "\n"
+			b += "\n" + th.Help.Render("Esc: back")
 			break
 		}
-		b += "⏱  Timer running on: " + styleAccent.Render(lg.timer.TaskName) + "\n"
+		b += "⏱  Timer running on: " + th.Accent.Render(lg.timer.TaskName) + "\n"
 		if label := elapsedLabel(lg.timer.Start, lg.now); label != "" {
-			b += styleAccent.Render(label) + "\n"
+			b += th.Accent.Render(label) + "\n"
 		} else {
-			b += styleHelp.Render("started just now") + "\n"
+			b += th.Help.Render("started just now") + "\n"
 		}
-		b += "\n" + styleHelp.Render("s: stop and record · Esc: back")
+		b += "\n" + th.Help.Render("s: stop and record · Esc: back")
 	case logListPick:
 		if lg.loading {
-			b += styleHelp.Render("Loading tasks…") + "\n\n"
+			b += th.Help.Render("Loading tasks…") + "\n\n"
 		}
 		b += "Choose the list:\n\n"
 		for i, l := range lg.lists {
@@ -524,17 +524,17 @@ func (lg logModel) view() string {
 			line := l.name
 			if i == lg.listIdx {
 				cursor = "▸ "
-				line = styleAccent.Render(line)
+				line = th.Accent.Render(line)
 			}
 			b += cursor + line + "\n"
 		}
 		browseLine := "🔍 Browse all workspace lists…"
 		if lg.listIdx == len(lg.lists) {
-			b += "▸ " + styleAccent.Render(browseLine) + "\n"
+			b += "▸ " + th.Accent.Render(browseLine) + "\n"
 		} else {
 			b += "  " + browseLine + "\n"
 		}
-		b += "\n" + styleHelp.Render("↑/↓ select · Enter: open tasks / browse")
+		b += "\n" + th.Help.Render("↑/↓ select · Enter: open tasks / browse")
 	case logTaskPick:
 		b += "Choose the task:\n\n"
 		for i, tk := range lg.tasks {
@@ -542,36 +542,36 @@ func (lg logModel) view() string {
 			line := truncate(tk.Name, 40)
 			if i == lg.taskIdx {
 				cursor = "▸ "
-				line = styleAccent.Render(line)
+				line = th.Accent.Render(line)
 			}
 			b += cursor + line + "\n"
 		}
 		if len(lg.tasks) == 0 {
-			b += styleHelp.Render("No tasks in the list.") + "\n"
+			b += th.Help.Render("No tasks in the list.") + "\n"
 		}
-		b += "\n" + styleHelp.Render("↑/↓ select · Enter: continue")
+		b += "\n" + th.Help.Render("↑/↓ select · Enter: continue")
 	case logIDInput:
 		b += "Task ID or URL:\n\n" + lg.input.View()
 	case logForm:
-		b += "Task: " + styleAccent.Render(lg.taskID) + "\n\n"
+		b += "Task: " + th.Accent.Render(lg.taskID) + "\n\n"
 		if lg.formField == 3 {
-			b += "Billable? " + styleAccent.Render("[Y/n]") + "   (Enter = yes)"
+			b += "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
 		} else {
 			labels := []string{"Duration", "Date", "Note (optional)"}
 			b += labels[lg.formField] + ":\n\n" + lg.input.View()
 		}
 	case logDone:
-		b += styleOK.Render("✓ Hours logged.") + "\n\n"
+		b += th.OK.Render("✓ Hours logged.") + "\n\n"
 		if lg.msg != "" {
-			b += styleOK.Render(lg.msg) + "\n\n"
+			b += th.OK.Render(lg.msg) + "\n\n"
 		}
-		b += styleHelp.Render("r: reload the report · Esc: back")
+		b += th.Help.Render("r: reload the report · Esc: back")
 	default:
-		b += styleHelp.Render("…")
+		b += th.Help.Render("…")
 	}
 	if lg.msg != "" && lg.step != logDone {
-		b += "\n" + styleErr.Render(lg.msg)
+		b += "\n" + th.Err.Render(lg.msg)
 	}
-	b += "\n\n" + styleHelp.Render("Esc: cancel · Ctrl+C: quit")
+	b += "\n\n" + th.Help.Render("Esc: cancel · Ctrl+C: quit")
 	return b
 }

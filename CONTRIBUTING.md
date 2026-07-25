@@ -48,6 +48,20 @@ go test ./... -race
 go build ./...
 ```
 
+### Golden files
+
+The TUI's rendered output is locked by golden files in
+`internal/tui/testdata/`. When a change alters a screen on purpose, regenerate
+them and **read the diff before committing** — that diff is the review of your
+UI change:
+
+    go test ./internal/tui -update
+    git diff internal/tui/testdata
+
+Screen goldens render with colors disabled, so they stay readable in a diff.
+`palette_light.golden` and `palette_dark.golden` capture the color of every
+theme token and are the only goldens containing escape sequences.
+
 ## Project layout & conventions
 
 ```

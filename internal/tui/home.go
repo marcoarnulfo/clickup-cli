@@ -115,14 +115,14 @@ func (m Model) rangeLabel() string {
 	return report.PeriodLabel(start, end)
 }
 
-func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion, timerLine string) string {
-	title := styleTitle.Render("ClickUp Hours — Report")
-	scopeStr := styleAccent.Render(scope)
+func (m homeModel) view(th theme, rangeLabel, scope, membersNote, latestVersion, timerLine string) string {
+	title := th.Title.Render("ClickUp Hours — Report")
+	scopeStr := th.Accent.Render(scope)
 	if membersNote != "" {
 		scopeStr += " · " + membersNote
 	}
-	sel := styleBox.Render(fmt.Sprintf("Range: %s    Scope: %s",
-		styleAccent.Render(rangeLabel), scopeStr))
+	sel := th.Box.Render(fmt.Sprintf("Range: %s    Scope: %s",
+		th.Accent.Render(rangeLabel), scopeStr))
 	help := "d: range · ◂/▸ change month (this_month only) · w: this week/month · t: me/team · "
 	if scope == "team" {
 		help += "f: select members · " // only active in team scope
@@ -132,19 +132,19 @@ func (m homeModel) view(rangeLabel, scope, membersNote, latestVersion, timerLine
 		help += "c: manage timer · "
 	}
 	help += "q: quit"
-	out := title + "\n\n" + sel + "\n\n" + styleHelp.Render(help)
+	out := title + "\n\n" + sel + "\n\n" + th.Help.Render(help)
 	if m.errText != "" {
-		out += "\n\n" + styleErr.Render(m.errText)
+		out += "\n\n" + th.Err.Render(m.errText)
 	}
 	if latestVersion != "" {
 		// The module path is spelled out in full: an elided ".../cmd/clup" reads
 		// fine but does not work when the user copies the line.
-		out += "\n\n" + styleHelp.Render(fmt.Sprintf(
+		out += "\n\n" + th.Help.Render(fmt.Sprintf(
 			"clup %s available — go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest",
 			latestVersion))
 	}
 	if timerLine != "" {
-		out += "\n\n" + styleHelp.Render(timerLine)
+		out += "\n\n" + th.Help.Render(timerLine)
 	}
 	return out
 }

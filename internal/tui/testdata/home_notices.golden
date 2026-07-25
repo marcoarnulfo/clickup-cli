@@ -1,0 +1,14 @@
+ClickUp Hours — Report
+                      
+
+╭────────────────────────────────────────────────╮
+│ Range: July 2026    Scope: team · Members: 2/3 │
+╰────────────────────────────────────────────────╯
+
+d: range · ◂/▸ change month (this_month only) · w: this week/month · t: me/team · f: select members · Enter: generate report · n: log hours · c: manage timer · q: quit
+
+request failed: 500
+
+clup v1.9.0 available — go install github.com/marcoarnulfo/clickup-cli/cmd/clup@latest
+
+⏱  running on Landing page — 00:12:30   (c: manage)

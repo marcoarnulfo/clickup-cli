@@ -434,6 +434,16 @@ the config file (handy for CI or to avoid saving the token to disk):
 CLICKUP_TOKEN=pk_xxx clup
 ```
 
+### Colors
+
+Colors adapt automatically to a light or dark terminal background. Two standard
+environment variables override the behavior:
+
+- `NO_COLOR` (any non-empty value) disables color output entirely
+  ([no-color.org](https://no-color.org/)).
+- `CLICOLOR_FORCE=1` keeps colors even when the output is piped to a file or
+  another command.
+
 ### Update check
 
 Once a day, `clup` asks GitHub whether a newer release exists and, if so, shows a

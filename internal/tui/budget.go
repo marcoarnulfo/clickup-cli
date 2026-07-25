@@ -46,17 +46,17 @@ func renderBudgetBar(percentUsed float64) string {
 	return fmt.Sprintf("[%s] %.0f%%", bar, percentUsed)
 }
 
-func (bm budgetModel) view() string {
-	title := styleTitle.Render("Budget burn-down")
-	help := styleHelp.Render("Esc/b: back to report · q: quit")
+func (bm budgetModel) view(th theme) string {
+	title := th.Title.Render("Budget burn-down")
+	help := th.Help.Render("Esc/b: back to report · q: quit")
 	if len(bm.lines) == 0 {
-		return title + "\n\n" + styleBox.Render("No budgets configured.") + "\n\n" + help
+		return title + "\n\n" + th.Box.Render("No budgets configured.") + "\n\n" + help
 	}
 	var rows strings.Builder
 	for _, l := range bm.lines {
 		rows.WriteString(fmt.Sprintf("%-24s %s  %.2f / %.2f %s (remaining %.2f)\n",
 			truncate(l.ListName, 24), renderBudgetBar(l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
 	}
-	body := styleBox.Render(strings.TrimRight(rows.String(), "\n"))
+	body := th.Box.Render(strings.TrimRight(rows.String(), "\n"))
 	return title + "\n\n" + body + "\n\n" + help
 }

@@ -158,44 +158,44 @@ func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
 	return m.tasksCmd(id)
 }
 
-func (bs listBrowserModel) view() string {
+func (bs listBrowserModel) view(th theme) string {
 	if bs.loading {
-		return styleTitle.Render("Loading…")
+		return th.Title.Render("Loading…")
 	}
-	b := styleTitle.Render("Browse workspace lists") + "\n"
+	b := th.Title.Render("Browse workspace lists") + "\n"
 	switch bs.level {
 	case browseSpaces:
-		b += styleHelp.Render("Spaces") + "\n\n"
+		b += th.Help.Render("Spaces") + "\n\n"
 		for i, s := range bs.spaces {
-			b += browserRow(s.Name, i == bs.idx)
+			b += browserRow(th, s.Name, i == bs.idx)
 		}
 	case browseSpaceContents:
-		b += styleHelp.Render(bs.spaceName) + "\n\n"
+		b += th.Help.Render(bs.spaceName) + "\n\n"
 		row := 0
 		for _, f := range bs.folders {
-			b += browserRow("📁 "+f.Name, row == bs.idx)
+			b += browserRow(th, "📁 "+f.Name, row == bs.idx)
 			row++
 		}
 		for _, l := range bs.folderless {
-			b += browserRow("🗒 "+l.Name, row == bs.idx)
+			b += browserRow(th, "🗒 "+l.Name, row == bs.idx)
 			row++
 		}
 	default: // browseFolderLists
-		b += styleHelp.Render(bs.spaceName+" / "+bs.folderName) + "\n\n"
+		b += th.Help.Render(bs.spaceName+" / "+bs.folderName) + "\n\n"
 		for i, l := range bs.folderLists {
-			b += browserRow(l.Name, i == bs.idx)
+			b += browserRow(th, l.Name, i == bs.idx)
 		}
 	}
 	if bs.itemCount() == 0 {
-		b += styleHelp.Render("(empty)") + "\n"
+		b += th.Help.Render("(empty)") + "\n"
 	}
-	b += "\n" + styleHelp.Render("↑/↓ move · Enter: open/select · Esc: up / back")
+	b += "\n" + th.Help.Render("↑/↓ move · Enter: open/select · Esc: up / back")
 	return b
 }
 
-func browserRow(label string, sel bool) string {
+func browserRow(th theme, label string, sel bool) string {
 	if sel {
-		return "▸ " + styleAccent.Render(label) + "\n"
+		return "▸ " + th.Accent.Render(label) + "\n"
 	}
 	return "  " + label + "\n"
 }

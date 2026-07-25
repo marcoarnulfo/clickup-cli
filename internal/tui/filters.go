@@ -182,21 +182,21 @@ func allChosen(s filterSection) bool {
 	return true
 }
 
-func (fs filtersModel) view() string {
+func (fs filtersModel) view(th theme) string {
 	if fs.loadingStatuses {
-		return styleTitle.Render("Loading statuses…")
+		return th.Title.Render("Loading statuses…")
 	}
-	b := styleTitle.Render("Filters") + "\n\n"
+	b := th.Title.Render("Filters") + "\n\n"
 	for si, sec := range fs.sections {
 		head := sec.title
 		if si == fs.sec {
-			head = styleAccent.Render("▸ " + sec.title)
+			head = th.Accent.Render("▸ " + sec.title)
 		} else {
 			head = "  " + head
 		}
 		b += head + "\n"
 		if len(sec.options) == 0 {
-			b += "    " + styleHelp.Render("(none)") + "\n"
+			b += "    " + th.Help.Render("(none)") + "\n"
 		}
 		for ri, o := range sec.options {
 			box := "[ ]"
@@ -205,11 +205,11 @@ func (fs filtersModel) view() string {
 			}
 			line := "    " + box + " " + o
 			if si == fs.sec && ri == fs.row {
-				line = "    " + box + " " + styleAccent.Render(o)
+				line = "    " + box + " " + th.Accent.Render(o)
 			}
 			b += line + "\n"
 		}
 	}
-	b += "\n" + styleHelp.Render("Tab/⇧Tab section · ↑/↓ move · Space toggle · a: all/none · Enter: apply · Esc: cancel")
+	b += "\n" + th.Help.Render("Tab/⇧Tab section · ↑/↓ move · Space toggle · a: all/none · Enter: apply · Esc: cancel")
 	return b
 }

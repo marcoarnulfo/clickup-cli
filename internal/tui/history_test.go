@@ -155,7 +155,7 @@ func TestEntriesHistoryViewRendersChanges(t *testing.T) {
 	es := entriesModel{mode: entriesHistory, historyChanges: []clickup.HistoryChange{
 		{Field: "duration", Before: "3600000", After: "5400000", Date: time.Date(2026, time.July, 3, 9, 5, 0, 0, time.UTC), User: "alice"},
 	}}
-	out := entriesHistoryView(es, time.UTC)
+	out := entriesHistoryView(testTheme(true), es, time.UTC)
 	for _, want := range []string{"duration", "3600000", "5400000", "alice"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q:\n%s", want, out)
@@ -166,7 +166,7 @@ func TestEntriesHistoryViewRendersChanges(t *testing.T) {
 // TestEntriesHistoryViewEmpty covers the no-history case (no changes yet
 // recorded for the entry).
 func TestEntriesHistoryViewEmpty(t *testing.T) {
-	out := entriesHistoryView(entriesModel{mode: entriesHistory}, time.UTC)
+	out := entriesHistoryView(testTheme(true), entriesModel{mode: entriesHistory}, time.UTC)
 	if !strings.Contains(out, "No recorded changes") {
 		t.Errorf("empty-history view missing the empty-state message:\n%s", out)
 	}
