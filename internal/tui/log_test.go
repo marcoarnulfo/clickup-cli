@@ -606,7 +606,7 @@ func TestLogKeyLabelsPerStep(t *testing.T) {
 		{"id input", logIDInput, 0, []string{"enter", "esc"}},
 		{"form duration", logForm, 0, []string{"enter", "esc"}},
 		{"form date", logForm, 1, []string{"enter", "esc"}},
-		{"form time", logForm, 2, []string{"enter", "esc"}},
+		{"form note", logForm, 2, []string{"enter", "esc"}},
 		{"form billable", logForm, 3, []string{"N", "Y", "enter", "esc", "n", "y"}},
 		{"timer running", logTimerRunning, 0, []string{"esc", "s"}},
 		{"done", logDone, 0, []string{"enter", "esc", "r"}},

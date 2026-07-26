@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/charmbracelet/bubbles/key"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -111,5 +114,26 @@ func TestQuitBindingPerScreen(t *testing.T) {
 		if got := keysFor(m).Quit.Enabled(); got != want {
 			t.Errorf("screen %v: Quit enabled = %v, want %v", s, got, want)
 		}
+	}
+}
+
+// TestAllBindingsCoversEveryField is the structural half of the parity net.
+// Every per-screen label test reads its labels through allBindings, so a
+// binding field left out of that slice is invisible to all of them at once —
+// the key would keep working while nothing pinned it any more. Counting the
+// fields by reflection means adding one to keyMap without adding it to
+// allBindings fails here instead of quietly weakening the suite.
+func TestAllBindingsCoversEveryField(t *testing.T) {
+	t.Parallel()
+	bindingType := reflect.TypeOf(key.Binding{})
+	want := 0
+	mapType := reflect.TypeOf(keyMap{})
+	for i := range mapType.NumField() {
+		if mapType.Field(i).Type == bindingType {
+			want++
+		}
+	}
+	if got := len(keyMap{}.allBindings()); got != want {
+		t.Errorf("allBindings returns %d bindings, but keyMap has %d key.Binding fields — a field is missing from allBindings", got, want)
 	}
 }

@@ -229,8 +229,14 @@ type keyMap struct {
 func (k keyMap) ShortHelp() []key.Binding  { return k.short }
 func (k keyMap) FullHelp() [][]key.Binding { return k.full }
 
-// allBindings returns every binding field, so the parity tests do not have
-// to know the struct's shape. Keep it in sync when a field is added.
+// allBindings returns every binding field, so the parity tests do not have to
+// know the struct's shape. A field missing here drops silently out of every
+// parity test, so TestAllBindingsCoversEveryField pins the count by reflection
+// rather than trusting anyone to remember.
+//
+// full is populated for Home and Report only. Nothing renders FullHelp() yet;
+// the ? overlay (#69) either fills in the other ten screens or stops reading
+// the field — do not assume it is complete.
 func (k keyMap) allBindings() []key.Binding {
 	return []key.Binding{
 		k.Quit, k.Back,
@@ -286,8 +292,9 @@ func keysFor(m Model) keyMap {
 }
 
 // homeKeys is the full binding set for screenHome (home.go's updateHome):
-// every case label of that switch, plus the global q (added by keysFor's
-// caller, not here — see app.go). Members, Timer and the month-nav pair are
+// every case label of that switch, plus q — which is declared here like any
+// other binding but handled globally in app.go rather than in home.go's own
+// switch. Members, Timer and the month-nav pair are
 // the contextually gated bindings: Members to the team scope, Timer to a
 // running timer, PrevMonth/NextMonth to the this_month preset outside week
 // mode — home.go's own view already hides/shows the first two conditionally

@@ -117,16 +117,27 @@ Bindings are defined in a **screen-independent defaults table** and then
 contextually enabled by `keysFor`, so #82's config overrides later mutate the
 defaults table alone.
 
-### 4.3 Enablement is load-bearing, so guards stay
+### 4.3 Enablement is load-bearing, so it is the only gate
 
 Once `keysFor` disables a binding, `key.Matches` fails and the handler's guard
 becomes unreachable. Enablement therefore controls **behavior**, not just what
 the footer displays.
 
-Handlers keep their existing guards anyway (defense in depth), and the shared
-predicates — `canEdit(e, userID)`, team scope, non-empty list — are extracted so
-`keysFor` and the handler read the same expression. A test asserts
-enablement ⇔ guard for every contextually gated key.
+Each contextual guard consequently lives in **exactly one place**: the
+binding's `Enabled()` state. The inline `if` that used to sit in the handler is
+removed when its condition moves into `keysFor`, and the shared predicates —
+`canEdit(e, userID)`, team scope, non-empty list, current rates section — are
+called from there. A test asserts enablement ⇔ guard for every contextually
+gated key.
+
+> **Amended after implementation.** This section originally said handlers would
+> keep their guards as defense in depth. They do not, and that is deliberate:
+> two copies of a condition are two things to keep in sync, and the duplicate
+> is unreachable by construction, so it can drift without any test noticing.
+> The `enablement ⇔ guard` tests are what makes one copy safe — they pin the
+> predicate against the behavior it gates. Contextual logic that selects
+> between two *live* behaviors (Home's `f` branching on whether the roster is
+> already loaded, for instance) is not a guard and stays in the handler.
 
 ### 4.4 One navigation mechanism, with a truncating stack
 
