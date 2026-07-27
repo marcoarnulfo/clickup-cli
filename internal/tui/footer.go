@@ -59,12 +59,6 @@ func pairHelp(a, b key.Binding, keyLabel, desc string) key.Binding {
 // triggered by the ABSENCE of a match — the delete confirmation's "any other
 // key cancels". No real binding can express that, and dropping it from the
 // footer would lose information the hand-written line carried.
-//
-// Unused within this task on purpose: Task 2 wires it into entriesKeys'
-// confirmDelete case (ConfirmDelete + anyKeyHelp("cancel")), see
-// docs/superpowers/plans/2026-07-27-tui-footer-help.md.
-//
-//lint:ignore U1000 consumed by Task 2, not this one
 func anyKeyHelp(desc string) key.Binding {
 	return key.NewBinding(key.WithKeys("any"), key.WithHelp("any key", desc))
 }

@@ -90,3 +90,20 @@ func TestGoldenFooterSample(t *testing.T) {
 	golden(t, "footer_sample_short", footerView(testTheme(true), 0, false, sampleKeys()))
 	golden(t, "footer_sample_full", footerView(testTheme(true), 0, true, sampleKeys()))
 }
+
+// A handler that acts on the absence of a match — the delete confirmation's
+// "any other key cancels" — has no binding to advertise, so the footer needs a
+// display-only one. It must render like any other item and must be enabled, or
+// help would drop it.
+func TestAnyKeyHelpRendersAsAnItem(t *testing.T) {
+	t.Parallel()
+	b := anyKeyHelp("cancel")
+	if !b.Enabled() {
+		t.Fatal("display-only binding is disabled, so the footer would drop it")
+	}
+	k := keyMap{}
+	k.short = []key.Binding{b}
+	if got := footerView(testTheme(true), 0, false, k); got != "any key cancel" {
+		t.Errorf("footer = %q, want %q", got, "any key cancel")
+	}
+}
