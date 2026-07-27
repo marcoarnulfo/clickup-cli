@@ -7,10 +7,10 @@
 # account or token needed, so the GIF is fully reproducible. Requires the
 # `clup` binary on PATH (go install ./cmd/clup).
 #
-# NOTE: the binary was renamed clickup -> clup (v1.6); this script and
-# docs/demo.gif were both updated to match. Re-run `vhs docs/demo.tape`
-# to refresh the GIF after any UI change (the TUI itself is unchanged by
-# the rebrand — the visual redesign lands in v1.9).
+# NOTE: re-run `vhs docs/demo.tape` after ANY change to what a screen
+# renders. The v1.9 design system makes this easy to forget: the key footer
+# is now generated from the keymap, so adding or renaming a binding changes
+# the bottom line of every frame in this GIF without anyone editing a view.
 
 Output docs/demo.gif
 
@@ -65,6 +65,14 @@ Type "g"
 Sleep 1600ms
 Type "g"
 Sleep 2200ms
+
+# Full help (v1.9, #69): every screen carries a generated key footer, and '?'
+# expands it into every binding that screen accepts, laid out in columns —
+# the Report has the richest set. Press it again to collapse.
+Type "?"
+Sleep 2400ms
+Type "?"
+Sleep 800ms
 
 # Budget burn-down view (v1.7, #64): 'b' from the report
 Type "b"
