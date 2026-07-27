@@ -1,0 +1,4 @@
+tab/⇧tab section    d clear/revert    s      save      
+↑/↓/j/k  move                         ?      help      
+enter    confirm                      esc    back      
+                                      ctrl+c force quit
