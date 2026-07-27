@@ -453,7 +453,7 @@ func TestDemoGuidedListPickIssuesDemoTaskListMsg(t *testing.T) {
 
 func TestDemoFormSubmitIssuesLogDoneMsgNoIO(t *testing.T) {
 	m := demoLogModel()
-	m.logScreen = enterForm(m.logScreen)
+	m.logScreen = enterForm(m.logScreen, m.now())
 	m.logScreen.taskID = "demo-t1"
 	m.logScreen.durStr = "1h"
 	m.logScreen.formField = 3 // billable step

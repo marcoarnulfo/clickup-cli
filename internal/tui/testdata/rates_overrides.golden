@@ -8,3 +8,4 @@ Billing settings
 No (list,member) overrides — the most specific level of the precedence.
 
 Rate precedence: (list,member) > member > list > default
+A rate of 0 bills at zero — to unset a value instead, submit an empty field.

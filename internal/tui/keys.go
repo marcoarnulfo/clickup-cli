@@ -589,6 +589,20 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 	k.ListBudget.SetEnabled(listsWithRows)
 	k.NewOverride.SetEnabled(rt.sec == secOverrides)
 	k.BrowseList.SetEnabled(rt.sec == secLists)
+
+	// d is four different actions depending on the section, and one of them
+	// destroys a row. The generic "clear/revert" was accurate nowhere and
+	// dangerously vague on Overrides, so each section names its own.
+	switch rt.sec {
+	case secLists:
+		k.ClearValue.SetHelp("d", "use the default rate")
+		k.ListCurrency.SetHelp("c", "currency (empty clears)")
+		k.ListBudget.SetHelp("g", "budget (empty clears)")
+	case secMembers:
+		k.ClearValue.SetHelp("d", "use the default rate")
+	case secOverrides:
+		k.ClearValue.SetHelp("d", "delete this override")
+	}
 	sectionPair := pairHelp(k.NextSection, k.PrevSection, "tab/⇧tab", "section")
 	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 	k.short = []key.Binding{movePair, k.Confirm, k.Save, k.Back, k.Help, k.ForceQuit}

@@ -212,11 +212,14 @@ func createEntryCmd(c *clickup.Client, teamID, tid string, start time.Time, dur 
 }
 
 // enterForm initializes the form: duration field, date default = today.
-func enterForm(lg logModel) logModel {
+//
+// The clock is a parameter rather than lg.now: that field is stamped by the
+// root at render time, and this runs during Update, where it is still zero.
+func enterForm(lg logModel, now time.Time) logModel {
 	lg.step = logForm
 	lg.formField = 0
 	lg.durStr = ""
-	lg.dateStr = time.Now().Format("2006-01-02")
+	lg.dateStr = now.Format("2006-01-02")
 	lg.noteStr = ""
 	lg.billable = true // billing-focused tool: billable by default
 	lg.msg = ""
@@ -337,7 +340,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m = m.replace(screenLoading)
 				return m, m.timerStartCmd(id, "")
 			}
-			lg = enterForm(lg)
+			lg = enterForm(lg, m.now())
 			lg.taskID = id
 			m.logScreen = lg
 			return m, nil
@@ -461,7 +464,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, m.timerStartCmd(t.ID, "")
 				}
 				id := t.ID
-				lg = enterForm(lg)
+				lg = enterForm(lg, m.now())
 				lg.taskID = id
 				m.logScreen = lg
 				return m, nil

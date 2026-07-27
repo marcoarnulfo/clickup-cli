@@ -1,0 +1,4 @@
+tab/⇧tab section    c currency (empty clears)    s      save      
+↑/↓/j/k  move       g budget (empty clears)      ?      help      
+enter    confirm    d use the default rate       esc    back      
+                    b browse lists               ctrl+c force quit

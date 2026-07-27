@@ -179,6 +179,18 @@ func TestGoldenFooters(t *testing.T) {
 		{"rates_normal", func() Model {
 			return Model{screen: screenRates, ratesScreen: ratesModel{sec: secRules}}
 		}},
+		// The Lists and Overrides sections are the only states where
+		// ListCurrency/ListBudget/BrowseList and NewOverride are enabled, and
+		// where d names a section-specific action. Without these two cases the
+		// four section-gated bindings appear in no footer golden at all, so
+		// unassigning one would go unnoticed — the exact silent drop these
+		// goldens exist to catch.
+		{"rates_normal_lists", func() Model {
+			return Model{screen: screenRates, ratesScreen: ratesModel{sec: secLists, rows: []rateRow{{listID: "1"}}}}
+		}},
+		{"rates_normal_overrides", func() Model {
+			return Model{screen: screenRates, ratesScreen: ratesModel{sec: secOverrides}}
+		}},
 		{"rates_draft_pick_list", func() Model {
 			return Model{screen: screenRates, ratesScreen: ratesModel{draft: overrideDraft{active: true, step: draftPickList}}}
 		}},

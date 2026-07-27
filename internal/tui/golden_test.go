@@ -231,7 +231,12 @@ func TestGoldenLogForm(t *testing.T) {
 	t.Parallel()
 	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
-	lg = enterForm(lg) // sets step AND initializes the text inputs
+	lg = enterForm(lg, goldenFixedTime) // sets step AND initializes the text inputs
+	// Production always sets taskID before the form is reachable (both the
+	// guided picker and the ID-input step assign it), so capturing it empty
+	// depicted a state the app never shows — and left the "Task:" row
+	// unprotected.
+	lg.taskID = "86abc"
 	golden(t, "log_form", lg.view(testTheme(true)))
 }
 

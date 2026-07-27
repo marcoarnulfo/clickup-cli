@@ -9,3 +9,4 @@ Billing settings
 A member rate wins over any per-list rate, on every list.
 
 Rate precedence: (list,member) > member > list > default
+A rate of 0 bills at zero — to unset a value instead, submit an empty field.
