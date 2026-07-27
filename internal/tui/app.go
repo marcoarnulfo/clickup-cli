@@ -95,6 +95,11 @@ type Model struct {
 
 	width, height int
 
+	// helpAll toggles the footer between short and full help (#69 Task 4).
+	// Flipped by '?' wherever keysFor(m).Help is enabled for the current
+	// screen; nothing renders it yet — Task 5 wires the footer into View().
+	helpAll bool
+
 	// current selection
 	year        int
 	month       time.Month
@@ -609,6 +614,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key.Matches(msg, defaultKeys().ForceQuit) {
 			return m, tea.Quit
+		}
+		// Checked here, beside Quit/ForceQuit, rather than inside routeKey: that
+		// makes '?' behave identically on every screen keysFor enables it for,
+		// including screenLoading, which routeKey has no case for at all.
+		// keysFor(m).Help is already unassigned (a no-op key.Binding, so
+		// key.Matches never fires) on every screen where '?' must mean
+		// something else — the ten textinput-forwarding contexts, screenError
+		// (any key -> Home), and entriesConfirmDelete (any key but y cancels).
+		if key.Matches(msg, keysFor(m).Help) {
+			m.helpAll = !m.helpAll
+			return m, nil
 		}
 		return m.routeKey(msg)
 

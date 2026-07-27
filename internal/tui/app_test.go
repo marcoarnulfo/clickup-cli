@@ -1360,3 +1360,85 @@ func TestInitDoesNotCheckInDemoMode(t *testing.T) {
 		}
 	}
 }
+
+// TestQuestionMarkTogglesFullHelp is the #69 Task 4 core behavior: '?' flips
+// Model.helpAll on screenHome, where keysFor enables Help, and flips it back
+// off on a second press.
+func TestQuestionMarkTogglesFullHelp(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.screen = screenHome
+	next, _ := m.Update(keyMsg("?"))
+	if !next.(Model).helpAll {
+		t.Fatal("? did not turn full help on")
+	}
+	again, _ := next.(Model).Update(keyMsg("?"))
+	if again.(Model).helpAll {
+		t.Error("? did not turn full help back off")
+	}
+}
+
+// TestQuestionMarkDoesNotHijackAnyKeyScreens pins the reason the '?' arm in
+// Update sits behind key.Matches(msg, keysFor(m).Help) rather than firing
+// unconditionally: on screenError every key returns Home; a Help binding that
+// fired there regardless would take away the user's only way out.
+func TestQuestionMarkDoesNotHijackAnyKeyScreens(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	m.screen = screenError
+	m.err = errors.New("boom")
+	next, _ := m.Update(keyMsg("?"))
+	if got := next.(Model).screen; got != screenHome {
+		t.Errorf("? on the error screen -> %v, want screenHome", got)
+	}
+	if next.(Model).helpAll {
+		t.Error("? toggled help on a screen where every key means 'go home'")
+	}
+}
+
+// TestQuestionMarkTypesIntoInputs confirms '?' is forwarded as an ordinary
+// rune to a focused textinput (the log flow's ID field) instead of toggling
+// help: keysFor leaves Help unassigned in every textinput-forwarding context.
+func TestQuestionMarkTypesIntoInputs(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	next, _ := m.Update(keyMsg("n"))           // -> log flow
+	next, _ = next.(Model).Update(keyMsg("2")) // -> ID input
+	next, _ = next.(Model).Update(keyMsg("?"))
+	mm := next.(Model)
+	if mm.helpAll {
+		t.Error("? toggled help while an input was focused")
+	}
+	if got := mm.logScreen.input.Value(); got != "?" {
+		t.Errorf("input value = %q, want %q", got, "?")
+	}
+}
+
+// TestQuestionMarkCancelsEntriesConfirmDelete extends the delete-confirmation
+// coverage (see TestDeleteRequiresConfirm in entries_delete_test.go, which
+// exercises x/n/y) with '?': on entriesConfirmDelete every key but y cancels,
+// keysFor leaves Help unassigned there (TestEntriesConfirmDeleteKeyLabels), so
+// '?' must fall into that same "any other key cancels" default instead of
+// being caught by the root Help toggle — the same reasoning that keeps '?'
+// off screenError (TestQuestionMarkDoesNotHijackAnyKeyScreens).
+func TestQuestionMarkCancelsEntriesConfirmDelete(t *testing.T) {
+	t.Parallel()
+	m := newTestModel()
+	own := report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Start: time.Now()}
+	m = browserWithEntries(m, own)
+
+	opened, _ := m.Update(keyMsg("x")) // opens the confirm dialog
+	mm := opened.(Model)
+	if mm.entriesScreen.mode != entriesConfirmDelete {
+		t.Fatalf("x did not open confirm dialog: mode=%v", mm.entriesScreen.mode)
+	}
+
+	next, _ := mm.Update(keyMsg("?"))
+	nm := next.(Model)
+	if nm.entriesScreen.mode != entriesList {
+		t.Errorf("? did not cancel the delete confirmation, mode=%v", nm.entriesScreen.mode)
+	}
+	if nm.helpAll {
+		t.Error("? toggled help on a screen where every other key means 'cancel'")
+	}
+}
