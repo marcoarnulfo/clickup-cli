@@ -118,6 +118,16 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 
 ### TUI commands
 
+Every screen shows a footer with the keys it currently accepts, generated directly
+from the same keymap that dispatches them — it can no longer drift out of sync with
+what the keys actually do. The footer is also contextual: a key that would not do
+anything right now is simply not shown. On the time-entry browser, for example, the
+`e`/`x`/`t` (edit/delete/tags) keys disappear while the highlighted entry belongs to
+a teammate, since those actions only work on your own entries. Press `?` to expand
+the footer into the full list of that screen's keys, grouped by what they do; press
+`?` again to collapse it back — the expanded state persists as you move to other
+screens, until you toggle it off.
+
 | Key | Screen | Action |
 |---|---|---|
 | `d` | Home | Open the **report range** picker (presets + custom from/to) |
@@ -140,6 +150,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |
 | `Enter` | Export | Save `clickup-report-<period>.<ext>` in the cwd (the CSV invoice is saved as `clickup-invoice-<period>.csv`; `<period>` is `YYYY-MM` for a calendar month, or `YYYY-MM-DD_YYYY-MM-DD` for a custom range) |
 | `Esc` | Export | Return to the report without exporting |
+| `?` | Everywhere except while typing into a field, the delete-confirmation prompt and the error screen | Expand the footer into the full list of keys the current screen accepts (press again to collapse) |
 | `q` | Everywhere except setup / rates / range / list browser / log hours / time entries | Quit the application |
 | `Ctrl+C` | Always | Quit the application |
 
