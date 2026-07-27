@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -33,6 +34,25 @@ func TestGoldenFooters(t *testing.T) {
 			m := newTestModel()
 			m.screen = screenHome
 			m.scope = "me"
+			return m
+		}},
+		// Home with a live timer, in both scopes. Without these the Timer
+		// binding is disabled in every golden, so dropping it from short would
+		// look correct — which is how it went missing once already, leaving the
+		// "running on <task>" status line with no way to reach the timer. The
+		// team variant is also the widest home footer there is.
+		{"home_timer", func() Model {
+			m := newTestModel()
+			m.screen = screenHome
+			m.scope = "me"
+			m.runningTimer = &clickup.RunningTimer{TaskName: "Fix login bug"}
+			return m
+		}},
+		{"home_team_timer", func() Model {
+			m := newTestModel()
+			m.screen = screenHome
+			m.scope = "team"
+			m.runningTimer = &clickup.RunningTimer{TaskName: "Fix login bug"}
 			return m
 		}},
 

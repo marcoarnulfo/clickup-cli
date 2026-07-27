@@ -127,9 +127,12 @@ func defaultKeys() keyDefaults {
 		Range:       key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "range")),
 		ToggleScope: key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "me/team")),
 		LogHours:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "log hours")),
-		Timer:       key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "manage timer")),
-		Members:     key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "select members")),
-		Generate:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "generate report")),
+		// "timer", not "manage timer": Home advertises this one in the short
+		// footer, where the team scope plus a running timer would otherwise
+		// push the line past eighty columns.
+		Timer:    key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "timer")),
+		Members:  key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "select members")),
+		Generate: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "generate report")),
 
 		Up:         key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move up")),
 		Down:       key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "move down")),
@@ -344,7 +347,11 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 	k.PrevMonth.SetEnabled(monthNav)
 	k.NextMonth.SetEnabled(monthNav)
 	monthPair := pairHelp(k.PrevMonth, k.NextMonth, "◂/▸/h/l", "change month")
-	k.short = []key.Binding{k.Generate, k.Range, k.Members, k.Help, k.Quit}
+	// Timer is in short, not only in full: the home view renders a live
+	// "running on <task>" line whenever it is enabled, and a status line that
+	// says a timer is running while nothing says how to reach it is worse than
+	// a slightly longer footer. It costs width only while a timer runs.
+	k.short = []key.Binding{k.Generate, k.Range, k.Timer, k.Members, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{monthPair, k.ToggleWeek},
 		{k.Range, k.ToggleScope, k.Members},
