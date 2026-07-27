@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -39,20 +40,21 @@ func newExport(r report.Report) exportModel { return exportModel{r: r} }
 
 func (m Model) updateExport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := m.export
-	switch msg.String() {
-	case "up", "k":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Up):
 		if e.idx > 0 {
 			e.idx--
 		}
-	case "down", "j":
+	case key.Matches(msg, k.Down):
 		if e.idx < len(exportFormats)-1 {
 			e.idx++
 		}
-	case "esc":
-		m.screen = screenReport
+	case key.Matches(msg, k.Back):
+		m = m.pop()
 		m.export = e
 		return m, nil
-	case "enter":
+	case key.Matches(msg, k.Confirm):
 		f := exportFormats[e.idx]
 		path := fmt.Sprintf("%s-%s.%s", f.prefix, report.PeriodFileSlug(e.r.Start, e.r.End), f.ext)
 		if err := export.ToFile(f.key, e.r, path); err != nil {

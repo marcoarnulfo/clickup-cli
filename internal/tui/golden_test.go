@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -162,7 +163,6 @@ func TestGoldenSetup(t *testing.T) {
 func TestGoldenListBrowser(t *testing.T) {
 	t.Parallel()
 	bs := listBrowserModel{
-		origin: screenLog,
 		spaces: []clickup.Space{{ID: "s1", Name: "Clients"}, {ID: "s2", Name: "Internal"}},
 	}
 	golden(t, "listbrowser", bs.view(testTheme(true)))
@@ -196,15 +196,17 @@ func TestGoldenRatesTabs(t *testing.T) {
 		{"rates_overrides", secOverrides},
 		{"rates_rules", secRules},
 	} {
-		rt := newRates(goldenEntries(), cfg)
-		rt.sec = tc.sec
-		golden(t, tc.name, rt.view(testTheme(true)))
+		t.Run(tc.name, func(t *testing.T) {
+			rt := newRates(goldenEntries(), cfg)
+			rt.sec = tc.sec
+			golden(t, tc.name, rt.view(testTheme(true)))
+		})
 	}
 }
 
 func TestGoldenLog(t *testing.T) {
 	t.Parallel()
-	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"}, screenReport)
+	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
 	golden(t, "log", lg.view(testTheme(true)))
 }
@@ -223,4 +225,59 @@ func TestGoldenEntriesBrowser(t *testing.T) {
 		t.Fatalf("v did not open the entries browser: screen=%v", mm.screen)
 	}
 	golden(t, "entries", mm.View())
+}
+
+func TestGoldenLogForm(t *testing.T) {
+	t.Parallel()
+	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
+	lg.now = goldenFixedTime
+	lg = enterForm(lg) // sets step AND initializes the text inputs
+	golden(t, "log_form", lg.view(testTheme(true)))
+}
+
+func TestGoldenEntriesEdit(t *testing.T) {
+	t.Parallel()
+	m := goldenModel()
+	m.userID = 1
+	m.entries = goldenEntries()
+	m.screen = screenReport
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}) // to the own entry
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	mm := next.(Model)
+	if mm.entriesScreen.mode != entriesEdit {
+		t.Fatalf("did not reach the edit form: mode=%v", mm.entriesScreen.mode)
+	}
+	golden(t, "entries_edit", mm.View())
+}
+
+func TestGoldenEntriesConfirmDelete(t *testing.T) {
+	t.Parallel()
+	m := goldenModel()
+	m.userID = 1
+	m.entries = goldenEntries()
+	m.screen = screenReport
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	mm := next.(Model)
+	if mm.entriesScreen.mode != entriesConfirmDelete {
+		t.Fatalf("did not reach confirm-delete: mode=%v", mm.entriesScreen.mode)
+	}
+	golden(t, "entries_confirm_delete", mm.View())
+}
+
+func TestGoldenError(t *testing.T) {
+	t.Parallel()
+	m := goldenModel()
+	m.screen = screenError
+	m.err = errors.New("request failed: 500 Internal Server Error")
+	golden(t, "error", m.View())
+}
+
+func TestGoldenLoading(t *testing.T) {
+	t.Parallel()
+	m := goldenModel()
+	m.screen = screenLoading
+	golden(t, "loading", m.View())
 }

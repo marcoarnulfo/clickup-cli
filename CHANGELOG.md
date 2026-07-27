@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   palette switches to darker, legible variants. Dark terminals render exactly
   as before, down to the same 256-color indices. `NO_COLOR=1` disables color
   entirely and `CLICOLOR_FORCE=1` keeps it when output is piped.
+- The Report screen now accepts `esc` to go back, like every other screen.
+  Navigation is handled by a single back-stack, so `esc` always returns to
+  wherever you came from — including when the same screen is reachable from
+  more than one place.
 
 ## [1.8.0] - 2026-07-23
 

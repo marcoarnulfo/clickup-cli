@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -77,7 +78,11 @@ type Model struct {
 	client *clickup.Client
 	demo   bool // demo mode (fake data, no API)
 	screen screen
-	err    error
+	// nav is the parent chain: the screen to return to on pop(), and the one
+	// above it, and so on. The current screen is m.screen, not the top of
+	// nav. An empty nav means "nowhere to go back to" (Home lives here).
+	nav []screen
+	err error
 
 	// theme carries every style the views render through (#54). It is passed
 	// explicitly to each view rather than read from package state, so a view
@@ -177,10 +182,10 @@ func New(cfg config.Config) Model {
 	m.loc, _ = service.LoadLocation(cfg.Timezone, time.Local)
 	m.year, m.month = defaultYearMonth(m.now(), m.loc)
 	if m.demo || m.cfg.Valid() {
-		m.screen = screenHome
+		m = m.resetTo(screenHome)
 		m.home = newHome()
 	} else {
-		m.screen = screenSetup
+		m = m.resetTo(screenSetup)
 		m.setup = newSetup()
 	}
 	return m
@@ -298,7 +303,7 @@ func (m *Model) pricingOrErr() (report.Pricing, bool) {
 	p, err := service.PricingFromConfig(m.cfg)
 	if err != nil {
 		m.err = err
-		m.screen = screenError
+		*m = m.replace(screenError)
 		return report.Pricing{}, false
 	}
 	return p, true
@@ -314,7 +319,7 @@ func (m *Model) locOrErr() (*time.Location, bool) {
 	loc, err := service.LoadLocation(m.cfg.Timezone, time.Local)
 	if err != nil {
 		m.err = err
-		m.screen = screenError
+		*m = m.replace(screenError)
 		return nil, false
 	}
 	m.loc = loc
@@ -517,10 +522,11 @@ func (m Model) spaceContentsCmd(spaceID string) tea.Cmd {
 	return loadSpaceContentsCmd(m.client, spaceID)
 }
 
-// openListBrowser opens the shared list browser on behalf of `origin`.
-func (m Model) openListBrowser(origin screen) (Model, tea.Cmd) {
-	bs := listBrowserModel{origin: origin}
-	m.screen = screenListBrowser
+// openListBrowser opens the shared list browser on top of the current screen
+// (Rates or Log); pop() returns to whichever one pushed it.
+func (m Model) openListBrowser() (Model, tea.Cmd) {
+	bs := listBrowserModel{}
+	m = m.goTo(screenListBrowser)
 	if len(m.browserSpaces) > 0 {
 		bs.spaces = m.browserSpaces
 		m.browserScreen = bs
@@ -598,10 +604,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
-		if msg.String() == "q" && m.screen != screenSetup && m.screen != screenRates && m.screen != screenRange && m.screen != screenListBrowser && m.screen != screenLog && m.screen != screenEntries {
+		if key.Matches(msg, keysFor(m).Quit) {
 			return m, tea.Quit
 		}
-		if msg.Type == tea.KeyCtrlC {
+		if key.Matches(msg, defaultKeys().ForceQuit) {
 			return m, tea.Quit
 		}
 		return m.routeKey(msg)
@@ -610,26 +616,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		// Invalid/revoked token: relaunch the setup wizard (spec §8).
 		if errors.Is(msg.err, clickup.ErrUnauthorized) {
-			m.screen = screenSetup
+			m = m.resetTo(screenSetup)
 			m.setup = newSetup()
 		} else {
-			m.screen = screenError
+			m = m.replace(screenError)
 		}
 		return m, nil
 
 	case retryableErrMsg:
 		m.err = msg.err
 		if errors.Is(msg.err, clickup.ErrUnauthorized) {
-			m.screen = screenSetup
+			m = m.resetTo(screenSetup)
 			m.setup = newSetup()
 			return m, nil
 		}
 		switch msg.origin {
 		case screenHome:
 			m.home.errText = "Error: " + msg.err.Error()
-			m.screen = screenHome
+			m = m.resetTo(screenHome)
 		default:
-			m.screen = screenError
+			m = m.replace(screenError)
 		}
 		return m, nil
 
@@ -638,7 +644,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// filled form / selected task is not lost and the user can retry.
 		m.logScreen.loading = false
 		m.logScreen.msg = "Error: " + msg.err.Error()
-		m.screen = screenLog
+		m = m.replace(screenLog)
 		return m, nil
 
 	case entriesMsg:
@@ -664,7 +670,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
-		m.screen = screenReport
+		// Report is reached three ways (Home enter, Report's own reload, and
+		// the logDone reload) and all three arrive here: re-rooting rather
+		// than replacing makes every arrival converge on nav == [Home], which
+		// is Report's back target regardless of which path it came from.
+		m = m.resetTo(screenHome).goTo(screenReport)
 		return m, nil
 
 	case entriesReloadedMsg:
@@ -686,7 +696,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		es.msg = msg.status
 		es.msgErr = false
 		m.entriesScreen = es
-		m.screen = screenEntries
+		m = m.replace(screenEntries)
 		return m, nil
 
 	case entriesErrMsg:
@@ -695,15 +705,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		es.msg = msg.err.Error()
 		es.msgErr = true
 		m.entriesScreen = es
-		m.screen = screenEntries
+		m = m.replace(screenEntries)
 		return m, nil
 
 	case historyMsg:
+		// Unlike tagsMsg/membersMsg/statusesMsg below, this fetch is dispatched
+		// FROM screenLoading (entries.go's 'h'), not from the screen it lands
+		// on — so the guard must accept screenLoading, not screenEntries.
+		// screenLoading swallows every key but quit, so nothing can navigate
+		// away before this reply arrives; the guard is still worth having so a
+		// future change to Loading's key handling doesn't silently resurrect a
+		// stale history view.
+		if m.screen != screenLoading {
+			return m, nil // stale: the user is no longer waiting on this fetch
+		}
 		es := m.entriesScreen
 		es.historyChanges = msg.changes
 		es.mode = entriesHistory
 		m.entriesScreen = es
-		m.screen = screenEntries
+		m = m.replace(screenEntries)
 		return m, nil
 
 	case tagsMsg:
@@ -725,7 +745,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logDoneMsg:
 		m.logScreen.step = logDone
 		m.logScreen.msg = msg.summary
-		m.screen = screenLog
+		m = m.replace(screenLog)
 		return m, nil
 
 	case timerStoppedMsg:
@@ -734,7 +754,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logScreen.timer = nil
 		m.logScreen.step = logDone
 		m.logScreen.msg = msg.summary
-		m.screen = screenLog
+		m = m.replace(screenLog)
 		return m, nil
 
 	case taskListMsg:
@@ -762,10 +782,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.timer != nil {
 			m.logScreen.step = logTimerRunning
 		}
-		m.screen = screenLog
+		m = m.replace(screenLog)
 		return m, tick
 
 	case membersMsg:
+		if m.screen != screenMembers {
+			return m, nil // stale: the user left the members screen before the fetch landed
+		}
 		m.teamMembers = msg.members
 		if len(m.selectedMembers) == 0 {
 			m.selectedMembers = make(map[int]bool, len(msg.members))
@@ -774,10 +797,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.membersScreen = newMembers(msg.members, m.selectedMembers)
-		m.screen = screenMembers
+		m = m.replace(screenMembers)
 		return m, nil
 
 	case statusesMsg:
+		if m.screen != screenFilters {
+			return m, nil // stale: the user left the filters screen before the fetch landed
+		}
 		if m.taskStatus == nil {
 			m.taskStatus = map[string]string{}
 		}
@@ -786,7 +812,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.assignStatuses()
 		m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
-		m.screen = screenFilters
+		m = m.replace(screenFilters)
 		return m, nil
 
 	case spacesMsg:
@@ -854,10 +880,10 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateEntries(msg)
 	case screenError:
 		if !m.cfg.Valid() {
-			m.screen = screenSetup
+			m = m.resetTo(screenSetup)
 			m.setup = newSetup()
 		} else {
-			m.screen = screenHome
+			m = m.resetTo(screenHome)
 		}
 		return m, nil
 	}

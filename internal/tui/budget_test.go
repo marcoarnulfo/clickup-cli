@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -41,5 +43,36 @@ func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 	full := strings.Repeat("#", budgetBarWidth)
 	if !strings.Contains(out, full) {
 		t.Errorf("renderBudgetBar(150) = %q, want a fully filled bar", out)
+	}
+}
+
+// TestBudgetKeyLabels pins the exact label set budget.go's updateBudget
+// accepts today (every case label, verbatim), plus q — handled globally in
+// app.go, in no case clause of budget.go itself. A dropped label is caught by
+// the two transition tests below; this catches an invented one.
+func TestBudgetKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenBudget}
+	want := []string{"b", "esc", "q"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("budget labels = %v, want %v", got, want)
+	}
+}
+
+// #59 Task 3 step 3: esc and b both close the budget view back to Report —
+// neither has a test that would fail if it went mute.
+func TestBudgetEscReturnsReport(t *testing.T) {
+	m := Model{screen: screenBudget, nav: []screen{screenReport}}
+	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyEsc})
+	if got := next.(Model).screen; got != screenReport {
+		t.Errorf("esc from budget -> %v, want screenReport", got)
+	}
+}
+
+func TestBudgetBReturnsReport(t *testing.T) {
+	m := Model{screen: screenBudget, nav: []screen{screenReport}}
+	next, _ := m.updateBudget(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("b")})
+	if got := next.(Model).screen; got != screenReport {
+		t.Errorf("b from budget -> %v, want screenReport", got)
 	}
 }

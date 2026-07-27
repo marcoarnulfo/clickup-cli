@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -52,12 +53,13 @@ func (s setupModel) withTeams(teams []clickup.Team) (setupModel, tea.Cmd) {
 
 func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	s := m.setup
+	k := keysFor(m)
 	switch s.step {
 	case stepToken:
 		if s.loading {
 			return m, nil // validation in progress: ignore further input
 		}
-		if msg.Type == tea.KeyEnter && s.input.Value() != "" {
+		if key.Matches(msg, k.Confirm) && s.input.Value() != "" {
 			s.tmpCfg.Token = s.input.Value()
 			s.loading = true
 			s.msg = "Validating token…"
@@ -72,16 +74,16 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case stepWorkspace:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, k.Up):
 			if s.teamIdx > 0 {
 				s.teamIdx--
 			}
-		case "down", "j":
+		case key.Matches(msg, k.Down):
 			if s.teamIdx < len(s.teams)-1 {
 				s.teamIdx++
 			}
-		case "enter":
+		case key.Matches(msg, k.Confirm):
 			if len(s.teams) > 0 {
 				s.tmpCfg.WorkspaceID = s.teams[s.teamIdx].ID
 				s.step = stepRate
@@ -92,7 +94,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case stepRate:
-		if msg.Type == tea.KeyEnter {
+		if key.Matches(msg, k.Confirm) {
 			if v := s.input.Value(); v != "" {
 				rate, err := strconv.ParseFloat(v, 64)
 				if err != nil {
@@ -114,7 +116,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case stepCurrency:
-		if msg.Type == tea.KeyEnter {
+		if key.Matches(msg, k.Confirm) {
 			s.tmpCfg.Currency = s.input.Value()
 			if s.tmpCfg.Currency == "" {
 				s.tmpCfg.Currency = "EUR"
@@ -123,7 +125,7 @@ func (m Model) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = config.Save(m.cfg)
 			m.client = clickup.New(m.cfg.Token)
 			m.home = newHome()
-			m.screen = screenHome
+			m = m.resetTo(screenHome)
 			return m, nil
 		}
 		var cmd tea.Cmd

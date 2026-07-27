@@ -9,7 +9,7 @@ import (
 )
 
 // keyRunes builds a KeyRunes message for s (a single printable key), separate
-// from the special-cased key() helper in log_test.go so 'e'/'q' etc. read as
+// from the special-cased keyMsg() helper in log_test.go so 'e'/'q' etc. read as
 // plain typed input, not a special key.
 func keyRunes(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
@@ -112,18 +112,18 @@ func submitEdit(m Model, dur, date, timeStr, note string) (Model, tea.Cmd) {
 	next, _ := m.Update(keyRunes("e"))
 	m = next.(Model)
 	m = clearAndType(m, dur)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	m = clearAndType(m, date)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	m = clearAndType(m, timeStr)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	m = clearAndType(m, note)
-	next, _ = m.Update(key("enter")) // note -> billable step
+	next, _ = m.Update(keyMsg("enter")) // note -> billable step
 	m = next.(Model)
-	next, cmd := m.Update(key("enter")) // billable: Enter = yes
+	next, cmd := m.Update(keyMsg("enter")) // billable: Enter = yes
 	return next.(Model), cmd
 }
 
@@ -186,11 +186,11 @@ func TestEditNoteAcceptsQ(t *testing.T) {
 	next, _ := m.Update(keyRunes("e"))
 	m = next.(Model)
 	// advance duration -> date -> time -> note
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.entriesScreen.editStep != 3 {
 		t.Fatalf("editStep = %d, want 3 (note)", m.entriesScreen.editStep)

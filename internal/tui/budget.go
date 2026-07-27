@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -17,9 +18,11 @@ type budgetModel struct {
 func newBudget(lines []report.BudgetLine) budgetModel { return budgetModel{lines: lines} }
 
 func (m Model) updateBudget(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "b":
-		m.screen = screenReport
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Back), key.Matches(msg, k.Budget):
+		m = m.pop()
+		return m, nil
 	}
 	return m, nil
 }

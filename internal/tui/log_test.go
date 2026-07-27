@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/service"
 )
 
-func key(s string) tea.KeyMsg {
+func keyMsg(s string) tea.KeyMsg {
 	switch s {
 	case "enter":
 		return tea.KeyMsg{Type: tea.KeyEnter}
@@ -36,6 +37,10 @@ func newTestModelOnReport() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
 	m := New(cfg)
 	m.screen = screenReport
+	// Report is only ever reached from Home: seed that parent so pop()
+	// (esc/m/s and everything built on top of this fixture) lands where the
+	// real app would land instead of no-oping on an empty chain.
+	m.nav = []screen{screenHome}
 	m.entries = []report.TimeEntry{{ID: "e1", ListID: "l1", ListName: "List 1", TaskID: "t1", TaskName: "Task 1", Billable: true}}
 	start, end := report.MonthRange(m.year, m.month, nil)
 	p, err := service.PricingFromConfig(cfg)
@@ -49,7 +54,7 @@ func newTestModelOnReport() Model {
 
 func TestReportKeyNOpensLog(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	nm := next.(Model)
 	if nm.screen != screenLog {
 		t.Fatalf("screen = %v, expected screenLog", nm.screen)
@@ -61,21 +66,21 @@ func TestReportKeyNOpensLog(t *testing.T) {
 
 func TestLogModeSelectTransitions(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
 
 	// 1 = guided -> list pick
-	g, _ := m.Update(key("1"))
+	g, _ := m.Update(keyMsg("1"))
 	if s := g.(Model).logScreen.step; s != logListPick {
 		t.Errorf("guided -> step = %v, expected logListPick", s)
 	}
 	// 2 = ID -> id input
-	i, _ := m.Update(key("2"))
+	i, _ := m.Update(keyMsg("2"))
 	if s := i.(Model).logScreen.step; s != logIDInput {
 		t.Errorf("id -> step = %v, expected logIDInput", s)
 	}
 	// 3 = timer -> timer pick
-	tm, _ := m.Update(key("3"))
+	tm, _ := m.Update(keyMsg("3"))
 	if s := tm.(Model).logScreen.step; s != logTimerPick {
 		t.Errorf("timer -> step = %v, expected logTimerPick", s)
 	}
@@ -83,9 +88,9 @@ func TestLogModeSelectTransitions(t *testing.T) {
 
 func TestLogEscReturnsToReport(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
-	back, _ := m.Update(key("esc"))
+	back, _ := m.Update(keyMsg("esc"))
 	if s := back.(Model).screen; s != screenReport {
 		t.Errorf("esc -> screen = %v, expected screenReport", s)
 	}
@@ -94,13 +99,13 @@ func TestLogEscReturnsToReport(t *testing.T) {
 func reachForm(t *testing.T) Model {
 	t.Helper()
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
 	// ID mode -> input -> form
-	next, _ = m.Update(key("2"))
+	next, _ = m.Update(keyMsg("2"))
 	m = next.(Model)
 	m.logScreen.input.SetValue("task123")
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	return next.(Model)
 }
 
@@ -110,7 +115,7 @@ func TestFormInvalidDurationStays(t *testing.T) {
 		t.Fatalf("step = %v, expected logForm", m.logScreen.step)
 	}
 	m.logScreen.input.SetValue("abc") // invalid duration
-	next, _ := m.Update(key("enter"))
+	next, _ := m.Update(keyMsg("enter"))
 	nm := next.(Model)
 	if nm.logScreen.step != logForm {
 		t.Errorf("with invalid duration step = %v, expected to stay in logForm", nm.logScreen.step)
@@ -124,26 +129,26 @@ func TestFormValidFlowSubmits(t *testing.T) {
 	m := reachForm(t)
 	// duration
 	m.logScreen.input.SetValue("1h30")
-	next, _ := m.Update(key("enter"))
+	next, _ := m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.logScreen.formField != 1 {
 		t.Fatalf("after duration formField = %d, expected 1 (date)", m.logScreen.formField)
 	}
 	// date (uses the prefilled default)
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.logScreen.formField != 2 {
 		t.Fatalf("after date formField = %d, expected 2 (note)", m.logScreen.formField)
 	}
 	// note -> billable step
 	m.logScreen.input.SetValue("work")
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.logScreen.formField != 3 {
 		t.Fatalf("after note formField = %d, expected 3 (billable)", m.logScreen.formField)
 	}
 	// billable: Enter = yes -> submit
-	next, cmd := m.Update(key("enter"))
+	next, cmd := m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if m.screen != screenLoading {
 		t.Errorf("after submit screen = %v, expected screenLoading", m.screen)
@@ -159,17 +164,17 @@ func TestFormValidFlowSubmits(t *testing.T) {
 func TestFormBillableToggleNo(t *testing.T) {
 	m := reachForm(t)
 	m.logScreen.input.SetValue("1h")
-	next, _ := m.Update(key("enter")) // duration -> date
+	next, _ := m.Update(keyMsg("enter")) // duration -> date
 	m = next.(Model)
-	next, _ = m.Update(key("enter")) // date (default) -> note
+	next, _ = m.Update(keyMsg("enter")) // date (default) -> note
 	m = next.(Model)
 	m.logScreen.input.SetValue("x")
-	next, _ = m.Update(key("enter")) // note -> billable
+	next, _ = m.Update(keyMsg("enter")) // note -> billable
 	m = next.(Model)
 	if m.logScreen.formField != 3 {
 		t.Fatalf("expected billable step (formField 3), got %d", m.logScreen.formField)
 	}
-	next, cmd := m.Update(key("n")) // billable = no -> submit
+	next, cmd := m.Update(keyMsg("n")) // billable = no -> submit
 	m = next.(Model)
 	if m.logScreen.billable {
 		t.Error("'n' should set billable=false")
@@ -181,12 +186,12 @@ func TestFormBillableToggleNo(t *testing.T) {
 
 func TestIDInputToForm(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
-	next, _ = m.Update(key("2"))
+	next, _ = m.Update(keyMsg("2"))
 	m = next.(Model)
 	m.logScreen.input.SetValue("https://app.clickup.com/t/86abc")
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	nm := next.(Model)
 	if nm.logScreen.step != logForm {
 		t.Fatalf("step = %v, expected logForm", nm.logScreen.step)
@@ -198,12 +203,12 @@ func TestIDInputToForm(t *testing.T) {
 
 func TestIDInputEmptyStays(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
-	next, _ = m.Update(key("2")) // ID mode
+	next, _ = m.Update(keyMsg("2")) // ID mode
 	m = next.(Model)
 	m.logScreen.input.SetValue("") // empty
-	next, _ = m.Update(key("enter"))
+	next, _ = m.Update(keyMsg("enter"))
 	nm := next.(Model)
 	if nm.logScreen.step != logIDInput {
 		t.Errorf("with empty id step = %v, expected to stay in logIDInput", nm.logScreen.step)
@@ -215,14 +220,14 @@ func TestIDInputEmptyStays(t *testing.T) {
 
 func TestGuidedListPickIssuesCmd(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
-	next, _ = m.Update(key("1")) // guided -> listPick
+	next, _ = m.Update(keyMsg("1")) // guided -> listPick
 	m = next.(Model)
 	if len(m.logScreen.lists) == 0 {
 		t.Fatal("no known list (expected List 1 from entries)")
 	}
-	next, cmd := m.Update(key("enter"))
+	next, cmd := m.Update(keyMsg("enter"))
 	m = next.(Model)
 	if !m.logScreen.loading {
 		t.Errorf("expected loading=true after Enter on the list")
@@ -234,7 +239,7 @@ func TestGuidedListPickIssuesCmd(t *testing.T) {
 
 func TestGuidedTaskListMsgPopulatesPicker(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logListPick
 	m.screen = screenLog
 	next, _ := m.Update(taskListMsg{tasks: []clickup.Task{{ID: "x1", Name: "One"}, {ID: "x2", Name: "Two"}}})
@@ -249,12 +254,12 @@ func TestGuidedTaskListMsgPopulatesPicker(t *testing.T) {
 
 func TestGuidedTaskSelectToForm(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTaskPick
 	m.logScreen.mode = modeGuided
 	m.logScreen.tasks = []clickup.Task{{ID: "x1", Name: "One"}}
 	m.screen = screenLog
-	next, _ := m.Update(key("enter"))
+	next, _ := m.Update(keyMsg("enter"))
 	nm := next.(Model)
 	if nm.logScreen.step != logForm || nm.logScreen.taskID != "x1" {
 		t.Errorf("step=%v taskID=%q, expected logForm/x1", nm.logScreen.step, nm.logScreen.taskID)
@@ -264,7 +269,7 @@ func TestGuidedTaskSelectToForm(t *testing.T) {
 func TestLogDoneMsgShowsConfirm(t *testing.T) {
 	m := newTestModelOnReport()
 	m.screen = screenLoading
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	next, _ := m.Update(logDoneMsg{summary: "1h30 on task123"})
 	nm := next.(Model)
 	if nm.screen != screenLog || nm.logScreen.step != logDone {
@@ -274,20 +279,20 @@ func TestLogDoneMsgShowsConfirm(t *testing.T) {
 
 func TestTimerPickRoutes(t *testing.T) {
 	m := newTestModelOnReport()
-	next, _ := m.Update(key("n"))
+	next, _ := m.Update(keyMsg("n"))
 	m = next.(Model)
-	next, _ = m.Update(key("3")) // timer
+	next, _ = m.Update(keyMsg("3")) // timer
 	m = next.(Model)
 	if m.logScreen.step != logTimerPick {
 		t.Fatalf("step = %v, expected logTimerPick", m.logScreen.step)
 	}
 	// 1 = guided
-	g, _ := m.Update(key("1"))
+	g, _ := m.Update(keyMsg("1"))
 	if s := g.(Model).logScreen.step; s != logListPick {
 		t.Errorf("timer/guided -> step = %v, expected logListPick", s)
 	}
 	// 2 = ID
-	i, _ := m.Update(key("2"))
+	i, _ := m.Update(keyMsg("2"))
 	if s := i.(Model).logScreen.step; s != logIDInput {
 		t.Errorf("timer/id -> step = %v, expected logIDInput", s)
 	}
@@ -295,7 +300,7 @@ func TestTimerPickRoutes(t *testing.T) {
 
 func TestTimerMsgSetsRunning(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.screen = screenLog
 	rt := &clickup.RunningTimer{TaskID: "x1", TaskName: "One"}
 	next, _ := m.Update(timerMsg{timer: rt})
@@ -307,7 +312,7 @@ func TestTimerMsgSetsRunning(t *testing.T) {
 
 func TestTimerMsgNilNoRunning(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTimerRunning
 	m.screen = screenLog
 	next, _ := m.Update(timerMsg{timer: nil})
@@ -319,7 +324,7 @@ func TestTimerMsgNilNoRunning(t *testing.T) {
 
 func TestNewLogIncludesConfigLists(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40, Rates: map[string]float64{"111": 60, "222": 30}}
-	lg := newLog(nil, cfg, screenReport)
+	lg := newLog(nil, cfg)
 	got := map[string]bool{}
 	for _, l := range lg.lists {
 		got[l.id] = true
@@ -340,11 +345,11 @@ func TestTimerMsgIgnoredWhenAway(t *testing.T) {
 
 func TestTimerRunningStopIssuesCmd(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logTimerRunning
 	m.logScreen.timer = &clickup.RunningTimer{TaskID: "x1"}
 	m.screen = screenLog
-	next, cmd := m.Update(key("s"))
+	next, cmd := m.Update(keyMsg("s"))
 	m = next.(Model)
 	if m.screen != screenLoading {
 		t.Errorf("after stop screen = %v, expected screenLoading", m.screen)
@@ -356,7 +361,7 @@ func TestTimerRunningStopIssuesCmd(t *testing.T) {
 
 func TestLogErrKeepsFormOnLogScreen(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logForm
 	m.logScreen.taskID = "task123"
 	m.logScreen.loading = true
@@ -389,7 +394,7 @@ func TestLogErrClassification(t *testing.T) {
 
 func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 	m := Model{screen: screenLog, demo: true}
-	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, config.Config{}, screenReport)
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, config.Config{})
 	m.logScreen.step = logListPick
 	// move down onto the "Browse all…" row (index len(lists) == 1)
 	u, _ := m.updateLog(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
@@ -399,8 +404,8 @@ func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 	}
 	u, _ = m.updateLog(tea.KeyMsg{Type: tea.KeyEnter})
 	m = u.(Model)
-	if m.screen != screenListBrowser || m.browserScreen.origin != screenLog {
-		t.Fatalf("browse row should open the browser for log; screen=%v origin=%v", m.screen, m.browserScreen.origin)
+	if m.screen != screenListBrowser || len(m.nav) == 0 || m.nav[len(m.nav)-1] != screenLog {
+		t.Fatalf("browse row should open the browser for log; screen=%v nav=%v", m.screen, m.nav)
 	}
 }
 
@@ -410,14 +415,14 @@ func TestLogBrowseEntryOpensBrowser(t *testing.T) {
 // silently succeeding, which is the point of these tests — see #32).
 func demoLogModel() Model {
 	m := Model{screen: screenLog, demo: true, cfg: demoConfig(), now: time.Now}
-	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, m.cfg, screenReport)
+	m.logScreen = newLog([]report.TimeEntry{{ListID: "a", ListName: "A"}}, m.cfg)
 	return m
 }
 
 func TestDemoGuidedListPickIssuesDemoTaskListMsg(t *testing.T) {
 	m := demoLogModel()
 	m.logScreen.step = logListPick
-	next, cmd := m.updateLog(key("enter"))
+	next, cmd := m.updateLog(keyMsg("enter"))
 	m = next.(Model)
 	if !m.logScreen.loading {
 		t.Fatalf("expected loading=true after Enter on the list")
@@ -453,7 +458,7 @@ func TestDemoFormSubmitIssuesLogDoneMsgNoIO(t *testing.T) {
 	m.logScreen.durStr = "1h"
 	m.logScreen.formField = 3 // billable step
 
-	next, cmd := m.updateLog(key("enter")) // billable=yes -> submit
+	next, cmd := m.updateLog(keyMsg("enter")) // billable=yes -> submit
 	m = next.(Model)
 	if m.screen != screenLoading {
 		t.Fatalf("screen = %v, expected screenLoading after submit", m.screen)
@@ -486,7 +491,7 @@ func TestDemoTimerStartAndStopNoIO(t *testing.T) {
 	m.logScreen.mode = modeTimer
 	m.logScreen.input.SetValue("demo-t1")
 
-	next, cmd := m.updateLog(key("enter"))
+	next, cmd := m.updateLog(keyMsg("enter"))
 	m = next.(Model)
 	if cmd == nil {
 		t.Fatal("expected a command starting the timer in demo mode")
@@ -499,7 +504,14 @@ func TestDemoTimerStartAndStopNoIO(t *testing.T) {
 
 	m.logScreen.step = logTimerRunning
 	m.logScreen.timer = tm.timer
-	next, cmd = m.updateLog(key("s")) // stop
+	// The real flow routes the timerMsg above through Update (see
+	// TestTimerMsgSetsRunning), which flips m.screen back to screenLog before
+	// the user could ever press 's' here; restore that invariant since this
+	// test pokes logScreen directly instead (m.screen was left at
+	// screenLoading by the timer-start branch above) — keysFor(m) now reads
+	// m.screen to pick the active keymap (#59 Task 4).
+	m.screen = screenLog
+	next, cmd = m.updateLog(keyMsg("s")) // stop
 	m = next.(Model)
 	if cmd == nil {
 		t.Fatal("expected a command stopping the timer in demo mode")
@@ -539,12 +551,72 @@ func TestDemoCurrentTimerCmdReflectsModelState(t *testing.T) {
 
 func TestListPickDebounceWhileLoading(t *testing.T) {
 	m := newTestModelOnReport()
-	m.logScreen = newLog(m.entries, m.cfg, screenReport)
+	m.logScreen = newLog(m.entries, m.cfg)
 	m.logScreen.step = logListPick
 	m.logScreen.loading = true // a listTasksCmd is already in flight
 	m.screen = screenLog
-	_, cmd := m.Update(key("enter"))
+	_, cmd := m.Update(keyMsg("enter"))
 	if cmd != nil {
 		t.Error("Enter while loading must not dispatch a second listTasksCmd")
+	}
+}
+
+// TestLogDoneReloadsToLoading is #59 Task 4 step 4's required transition
+// test: logDone's 'r' must still reload (screenLoading + a non-nil cmd) now
+// that it is dispatched via key.Matches(msg, k.Reload) instead of
+// msg.String() == "r".
+func TestLogDoneReloadsToLoading(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	m.logScreen = newLog(m.entries, m.cfg)
+	m.logScreen.step = logDone
+	m.screen = screenLog
+	next, cmd := m.updateLog(keyMsg("r"))
+	nm := next.(Model)
+	if nm.screen != screenLoading {
+		t.Errorf("r at logDone should reload to screenLoading, got %v", nm.screen)
+	}
+	if cmd == nil {
+		t.Error("expected reloadEntriesCmd after r at logDone")
+	}
+}
+
+// ---------------------------------------------------------- keymap parity --
+
+// TestLogKeyLabelsPerStep pins the label set log.go's updateLog accepts at
+// each step of the flow, mirroring TestSetupKeyLabelsPerStep's shape.
+// logTimerPick reuses logModeSelect's PickGuided/PickByID labels ("1"/"2")
+// but has no third option (no "3") — there is no timer-within-timer choice.
+// logForm's formField 3 (billable) is the one sub-step with a different set
+// (Yes/No instead of Confirm); logTimerRunning's "esc" is accepted via the
+// handler's outer guard, not its own step switch (see logKeys' doc comment
+// and the deleted dead case at #59 Task 4 step 3).
+func TestLogKeyLabelsPerStep(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		step      logStep
+		formField int
+		want      []string
+	}{
+		{"mode select", logModeSelect, 0, []string{"1", "2", "3", "esc"}},
+		{"timer pick", logTimerPick, 0, []string{"1", "2", "esc"}},
+		{"list pick", logListPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
+		{"task pick", logTaskPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
+		{"id input", logIDInput, 0, []string{"enter", "esc"}},
+		{"form duration", logForm, 0, []string{"enter", "esc"}},
+		{"form date", logForm, 1, []string{"enter", "esc"}},
+		{"form note", logForm, 2, []string{"enter", "esc"}},
+		{"form billable", logForm, 3, []string{"N", "Y", "enter", "esc", "n", "y"}},
+		{"timer running", logTimerRunning, 0, []string{"esc", "s"}},
+		{"done", logDone, 0, []string{"enter", "esc", "r"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := Model{screen: screenLog, logScreen: logModel{step: c.step, formField: c.formField}}
+			if got := enabledLabels(keysFor(m)); !slices.Equal(got, c.want) {
+				t.Errorf("log %s labels = %v, want %v", c.name, got, c.want)
+			}
+		})
 	}
 }

@@ -23,7 +23,7 @@ func TestDeleteRequiresConfirm(t *testing.T) {
 	m = browserWithEntries(m, own)
 
 	// x opens the confirm dialog, does not delete yet.
-	m2, cmd := m.Update(key("x"))
+	m2, cmd := m.Update(keyMsg("x"))
 	mm := m2.(Model)
 	if mm.entriesScreen.mode != entriesConfirmDelete {
 		t.Fatalf("x did not open confirm dialog: mode=%v", mm.entriesScreen.mode)
@@ -32,12 +32,12 @@ func TestDeleteRequiresConfirm(t *testing.T) {
 		t.Errorf("x must not delete before confirm")
 	}
 	// n cancels back to the list.
-	m3, _ := mm.Update(key("n"))
+	m3, _ := mm.Update(keyMsg("n"))
 	if m3.(Model).entriesScreen.mode != entriesList {
 		t.Errorf("n did not cancel")
 	}
 	// y confirms → a delete cmd is dispatched.
-	m4, cmd4 := mm.Update(key("y"))
+	m4, cmd4 := mm.Update(keyMsg("y"))
 	if cmd4 == nil {
 		t.Errorf("y did not dispatch delete")
 	}
@@ -48,7 +48,7 @@ func TestDeleteGatedOnOwnership(t *testing.T) {
 	m := newTestModel()
 	other := report.TimeEntry{ID: "e2", TaskName: "Deploy", UserID: 2, Start: time.Now()}
 	m = browserWithEntries(m, other)
-	m2, _ := m.Update(key("x"))
+	m2, _ := m.Update(keyMsg("x"))
 	if m2.(Model).entriesScreen.mode != entriesList {
 		t.Errorf("x on a non-owned entry must be a no-op (stay in list)")
 	}

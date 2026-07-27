@@ -20,7 +20,7 @@ func TestHomeShowsRunningTimerLine(t *testing.T) {
 	}
 }
 
-func TestCFromHomeOpensTimerScreenWithOrigin(t *testing.T) {
+func TestCFromHomeOpensTimerScreenWithHomeParent(t *testing.T) {
 	now := time.Now()
 	m := newTestModel()
 	m.now = fixedNow(now)
@@ -31,8 +31,8 @@ func TestCFromHomeOpensTimerScreenWithOrigin(t *testing.T) {
 	if mm.screen != screenLog || mm.logScreen.step != logTimerRunning {
 		t.Fatalf("c did not open the timer screen: screen=%v step=%v", mm.screen, mm.logScreen.step)
 	}
-	if mm.logScreen.origin != screenHome {
-		t.Errorf("origin = %v, want screenHome", mm.logScreen.origin)
+	if len(mm.nav) == 0 || mm.nav[len(mm.nav)-1] != screenHome {
+		t.Errorf("nav = %v, want top screenHome", mm.nav)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestCFromHomeEscReturnsHome(t *testing.T) {
 	m.runningTimer = &clickup.RunningTimer{TaskName: "Fix", Start: now.Add(-time.Minute)}
 	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 	mm := m2.(Model)
-	back, _ := mm.Update(key("esc"))
+	back, _ := mm.Update(keyMsg("esc"))
 	if s := back.(Model).screen; s != screenHome {
 		t.Errorf("esc from timer screen (origin Home) -> screen = %v, want screenHome", s)
 	}

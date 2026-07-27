@@ -134,6 +134,7 @@ invalid or is revoked while in use, the TUI automatically re-runs the setup wiza
 | `b` | Report | Open the **Budget burn-down** view |
 | `f` | Report | Open the **Filters** screen (list/tag/status/billable) |
 | `v` | Report | Open the **time-entry browser** (edit/delete/tags/history) |
+| `Esc` | Report | Go back home (same destination as `m`/`s`) |
 | `n` | Home / Report | Open the **Log hours** screen (record time on ClickUp) |
 | `c` | Home | Jump to the running timer (shown only while one is active) |
 | `↑`/`↓` (also `k`/`j`) | Export | Select the format |

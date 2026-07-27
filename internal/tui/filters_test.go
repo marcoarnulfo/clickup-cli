@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ func filtersFixture() Model {
 		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress", Billable: true},
 		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: false},
 	}
-	m := Model{screen: screenFilters, entries: entries, now: time.Now}
+	m := Model{screen: screenFilters, entries: entries, now: time.Now, nav: []screen{screenHome, screenReport}}
 	m.filtersScreen = newFilters(entries, nil, nil, nil, nil)
 	return m
 }
@@ -165,6 +166,19 @@ func TestFiltersBillableANoOp(t *testing.T) {
 		if after[k] != v {
 			t.Errorf("a should be a no-op on the Billable section; %q changed from %v to %v", k, v, after[k])
 		}
+	}
+}
+
+// TestFiltersKeyLabels pins the exact label set filters.go's updateFilters
+// accepts today, plus q. The old switch also had a "space" case arm, but
+// bubbletea maps the space rune to KeySpace whose String() is " ", so that
+// arm never fired — dropped here deliberately, not a regression (#59 Task 3).
+func TestFiltersKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := filtersFixture()
+	want := []string{" ", "a", "down", "enter", "esc", "j", "k", "q", "shift+tab", "tab", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("filters labels = %v, want %v", got, want)
 	}
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -15,6 +16,7 @@ func membersFixture() Model {
 		teamMembers:     mems,
 		selectedMembers: sel,
 		membersScreen:   newMembers(mems, sel),
+		nav:             []screen{screenHome},
 	}
 }
 
@@ -80,8 +82,24 @@ func TestMembersAllNoneEmptyRosterNoPanic(t *testing.T) {
 	}
 }
 
+// TestMembersKeyLabels pins the exact label set members.go's updateMembers
+// accepts today, plus q. The old switch also had a "space" case arm, but
+// bubbletea maps the space rune to KeySpace whose String() is " ", so that
+// arm never fired — dropped here deliberately, not a regression (#59 Task 3).
+func TestMembersKeyLabels(t *testing.T) {
+	t.Parallel()
+	m := membersFixture()
+	want := []string{" ", "a", "down", "enter", "esc", "j", "k", "q", "up"}
+	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
+		t.Errorf("members labels = %v, want %v", got, want)
+	}
+}
+
 func TestMembersMsgDefaultsAll(t *testing.T) {
-	m := Model{}
+	// screenMembers: the real fetch (home.go's loadMembersCmd) is dispatched
+	// after goTo(screenMembers), so that's where the reply lands too (#59 Task 6
+	// staleness guard).
+	m := Model{screen: screenMembers}
 	u, _ := m.Update(membersMsg{members: []clickup.Member{{ID: 1, Username: "a"}, {ID: 2, Username: "b"}}})
 	m = u.(Model)
 	if m.screen != screenMembers {

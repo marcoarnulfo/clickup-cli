@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
@@ -56,8 +57,11 @@ func (m Model) memberFilterNote() string {
 }
 
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "g":
+	k := keysFor(m)
+	switch {
+	case key.Matches(msg, k.Back):
+		m = m.pop()
+	case key.Matches(msg, k.GroupBy):
 		g := nextGroupBy(m.report.GroupBy, m.scope)
 		if _, ok := m.locOrErr(); !ok {
 			return m, nil
@@ -68,39 +72,39 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.report.Scope = m.scope
 			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
 		}
-	case "m", "s":
-		m.screen = screenHome
-	case "r":
-		m.screen = screenLoading
+	case key.Matches(msg, k.ChangeRange):
+		m = m.pop()
+	case key.Matches(msg, k.Reload):
+		m = m.replace(screenLoading)
 		return m, m.reloadEntriesCmd(screenReport)
-	case "e":
+	case key.Matches(msg, k.Export):
 		m.export = newExport(m.report)
-		m.screen = screenExport
-	case "p":
+		m = m.goTo(screenExport)
+	case key.Matches(msg, k.Rates):
 		m.ratesScreen = newRates(m.entries, m.cfg)
-		m.screen = screenRates
-	case "n":
-		m.logScreen = newLog(m.entries, m.cfg, screenReport)
-		m.screen = screenLog
-	case "f":
+		m = m.goTo(screenRates)
+	case key.Matches(msg, k.LogHours):
+		m.logScreen = newLog(m.entries, m.cfg)
+		m = m.goTo(screenLog)
+	case key.Matches(msg, k.Filters):
 		missing := m.tasksMissingStatus()
 		if len(missing) == 0 {
 			m.assignStatuses()
 			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
-			m.screen = screenFilters
+			m = m.goTo(screenFilters)
 			return m, nil
 		}
 		m.filtersScreen = filtersModel{loadingStatuses: true}
-		m.screen = screenFilters
+		m = m.goTo(screenFilters)
 		if m.demo {
 			return m, demoStatusEnrichCmd(m.entries)
 		}
 		return m, statusEnrichCmd(m.client, missing)
-	case "b":
+	case key.Matches(msg, k.Budget):
 		if !m.openBudgetView() {
 			return m, nil
 		}
-	case "v":
+	case key.Matches(msg, k.OpenEntries):
 		m = m.openEntries()
 		var cmd tea.Cmd
 		if m.userID == 0 {
@@ -134,7 +138,7 @@ func (m *Model) openBudgetView() bool {
 	budgets := service.BudgetsFromConfig(m.cfg)
 	lines := report.BudgetLines(billed, budgets, p, listNamesFromBuckets(perList.Buckets))
 	m.budgetScreen = newBudget(lines)
-	m.screen = screenBudget
+	*m = m.goTo(screenBudget)
 	return true
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
@@ -131,69 +132,63 @@ func enterEditForm(es entriesModel, now time.Time, loc *time.Location) entriesMo
 // userID retry, when m.userID == 0, is dispatched by the caller in updateReport.)
 func (m Model) openEntries() Model {
 	m.entriesScreen = entriesModel{entries: sortEntriesByStartDesc(m.visibleEntries())}
-	m.screen = screenEntries
+	m = m.goTo(screenEntries)
 	return m
 }
 
 func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	es := m.entriesScreen
+	k := keysFor(m) // reflects es.mode/tagNewMode/editStep as they stood before this keypress
+
 	switch es.mode {
 	case entriesList:
-		switch msg.String() {
-		case "esc":
-			m.screen = screenReport
+		switch {
+		case key.Matches(msg, k.Back):
+			m = m.pop()
 			return m, nil
-		case "up", "k":
+		case key.Matches(msg, k.Up):
 			if es.idx > 0 {
 				es.idx--
 			}
-		case "down", "j":
+		case key.Matches(msg, k.Down):
 			if es.idx < len(es.entries)-1 {
 				es.idx++
 			}
-		case "x":
-			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
-				es.mode = entriesConfirmDelete
-			}
-		case "e":
-			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
-				es = enterEditForm(es, m.now(), m.loc)
-			}
-		case "h":
+		case key.Matches(msg, k.Delete):
+			es.mode = entriesConfirmDelete
+		case key.Matches(msg, k.Edit):
+			es = enterEditForm(es, m.now(), m.loc)
+		case key.Matches(msg, k.History):
 			// Read-only, not ownership-gated: history is allowed on ANY entry.
-			if len(es.entries) > 0 {
-				id := es.entries[es.idx].ID
-				m.entriesScreen = es
-				m.screen = screenLoading
-				return m, m.historyCmd(id)
+			id := es.entries[es.idx].ID
+			m.entriesScreen = es
+			m = m.replace(screenLoading)
+			return m, m.historyCmd(id)
+		case key.Matches(msg, k.Tags):
+			e := es.entries[es.idx]
+			es.mode = entriesTags
+			es.msg = "" // clear any prior success/error (e.g. "Entry saved.") from the picker
+			es.msgErr = false
+			es.tagLoading = true
+			es.tagEntryID = e.ID
+			es.tagIdx = 0
+			es.tagNewMode = false
+			es.tagSel = map[string]bool{}
+			for _, tg := range e.EntryTags {
+				es.tagSel[tg] = true
 			}
-		case "t":
-			if len(es.entries) > 0 && canEdit(es.entries[es.idx], m.userID) {
-				e := es.entries[es.idx]
-				es.mode = entriesTags
-				es.msg = "" // clear any prior success/error (e.g. "Entry saved.") from the picker
-				es.msgErr = false
-				es.tagLoading = true
-				es.tagEntryID = e.ID
-				es.tagIdx = 0
-				es.tagNewMode = false
-				es.tagSel = map[string]bool{}
-				for _, tg := range e.EntryTags {
-					es.tagSel[tg] = true
-				}
-				es.tagAll = append([]string(nil), e.EntryTags...) // shown until the fetch lands
-				m.entriesScreen = es
-				return m, m.tagsFetchCmd()
-			}
+			es.tagAll = append([]string(nil), e.EntryTags...) // shown until the fetch lands
+			m.entriesScreen = es
+			return m, m.tagsFetchCmd()
 		}
 	case entriesHistory:
-		if msg.String() == "esc" {
+		if key.Matches(msg, k.Back) {
 			es.mode = entriesList
 		}
 	case entriesTags:
 		if es.tagNewMode {
-			switch msg.Type {
-			case tea.KeyEnter:
+			switch {
+			case key.Matches(msg, k.Confirm):
 				name := strings.TrimSpace(es.input.Value())
 				es.tagNewMode = false
 				if name != "" {
@@ -210,7 +205,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.entriesScreen = es
 				return m, nil
-			case tea.KeyEsc:
+			case key.Matches(msg, k.Back):
 				es.tagNewMode = false
 				m.entriesScreen = es
 				return m, nil
@@ -220,26 +215,26 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.entriesScreen = es
 			return m, cmd
 		}
-		switch msg.String() {
-		case "esc":
+		switch {
+		case key.Matches(msg, k.Back):
 			es.mode = entriesList
-		case "up", "k":
+		case key.Matches(msg, k.Up):
 			if es.tagIdx > 0 {
 				es.tagIdx--
 			}
-		case "down", "j":
+		case key.Matches(msg, k.Down):
 			if es.tagIdx < len(es.tagAll)-1 {
 				es.tagIdx++
 			}
-		case " ", "space": // space toggles the tag under the cursor (house idiom, cf. updateMembers)
+		case key.Matches(msg, k.ToggleItem): // space toggles the tag under the cursor (house idiom, cf. updateMembers)
 			if len(es.tagAll) > 0 {
 				name := es.tagAll[es.tagIdx]
 				es.tagSel[name] = !es.tagSel[name]
 			}
-		case "n":
+		case key.Matches(msg, k.NewTag):
 			es.tagNewMode = true
 			es.input = newTextInput("New tag name")
-		case "enter":
+		case key.Matches(msg, k.Confirm):
 			desired := selectedTags(es.tagSel)
 			id := es.tagEntryID
 			es.mode = entriesList
@@ -252,12 +247,12 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				base.EntryTags = desired
 				m.demoOverrides[id] = base
 			}
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.setTagsCmd(id, desired)
 		}
 	case entriesConfirmDelete:
-		switch msg.String() {
-		case "y", "Y":
+		switch {
+		case key.Matches(msg, k.ConfirmDelete):
 			id := es.entries[es.idx].ID
 			es.mode = entriesList
 			m.entriesScreen = es
@@ -267,7 +262,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				m.demoDeleted[id] = true
 			}
-			m.screen = screenLoading
+			m = m.replace(screenLoading)
 			return m, m.deleteEntryCmd(id)
 		default: // any other key cancels
 			es.mode = entriesList
@@ -283,16 +278,17 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // logForm step handling in updateLog: Duration → Date → Time → Note →
 // Billable, each step validating on Enter before advancing.
 func (m Model) updateEntriesEdit(es entriesModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.Type == tea.KeyEsc {
+	k := keysFor(m)
+	if key.Matches(msg, k.Back) {
 		es.mode = entriesList
 		m.entriesScreen = es
 		return m, nil
 	}
 	if es.editStep == 4 { // billable toggle (keypress, not a text field)
-		switch msg.String() {
-		case "n", "N":
+		switch {
+		case key.Matches(msg, k.No):
 			es.editBillable = false
-		case "y", "Y", "enter":
+		case key.Matches(msg, k.Yes):
 			es.editBillable = true
 		default:
 			m.entriesScreen = es
@@ -300,7 +296,7 @@ func (m Model) updateEntriesEdit(es entriesModel, msg tea.KeyMsg) (tea.Model, te
 		}
 		return m.submitEntriesEdit(es)
 	}
-	if msg.Type == tea.KeyEnter {
+	if key.Matches(msg, k.Confirm) {
 		val := es.input.Value()
 		switch es.editStep {
 		case 0: // duration
@@ -396,7 +392,7 @@ func (m Model) submitEntriesEdit(es entriesModel) (tea.Model, tea.Cmd) {
 		base.Start, base.Duration, base.Description, base.Billable = start, dur, note, billable
 		m.demoOverrides[id] = base
 	}
-	m.screen = screenLoading
+	m = m.replace(screenLoading)
 	return m, m.updateEntryCmd(id, start, dur, note, billable)
 }
 
