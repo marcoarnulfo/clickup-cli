@@ -32,14 +32,24 @@ Promoting it later is a change to one function.
 
 ## 3. Current state (measured, not assumed)
 
-- **56 uses of `th.Help`** across 15 files. Only **25 are key-hint lines**. 30
-  are empty-state notices, table headers, breadcrumbs, subtotals, progress
-  messages and the update notice. The 56th is the Home timer status line, which
-  is not a hint but carries one inside it. **This tranche touches the 25 plus
-  that one suffix, and leaves the other 30 alone.**
-- Two screens render **two** hint lines at once: `log.go:573` and
-  `setup.go:166` append an unconditional `"… · Ctrl+C: quit"` *after* whatever
-  the current step already rendered.
+- **56 uses of `th.Help`** across 15 files, and they divide exactly:
+  - **24 render a key-hint line.** These are what the footer replaces.
+  - **1** is the error screen's `press a key to return home`, which reads like a
+    hint but describes the absence of a binding and is **kept** (§4.2).
+  - **30** are empty-state notices, table headers, breadcrumbs, subtotals,
+    progress messages and the update notice. **None of them is touched.**
+  - **1** is the Home timer status line, whose embedded `(c: manage)` suffix is
+    the only non-hint string this tranche edits.
+
+  The implementation deletes **25 things**: those 24 render sites plus
+  `rates_view.go`'s `help()` method, whose body holds no `th.Help` of its own —
+  its render site (`rates.go`) is one of the 24.
+- **Log renders two hint lines at once** in four of its eight steps: the
+  per-step line for `logTimerRunning`, `logListPick`, `logTaskPick` and
+  `logDone`, plus the unconditional `Esc: cancel · Ctrl+C: quit` appended after
+  the whole switch. Setup appends its `Enter: confirm · Ctrl+C: quit`
+  unconditionally too, but no step renders a second one — Setup shows exactly
+  one line in every state.
 - Two hints are embedded in other sentences: the Home timer line ends with
   `(c: manage)` (assembled in `app.go`, rendered at `home.go:145`), and
   `rates_view.go:64` says `press 'b' to browse the workspace`.
@@ -62,9 +72,15 @@ Promoting it later is a change to one function.
   clock first for Log, builds Loading and Error inline, and assembles the Home
   timer line inline before delegating. `screenEntries` is the one screen whose
   view is a `Model` method (`m.entriesView(th)`) rather than a sub-model's.
-- **Only 5 of the 21 goldens go through `m.View()`** (entries, entries_edit,
-  entries_confirm_delete, error, loading). The other 16 call a sub-model view
-  directly.
+- `testdata/` holds **26 golden files**, produced by 21 test functions
+  (`TestGoldenRatesTabs` alone writes four). **24 are screen goldens**; the
+  other two are `palette_dark`/`palette_light` from tranche A and have nothing
+  to do with this work.
+- **Only 5 of the 24 screen goldens go through `m.View()`** (entries,
+  entries_edit, entries_confirm_delete, error, loading). The other 19 call a
+  sub-model view directly.
+- **`screenLoading` and `screenError` share one `keysFor` branch**
+  (`keys.go:264`). This tranche needs them to differ, so the branch splits.
 
 ## 4. Decisions
 
@@ -112,8 +128,9 @@ Two things fall out of it.
 
 **ctrl+c.** `ForceQuit` moves into `keyMap`, enabled on all 14 screens, which
 is simply true. It appears in `short`/`full` only on the six screens where
-`Quit` is disabled. That reproduces Setup's and Log's hand-written
-`Ctrl+C: quit` exactly, and gives Rates, Range, the list browser and the time
+`Quit` is disabled. That covers Setup's and Log's hand-written
+`Ctrl+C: quit` — the footer words it `ctrl+c force quit`, from the binding's
+own help text — and gives Rates, Range, the list browser and the time
 entries a quit hint they have never had. Every screen's parity test gains
 `ctrl+c` — a correction, not an expansion: the key was always accepted and
 never declared.
@@ -125,8 +142,9 @@ its help text names the whole pair: `↑/↓/j/k` + `move`. The partner binding
 stays enabled and matches as before — only the advertisement collapses. This is
 also the first time the vim aliases are documented anywhere.
 
-The three pairs are `Up`/`Down`, `NextField`/`PrevField` (tab / shift+tab) and
-`PrevMonth`/`NextMonth`. `NextSection`/`PrevSection` on Rates is a fourth.
+The four pairs are `Up`/`Down`, `NextField`/`PrevField` (tab / shift+tab),
+`NextSection`/`PrevSection` on Rates, and `PrevMonth`/`NextMonth` — the last of
+which is advertised only in `homeKeys.full`.
 
 **Display-only bindings.** A pair item is a `key.Binding` that exists solely to
 be rendered — it is never passed to `key.Matches`, because matching only ever
@@ -149,8 +167,9 @@ convention they embody is extended to the other ten rather than invented:
   skipped by bubbles itself (`shouldRenderColumn`), so no special case is
   needed.
 
-The two existing slices are **not reshaped**. They gain `Help`, and
-`reportKeys` keeps `Back`/`Quit` where they are.
+The two existing slices keep their **grouping and order**. They gain `Help` in
+the last column, and `homeKeys`' first column collapses its two month items
+into one pair item (§4.3) — a change of item count, not of shape.
 
 ### 4.5 `?` toggles, and `esc` is not involved
 
@@ -192,9 +211,19 @@ move whatever else happens. The split keeps each diff readable:
 
 | Kind | Count | What moves |
 |---|---|---|
-| body goldens (sub-model view) | 16 | lose one hint line — two for Log and Setup |
+| body goldens (sub-model view) | 19 | lose exactly one hint line |
 | composed goldens (`m.View()`) | 5 | lose the hint line, gain the footer |
-| **footer goldens (new)** | one per distinct label set | the actual new behavior |
+| `palette_light` / `palette_dark` | 2 | **nothing** — unrelated to this work |
+| **footer goldens (new)** | two per distinct label set | the actual new behavior |
+
+Every body golden loses exactly *one* line: Log renders two hint lines only in
+states no golden captures (`newLog` starts at `logModeSelect`, and `log_form`
+captures `logForm`), and Setup never renders two at all.
+
+The footer goldens come in pairs, short and full. **The full ones are the only
+check on the column assignments** — a binding named in a `full` group but never
+assigned in that branch is a zero `Binding`, which `FullHelpView` silently
+drops. Nothing else in this tranche renders `FullHelp()`.
 
 "One per distinct label set" is the same granularity the per-screen parity
 tests already use, so the two nets cover the same ground: parity asserts which
@@ -224,23 +253,23 @@ new code in isolation, which the composed ones cannot do as precisely.
    short, one full — built from a hand-made `keyMap` rather than from
    `keysFor`, so the renderer is pinned before the data it will render exists.
    Nothing wired.
-2. **Display data.** `full` groups for all 12 constructors, curated `short`,
-   `ForceQuit` and `Help` into `keyMap`, `?` gated off in the 10 input
-   contexts. Parity tests updated. **The per-label-set footer goldens land
-   here** — this is the task where `short`/`full` become real, and a golden of
-   the real footer is the only thing that shows a group was mis-assigned.
-   Nothing renders them on screen yet.
-3. **`?`.** `m.helpAll`, the toggle arm in `Update`, and the gating tests.
+2. **Display data.** `full` groups for every branch, curated `short`,
+   `ForceQuit` and `Help` into `keyMap`, `?` gated off in the 12 contexts, the
+   Loading/Error branch split. Parity tests updated. Nothing renders it yet.
+3. **Footer goldens**, two per label set — short and full. The full ones are
+   the only thing that shows a `full` group was mis-assigned: an unassigned
+   binding is a zero `Binding`, which `FullHelpView` drops in silence.
+4. **`?`.** `m.helpAll`, the toggle arm in `Update`, and the gating tests.
    Nothing renders it yet, so nothing moves.
-4. **Wiring.** `Model.View()` appends the footer; the 25 hint lines are
+5. **Wiring.** `Model.View()` appends the footer; the 25 hint lines are
    deleted; `(c: manage)` is stripped. All 21 goldens regenerate **once**, and
    every diff is read.
 
 The toggle deliberately lands *before* the wiring. The other order would ship
 one task in which the footer advertises `? help` and pressing `?` does nothing.
-5. **Docs.** `CHANGELOG`, both READMEs.
+6. **Docs.** `CHANGELOG`, both READMEs.
 
-**A golden that moves during tasks 1 or 2 is a bug, not an update.**
+**A golden that moves before task 5 is a bug, not an update.**
 
 ## 7. Testing
 
@@ -266,7 +295,7 @@ one task in which the footer advertises `? help` and pressing `?` does nothing.
 - No new `go.mod` dependencies. `bubbles/help` is a subpackage of a module
   that is already direct.
 - bubbletea value receivers; explicit write-back before every return.
-- The 31 non-hint uses of `th.Help` are not touched.
+- The 30 non-hint uses of `th.Help` are not touched.
 - Everything in the repo in ENGLISH except `README.it.md` and
   `CONTRIBUTING.it.md`; Conventional Commits; **no `Co-Authored-By` trailer**.
 - Demo mode keeps working identically — it renders through the same views.

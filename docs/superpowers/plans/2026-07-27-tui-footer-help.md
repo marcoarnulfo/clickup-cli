@@ -16,7 +16,7 @@
 - Everything in the repo is in **ENGLISH** except `README.it.md` and `CONTRIBUTING.it.md`.
 - **Conventional Commits.** **Never** add a `Co-Authored-By` trailer.
 - Pre-commit gate, all clean/green, every task: `gofmt -l .`, `go vet ./...`, `go run honnef.co/go/tools/cmd/staticcheck@latest ./...`, `go build ./...`, `go test ./... -race`.
-- **The 21 existing goldens in `internal/tui/testdata/` stay byte-identical through Tasks 1, 2 and 3.** They move exactly once, in Task 4. A golden that moves earlier is a bug — never run `-update` to silence one.
+- **The 24 existing screen goldens in `internal/tui/testdata/` stay byte-identical through Tasks 1-4.** They move exactly once, in Task 5. A golden that moves earlier is a bug — never run `-update` to silence one. `testdata/` holds 26 files: the other two are `palette_dark.golden` and `palette_light.golden` from tranche A, which must not move at any point.
 - **The 30 non-hint uses of `th.Help` are not touched.** Only the 25 key-hint lines and the Home timer line's `(c: manage)` suffix are in scope. Empty-state notices, table headers, breadcrumbs, subtotals, progress messages and the update notice all stay exactly as they are.
 - `bubbles/key` is imported under its own name `key`; the `tea.KeyMsg` test helper in this package is `keyMsg(s string)`, **not** `key(...)`.
 - Two `bubbles/key` gotchas: `SetEnabled` on a `key.Binding` field that was never assigned is a silent no-op (a zero Binding has `keys == nil`), so assign into the struct first and gate second; and `short`/`full` hold **value copies**, so build them after every `SetEnabled`.
@@ -30,11 +30,12 @@
 | `internal/tui/footer.go` (create) | `footerView`, theme→`help.Styles`, `pairHelp`, `anyKeyHelp` | 1 |
 | `internal/tui/footer_test.go` (create) | Renderer unit tests, truncation, styles | 1 |
 | `internal/tui/keys.go` | `Help` + `ForceQuit` in `keyMap`; `full` for all 12; pairs collapsed in `short`/`full` | 2 |
-| per-screen `_test.go` files | Parity tests gain `ctrl+c` and `?`; footer goldens per label set | 2 |
-| `internal/tui/app.go` | `helpAll` field, the `?` arm in `Update` | 3 |
-| `internal/tui/app.go` | The footer render site; the timer line's `(c: manage)` suffix | 4 |
-| 14 view files | The 25 hint lines deleted | 4 |
-| `CHANGELOG.md`, `README.md`, `README.it.md` | `?` documented; key tables re-verified | 5 |
+| per-screen `_test.go` files | Parity tests gain `ctrl+c` and `?` | 2 |
+| `internal/tui/footer_golden_test.go` (create) | Two footer goldens per label set, short and full | 3 |
+| `internal/tui/app.go` | `helpAll` field, the `?` arm in `Update` | 4 |
+| `internal/tui/app.go` | The footer render site; the timer line's `(c: manage)` suffix | 5 |
+| 14 view files, `golden_test.go` | The 25 hint lines deleted; the timer fixture updated | 5 |
+| `CHANGELOG.md`, `README.md`, `README.it.md` | `?` documented; key tables re-verified | 6 |
 
 ---
 
@@ -304,6 +305,31 @@ The rule, applied to all 12 constructors plus the inline Loading/Error case:
 
 Range's editing mode covers two textinputs (`fromInput`, `toInput`) but is one `keysFor` branch, so it is one entry here — that is the 10 input contexts collapsed into 9 rows plus the two any-key screens.
 
+**Loading and Error share one branch today and must stop sharing it.** `keys.go` has
+
+```go
+	case screenLoading, screenError:
+		return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
+```
+
+but this task needs Loading to enable `Help` and Error not to. Split it into two cases:
+
+```go
+	case screenLoading:
+		k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help}
+		k.short = []key.Binding{k.Help, k.Quit}
+		k.full = [][]key.Binding{{k.Help, k.Quit}}
+		return k
+	case screenError:
+		// Every key returns Home here, so ? must not claim one. ForceQuit is
+		// assigned because ctrl+c is accepted — it is simply not advertised.
+		k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Quit}
+		return k
+```
+
+Leaving them merged fails either Step 5's ForceQuit test or Task 4's `TestQuestionMarkDoesNotHijackAnyKeyScreens` — and Task 4 may not edit `keys.go`.
+
 - [ ] **Step 3: Collapse the four key pairs in `short` and `full`**
 
 Wherever both halves are advertised, replace them with one `pairHelp` item:
@@ -313,7 +339,11 @@ Wherever both halves are advertised, replace them with one `pairHelp` item:
 | `Up` / `Down` | `↑/↓/j/k` | `move` |
 | `NextField` / `PrevField` | `tab/⇧tab` | `next/prev field` |
 | `NextSection` / `PrevSection` | `tab/⇧tab` | `section` |
-| `PrevMonth` / `NextMonth` | `←/→/h/l` | `change month` |
+| `PrevMonth` / `NextMonth` | `◂/▸/h/l` | `change month` |
+
+Use `◂` and `▸` for the month pair, not `←`/`→`: those are the glyphs `keyDefaults` and both READMEs already use.
+
+The month pair is advertised in exactly one place — `homeKeys.full`'s first column, `{PrevMonth, NextMonth, ToggleWeek}`. Collapsing it there leaves that column with two items. Step 4 says not to *reshape* `homeKeys`/`reportKeys`: that means keep the columns and their order, not the item count.
 
 Both halves stay assigned to their `keyMap` fields and stay enabled — only the advertisement collapses. The parity tests read `allBindings()`, not `short`, so their expected label sets do **not** change because of this step.
 
@@ -352,8 +382,9 @@ membersKeys                   {pair(Up,Down), ToggleItem, SelectAll} | {Confirm}
 filtersKeys                   {pair(NextField,PrevField), pair(Up,Down), ToggleItem, SelectAll}
                               | {Confirm} | {Help, Back, Quit}
 budgetKeys                    {Budget}                          | {Help, Back, Quit}
-loading/error  loading:       {}                                | {Help, Quit}
-               error:         no keyMap change — the screen keeps its inline sentence
+loading        (split case)   {}                                | {Help, Quit}
+error          (split case)   ForceQuit assigned, nothing advertised beyond today's q;
+                              no full — the screen keeps its inline sentence
 ```
 
 An empty first column is fine: `help.FullHelpView` skips groups whose bindings are all disabled or absent.
@@ -362,7 +393,7 @@ An empty first column is fine: `help.FullHelpView` skips groups whose bindings a
 
 - [ ] **Step 5: Update the parity tests**
 
-Every per-screen label test gains `"ctrl+c"`, and gains `"?"` on the screens where `Help` is assigned. Sort order is plain string sort: `"?"` sorts before every letter, `"ctrl+c"` sorts after `"c"` and before `"d"`.
+Every per-screen label test gains `"ctrl+c"`, and gains `"?"` in every **state** where `Help` is assigned — log, entries, rates, range and setup have per-state parity tests, and `Help` is assigned in some of their states and not others (Step 2's table). Sort order is plain string sort: `"?"` sorts before every letter, `"ctrl+c"` sorts after `"c"` and before `"d"`.
 
 `TestQuitBindingPerScreen` is unaffected — `Quit`'s enablement does not change.
 
@@ -398,39 +429,14 @@ func TestForceQuitAcceptedEverywhereAdvertisedOnSix(t *testing.T) {
 
 Confirm `screen(13)` is the last constant before trusting the `range 14`; if the iota has a different length, use the same explicit map style as `TestQuitBindingPerScreen`.
 
-- [ ] **Step 6: Add the footer goldens, one per distinct label set**
-
-Same granularity as the parity tests — every state that has its own parity expectation gets its own footer golden. Table-driven, one `t.Run` per state so a missing file does not abort the rest:
-
-```go
-func TestGoldenFooters(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		name  string
-		model func() Model
-	}{
-		{"footer_home", func() Model { m := newTestModel(); m.screen = screenHome; return m }},
-		{"footer_report", func() Model { return newTestModelOnReport() }},
-		// … one entry per label set, mirroring the parity tests' cases …
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m := tc.model()
-			golden(t, tc.name, footerView(testTheme(true), 0, false, keysFor(m)))
-		})
-	}
-}
-```
-
-Generate with `-update`, then **read every file**. This is the only place a mis-assigned column or a lost binding becomes visible.
-
-- [ ] **Step 7: Confirm the 21 old goldens did not move**
+- [ ] **Step 6: Confirm no golden moved at all**
 
 ```bash
-git status --short internal/tui/testdata | grep -v '^?? '
+git status --short internal/tui/testdata
 ```
-Expected: no output. Only new files. If an existing golden changed, something in this task rendered — find it.
+Expected: **no output whatsoever** — this task adds no golden and must change none. Task 3 adds the footer goldens; if one of the 24 screen goldens changed here, something in this task rendered, which it must not.
 
-- [ ] **Step 8: Full gate and commit**
+- [ ] **Step 7: Full gate and commit**
 
 ```bash
 gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
@@ -440,7 +446,87 @@ git commit -m "feat(tui): declare full help, ctrl+c and ? for every screen (#69)
 
 ---
 
-### Task 3: The `?` toggle
+### Task 3: Footer goldens, short and full
+
+Two goldens per label set. **This is the only check on Task 2's `full` columns**: a binding named in a `full` group but never assigned in that branch is a zero `Binding`, which `help.FullHelpView` silently drops — no compile error, no failing parity test, nothing.
+
+**Files:**
+- Create: `internal/tui/footer_golden_test.go`
+- Create: `internal/tui/testdata/footer_<state>_short.golden` and `footer_<state>_full.golden`, two per label set
+
+**Interfaces:**
+- Consumes: `footerView` (Task 1), `keysFor` with its populated `short`/`full` (Task 2), `golden`, `testTheme`, `newTestModel`, `newTestModelOnReport`.
+- Produces: nothing later tasks import.
+
+- [ ] **Step 1: Enumerate the label sets**
+
+The set of states is exactly the set the parity tests already cover — same granularity, different assertion. Find them:
+
+```bash
+grep -rn 'enabledLabels' internal/tui/*_test.go
+```
+
+Every case in every parity test (including each row of the table-driven per-step tests for `log`, `entries`, `rates`, `range`, `setup`) is one entry here, plus `screenLoading` and `screenError`.
+
+- [ ] **Step 2: Write the table-driven test**
+
+```go
+func TestGoldenFooters(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		model func() Model
+	}{
+		{"home", func() Model { m := newTestModel(); m.screen = screenHome; return m }},
+		{"report", newTestModelOnReport},
+		// … one entry per label set, mirroring the parity tests' cases …
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := keysFor(tc.model())
+			golden(t, "footer_"+tc.name+"_short", footerView(testTheme(true), 0, false, k))
+			golden(t, "footer_"+tc.name+"_full", footerView(testTheme(true), 0, true, k))
+		})
+	}
+}
+```
+
+The `t.Run` per case is not decoration: `golden` calls `t.Fatalf` when a file is missing, so without subtests the first missing golden aborts every remaining state.
+
+Build each state the way its parity test builds it — same fields, same sub-model setup. Do not invent a shortcut; a state built differently from the one the parity test asserts on gives two nets that do not cover the same ground.
+
+- [ ] **Step 3: Generate and read every file**
+
+```bash
+go test ./internal/tui -run TestGoldenFooters -update
+git status --short internal/tui/testdata
+```
+
+Then **read all of them**. What to look for, state by state:
+
+- the `_short` file is one line, and names the same actions the screen's old hand-written hint line named;
+- the `_full` file has the columns Task 2 assigned, with the globals last;
+- **no column is missing and no column is empty.** A `full` group whose bindings were never assigned renders as nothing — the column simply is not there. That is the defect this task exists to catch, and it is only visible by counting columns against Task 2's table.
+
+Report any state whose full help came out with fewer columns than Task 2 specifies; that is a Task 2 bug to fix here, not a golden to accept.
+
+- [ ] **Step 4: Confirm the 24 screen goldens did not move**
+
+```bash
+git status --short internal/tui/testdata | grep -v '^?? '
+```
+Expected: no output. Only new files.
+
+- [ ] **Step 5: Full gate and commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui
+git commit -m "test(tui): pin every screen's short and full footer (#69)"
+```
+
+---
+
+### Task 4: The `?` toggle
 
 Small and self-contained. Nothing renders `helpAll` yet, so no golden moves.
 
@@ -449,7 +535,7 @@ Small and self-contained. Nothing renders `helpAll` yet, so no golden moves.
 - Modify: `internal/tui/app_test.go`
 
 **Interfaces:**
-- Consumes: `keysFor(m).Help` from Task 2.
+- Consumes: `keysFor(m).Help` from Task 2, and its per-state gating.
 - Produces: `Model.helpAll bool`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -538,14 +624,15 @@ git commit -m "feat(tui): toggle full help with ? (#69)"
 
 ---
 
-### Task 4: Wiring, and the 25 lines deleted
+### Task 5: Wiring, and the 25 lines deleted
 
 The one task where goldens move. They move **once**.
 
 **Files:**
 - Modify: `internal/tui/app.go`
 - Modify: `home.go`, `report.go`, `export.go`, `budget.go`, `members.go`, `filters.go`, `range.go`, `listbrowser.go`, `setup.go`, `history.go`, `entries.go`, `log.go`, `rates.go`, `rates_view.go`
-- Update: all 21 existing goldens
+- Modify: `internal/tui/golden_test.go` — one fixture string (Step 3)
+- Update: the 24 existing screen goldens
 
 - [ ] **Step 1: Append the footer in `Model.View()`**
 
@@ -565,7 +652,7 @@ func (m Model) View() string {
 
 - [ ] **Step 2: Delete the 25 hint lines**
 
-Find them, do not trust these line numbers — Tasks 1–3 shifted them:
+Find them, do not trust these line numbers — Tasks 1-4 shifted them:
 
 ```bash
 grep -rn 'Help.Render' internal/tui --include='*.go' | grep -v _test
@@ -585,7 +672,7 @@ The 25 to delete, by file and by what they say:
 | `listbrowser.go` | `↑/↓ move · Enter: open/select · Esc: up / back` |
 | `setup.go` | `Enter: confirm · Ctrl+C: quit` |
 | `history.go` | `Esc: back to entries` |
-| `entries.go` | six lines: confirm-delete, tags-loading, tags-new, tags, empty list, list, and the edit view's `Esc: cancel` |
+| `entries.go` | seven lines: confirm-delete, tags-loading, tags-new, tags, empty list, list, and the edit view's `Esc: cancel` |
 | `log.go` | six lines: no-timer, timer running, list pick, task pick, done, and the unconditional `Esc: cancel · Ctrl+C: quit` |
 | `rates.go` | the `rt.help()` call site |
 | `rates_view.go` | the `help()` method itself |
@@ -600,6 +687,8 @@ The `Timer` binding is gated on `m.runningTimer != nil`, so the footer shows
 `c manage timer` exactly when that line exists — the information survives, in
 one place instead of two.
 
+**`golden_test.go` carries the same suffix as a literal.** `TestGoldenHomeWithNotices` passes the timer line in by hand, with a comment promising it is "the string app.go builds… verbatim". Strip `"   (c: manage)"` there too, or the fixture depicts something the app no longer renders and nothing fails to say so.
+
 - [ ] **Step 4: Regenerate the goldens, once**
 
 ```bash
@@ -607,20 +696,26 @@ go test ./internal/tui -update
 git diff internal/tui/testdata
 ```
 
-**Read every diff.** The expectation, stated so a surprise is visible:
+**Read every diff.** `git status --short internal/tui/testdata` should list **24 modified files and nothing else**. The expectation, stated so a surprise is visible:
 
-- 16 body goldens lose exactly one line — **two** for `log` and `setup`, which render two hint lines today.
-- 5 composed goldens (`entries`, `entries_edit`, `entries_confirm_delete`, `error`, `loading`) lose the hint line and gain a footer — except `error`, which gains nothing, and `loading`, which gains a footer where it had none.
-- The footer goldens from Task 2 must **not** move. If one does, the wiring changed the data, which it must not.
+- **19 body goldens** (sub-model views) each lose **exactly one** hint line. Log and Setup are no exception: Log renders two hint lines only in its timer/list/task/done steps, and the goldens capture `logModeSelect` and `logForm`; Setup never renders two at all.
+- `home_notices` additionally loses the `(c: manage)` suffix, from the Step 3 fixture edit.
+- **5 composed goldens** (`entries`, `entries_edit`, `entries_confirm_delete`, `error`, `loading`) lose their hint line and gain a footer — except `error`, which gains nothing (it keeps its sentence and gets no footer), and `loading`, which gains a footer where it had none.
+- **`palette_dark.golden` and `palette_light.golden` must not move.** They are tranche A's color goldens and have nothing to do with this work.
+- **The footer goldens from Task 3 must not move.** If one does, the wiring changed the data, which it must not.
 
 Anything else is a bug in this task.
 
 - [ ] **Step 5: Verify no hint line survives**
 
 ```bash
-grep -rnE 'Help\.Render\("[^"]*(Esc|Enter|↑/↓|Tab)' internal/tui --include='*.go' | grep -v _test
+grep -rnE 'Help\.Render\("[^"]*(Esc|Enter|↑/↓|Tab|any other key)' internal/tui --include='*.go' | grep -v _test
+grep -rnE 'Help\.Render\((help|rt\.help)' internal/tui --include='*.go' | grep -v _test
+grep -rn 'g: grouping' internal/tui --include='*.go' | grep -v _test
 ```
-Expected: no output.
+Expected: no output from any of the three.
+
+**The grep is a backstop, not the check.** Five of the 25 render a variable or a method result (`home.go` and `range.go` build a `help` string; `rates.go` calls `rt.help()`), and two more are literals that happen to contain none of the words above — which is why the second and third patterns exist. The real check is reading the golden diff in Step 4: a hint line that survived is a line the golden still shows.
 
 - [ ] **Step 6: Full gate and commit**
 
@@ -632,7 +727,7 @@ git commit -m "refactor(tui): render every screen's key hints from the keymap (#
 
 ---
 
-### Task 5: Documentation
+### Task 6: Documentation
 
 **Files:** `CHANGELOG.md`, `README.md`, `README.it.md`
 
@@ -668,9 +763,10 @@ git commit -m "docs: document the generated key footer and ? full help"
 
 ## Definition of done
 
-- `grep -rnE 'Help\.Render\("[^"]*(Esc|Enter|↑/↓|Tab)' internal/tui --include='*.go'` (excluding tests) returns nothing.
-- Every `keysFor` constructor populates `full`, and `ForceQuit` is assigned in all of them.
+- All three greps in Task 5 Step 5 return nothing.
+- Every `keysFor` branch populates `full` (except `screenError`, which renders no footer), and `ForceQuit` is assigned in all of them.
+- Every `full` column named in Task 2 Step 4 actually appears in the corresponding `footer_<state>_full.golden`. A missing column means a binding was never assigned.
 - `?` toggles full help on every screen except the 12 contexts listed in Task 2 Step 2, and types a literal `?` in the 10 input ones.
-- The 21 pre-existing goldens moved exactly once, in Task 4, and each diff was read.
+- The 24 pre-existing screen goldens moved exactly once, in Task 5, and each diff was read. `palette_dark.golden` and `palette_light.golden` never moved.
 - `go test ./... -race` passes.
 - #69 closes. **#59 stays open** on its overlay-compositor checkbox, which ships with the command palette in B3.
