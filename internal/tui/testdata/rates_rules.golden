@@ -10,5 +10,4 @@ Billing settings
 
 The default currency and rounding rule apply to every list without its own currency.
 
-Tab: section · ↑/↓ select · Enter: edit/toggle · d: clear · s: save · Esc: cancel
 Rate precedence: (list,member) > member > list > default

@@ -20,7 +20,6 @@ func entriesHistoryView(th theme, es entriesModel, loc *time.Location) string {
 			b += historyLine(th, c, loc) + "\n"
 		}
 	}
-	b += "\n" + th.Help.Render("Esc: back to entries")
 	return b
 }
 

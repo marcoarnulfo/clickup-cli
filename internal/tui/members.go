@@ -97,6 +97,5 @@ func (mm membersModel) view(th theme) string {
 		}
 		b += cursor + line + "\n"
 	}
-	b += "\n" + th.Help.Render("↑/↓ move · Space toggle · a: all/none · Enter: confirm · Esc: cancel")
 	return b
 }

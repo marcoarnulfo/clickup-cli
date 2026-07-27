@@ -112,7 +112,7 @@ func TestGoldenHomeWithNotices(t *testing.T) {
 	// The timer line is the string app.go builds for a running timer; keep it
 	// verbatim so the golden depicts something the app actually renders.
 	golden(t, "home_notices", m.home.view(testTheme(true), "July 2026", "team", "Members: 2/3", "v1.9.0",
-		"⏱  running on Landing page — 00:12:30   (c: manage)"))
+		"⏱  running on Landing page — 00:12:30"))
 }
 
 func TestGoldenReport(t *testing.T) {

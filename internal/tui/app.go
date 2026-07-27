@@ -906,7 +906,7 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m Model) screenBody() string {
 	switch m.screen {
 	case screenSetup:
 		return m.setup.view(m.theme)
@@ -914,7 +914,7 @@ func (m Model) View() string {
 		timerLine := ""
 		if m.runningTimer != nil {
 			if label := elapsedLabel(m.runningTimer.Start, m.now()); label != "" {
-				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label + "   (c: manage)"
+				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label
 			}
 		}
 		return m.home.view(m.theme, m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
@@ -946,4 +946,14 @@ func (m Model) View() string {
 			m.theme.Help.Render("press a key to return home")
 	}
 	return ""
+}
+
+func (m Model) View() string {
+	body := m.screenBody()
+	if m.screen == screenError {
+		// Every key returns Home here, which is not a binding — the screen
+		// says so in its own sentence instead.
+		return body
+	}
+	return body + "\n\n" + footerView(m.theme, m.width, m.helpAll, keysFor(m))
 }

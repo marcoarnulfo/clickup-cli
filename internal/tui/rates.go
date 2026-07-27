@@ -896,7 +896,6 @@ func (rt ratesModel) view(th theme) string {
 	if rt.msg != "" {
 		b += "\n" + th.Err.Render(rt.msg) + "\n"
 	}
-	b += "\n" + th.Help.Render(rt.help())
 	b += "\n" + th.Help.Render("Rate precedence: (list,member) > member > list > default")
 	return b
 }

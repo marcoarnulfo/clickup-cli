@@ -165,10 +165,5 @@ func (rs rangeModel) view(th theme) string {
 	if rs.msg != "" {
 		b += "\n" + th.Err.Render(rs.msg)
 	}
-	help := "↑/↓ select · Enter: choose/next · Esc: back"
-	if rs.editing {
-		help = "Tab: from/to · Enter: confirm · Esc: cancel"
-	}
-	b += "\n" + th.Help.Render(help)
 	return b
 }

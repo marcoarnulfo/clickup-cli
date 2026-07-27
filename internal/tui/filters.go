@@ -212,6 +212,5 @@ func (fs filtersModel) view(th theme) string {
 			b += line + "\n"
 		}
 	}
-	b += "\n" + th.Help.Render("Tab/⇧Tab section · ↑/↓ move · Space toggle · a: all/none · Enter: apply · Esc: cancel")
 	return b
 }

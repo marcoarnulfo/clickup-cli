@@ -163,7 +163,6 @@ func (s setupModel) view(th theme) string {
 	case stepCurrency:
 		b += s.input.View()
 	}
-	b += "\n\n" + th.Help.Render("Enter: confirm · Ctrl+C: quit")
 	return b
 }
 

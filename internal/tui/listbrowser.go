@@ -193,7 +193,6 @@ func (bs listBrowserModel) view(th theme) string {
 	if bs.itemCount() == 0 {
 		b += th.Help.Render("(empty)") + "\n"
 	}
-	b += "\n" + th.Help.Render("↑/↓ move · Enter: open/select · Esc: up / back")
 	return b
 }
 

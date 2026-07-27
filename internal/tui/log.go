@@ -502,7 +502,6 @@ func (lg logModel) view(th theme) string {
 	case logTimerRunning:
 		if lg.timer == nil {
 			b += th.Help.Render("No timer running.") + "\n"
-			b += "\n" + th.Help.Render("Esc: back")
 			break
 		}
 		b += "⏱  Timer running on: " + th.Accent.Render(lg.timer.TaskName) + "\n"
@@ -511,7 +510,6 @@ func (lg logModel) view(th theme) string {
 		} else {
 			b += th.Help.Render("started just now") + "\n"
 		}
-		b += "\n" + th.Help.Render("s: stop and record · Esc: back")
 	case logListPick:
 		if lg.loading {
 			b += th.Help.Render("Loading tasks…") + "\n\n"
@@ -532,7 +530,6 @@ func (lg logModel) view(th theme) string {
 		} else {
 			b += "  " + browseLine + "\n"
 		}
-		b += "\n" + th.Help.Render("↑/↓ select · Enter: open tasks / browse")
 	case logTaskPick:
 		b += "Choose the task:\n\n"
 		for i, tk := range lg.tasks {
@@ -547,7 +544,6 @@ func (lg logModel) view(th theme) string {
 		if len(lg.tasks) == 0 {
 			b += th.Help.Render("No tasks in the list.") + "\n"
 		}
-		b += "\n" + th.Help.Render("↑/↓ select · Enter: continue")
 	case logIDInput:
 		b += "Task ID or URL:\n\n" + lg.input.View()
 	case logForm:
@@ -563,13 +559,11 @@ func (lg logModel) view(th theme) string {
 		if lg.msg != "" {
 			b += th.OK.Render(lg.msg) + "\n\n"
 		}
-		b += th.Help.Render("r: reload the report · Esc: back")
 	default:
 		b += th.Help.Render("…")
 	}
 	if lg.msg != "" && lg.step != logDone {
 		b += "\n" + th.Err.Render(lg.msg)
 	}
-	b += "\n\n" + th.Help.Render("Esc: cancel · Ctrl+C: quit")
 	return b
 }

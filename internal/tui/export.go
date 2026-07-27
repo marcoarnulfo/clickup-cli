@@ -85,6 +85,5 @@ func (e exportModel) view(th theme) string {
 	if e.err != nil {
 		b += "\n" + th.Err.Render("Error: "+e.err.Error())
 	}
-	b += "\n\n" + th.Help.Render("↑/↓ select · Enter: export · Esc: back to report")
 	return b
 }

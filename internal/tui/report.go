@@ -252,12 +252,10 @@ func (rm reportModel) view(th theme) string {
 	total += "\n" + th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
 
 	body := th.Box.Render(rows + total)
-	help := th.Help.Render("g: grouping · e: export · p: rates · n: log hours · f: filters · b: budgets · v: entries · m/s: change range/scope · r: reload · q: quit")
-
 	if len(r.Buckets) == 0 {
 		body = th.Box.Render("No hours to show.")
 	}
-	return title + "\n\n" + summary + "\n\n" + body + "\n\n" + help
+	return title + "\n\n" + summary + "\n\n" + body
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
