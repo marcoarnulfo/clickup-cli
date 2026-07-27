@@ -512,7 +512,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 			ForceQuit: d.ForceQuit, Help: d.Help,
 		}
 		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
-		k.short = []key.Binding{pair, k.ToggleItem, k.NewTag, k.Confirm, k.Back, k.Help, k.ForceQuit}
+		k.short = []key.Binding{k.ToggleItem, k.NewTag, k.Confirm, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{
 			{pair, k.ToggleItem},
 			{k.NewTag, k.Confirm},
@@ -533,7 +533,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 		k.Tags.SetEnabled(editable)
 		k.History.SetEnabled(hasEntries)
 		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
-		k.short = []key.Binding{pair, k.Edit, k.Delete, k.Tags, k.History, k.Back, k.Help, k.ForceQuit}
+		k.short = []key.Binding{k.Edit, k.Delete, k.Tags, k.History, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{
 			{pair},
 			{k.Edit, k.Delete, k.Tags, k.History},
@@ -671,7 +671,7 @@ func membersKeys(d keyDefaults) keyMap {
 		SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
 	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
-	k.short = []key.Binding{pair, k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
+	k.short = []key.Binding{k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{pair, k.ToggleItem, k.SelectAll},
 		{k.Confirm},
@@ -690,7 +690,7 @@ func filtersKeys(d keyDefaults) keyMap {
 	// what the hand-written line it replaced said too.
 	sectionPair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "section")
 	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
-	k.short = []key.Binding{sectionPair, movePair, k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
+	k.short = []key.Binding{sectionPair, k.ToggleItem, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{sectionPair, movePair, k.ToggleItem, k.SelectAll},
 		{k.Confirm},

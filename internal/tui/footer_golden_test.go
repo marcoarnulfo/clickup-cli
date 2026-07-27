@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -209,5 +212,35 @@ func TestGoldenFooters(t *testing.T) {
 			golden(t, "footer_"+tc.name+"_short", footerView(testTheme(true), 0, false, k))
 			golden(t, "footer_"+tc.name+"_full", footerView(testTheme(true), 0, true, k))
 		})
+	}
+}
+
+// TestShortFootersFitEightyColumns is the rule the curation of short exists to
+// serve. help.ShortHelpView walks the slice left to right and stops at the
+// first item that would overflow, so display order IS survival order: with the
+// globals last by convention, a short footer wider than the terminal drops the
+// exit and the ? that reaches full help — the two things a stuck user needs.
+// Eighty columns is the floor worth holding: it is the default width of a bare
+// terminal and of a split tmux pane.
+//
+// full is deliberately unbounded. It is what ? exists to show.
+func TestShortFootersFitEightyColumns(t *testing.T) {
+	t.Parallel()
+	files, err := filepath.Glob("testdata/footer_*_short.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no short-footer goldens found — the glob or the naming changed")
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := lipgloss.Width(string(b)); w > 80 {
+			t.Errorf("%s is %d columns wide; at 80 it would drop its tail:\n%s",
+				filepath.Base(f), w, string(b))
+		}
 	}
 }
