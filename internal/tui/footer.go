@@ -3,6 +3,7 @@ package tui
 import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // footerView renders one screen's advertised bindings as the bottom help line,
@@ -35,7 +36,30 @@ func footerView(th theme, width int, showAll bool, k keyMap) string {
 			FullSeparator:  th.Help,
 		},
 	}
-	return h.View(k)
+	out := h.View(k)
+	if showAll {
+		// Full help is deliberately unbounded — it is what ? exists to show.
+		return out
+	}
+	return clampWidth(th, out, width)
+}
+
+// clampWidth enforces the width that bubbles/help only approximates.
+//
+// help's shouldAddItem fails open: when the fitted prefix lands within one
+// ellipsis-width of the terminal, it returns ok=true and the overflowing item
+// — plus every item after it — is appended anyway. The report footer is 74
+// columns and renders untruncated into a 66-column terminal, where it wraps.
+// Clamping here makes "never wider than the terminal, never more than one
+// line" a property of this function instead of a property of the library's
+// arithmetic. See #134.
+func clampWidth(th theme, s string, width int) string {
+	if width <= 1 || lipgloss.Width(s) <= width {
+		return s
+	}
+	// MaxWidth truncates ANSI-aware; the ellipsis is added separately so the
+	// cut is visible rather than looking like a footer that simply ends.
+	return lipgloss.NewStyle().MaxWidth(width-1).Render(s) + th.Help.Render("…")
 }
 
 // pairHelp returns a display-only binding that advertises two related bindings

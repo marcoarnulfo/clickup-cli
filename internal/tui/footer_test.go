@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func sampleKeys() keyMap {
@@ -105,5 +106,37 @@ func TestAnyKeyHelpRendersAsAnItem(t *testing.T) {
 	k.short = []key.Binding{b}
 	if got := footerView(testTheme(true), 0, false, k); got != "any key cancel" {
 		t.Errorf("footer = %q, want %q", got, "any key cancel")
+	}
+}
+
+// TestFooterNeverExceedsWidth sweeps the widths a real terminal can have. The
+// library's own truncation is not enough: bubbles/help returns the untruncated
+// 74-column report footer at widths 65-67, where it would wrap (#134). The
+// footer must always be one line, and never wider than the terminal it is
+// drawn in — a wrapped footer pushes the screen body around, which is worse
+// than a visibly cut hint.
+func TestFooterNeverExceedsWidth(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		m    func() Model
+	}{
+		{"report", newTestModelOnReport},
+		{"filters", func() Model { m := newTestModel(); m.screen = screenFilters; return m }},
+		{"home", func() Model { m := newTestModel(); m.screen = screenHome; return m }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			k := keysFor(tc.m())
+			for w := 20; w <= 120; w++ {
+				got := footerView(testTheme(true), w, false, k)
+				if strings.Contains(got, "\n") {
+					t.Fatalf("width %d: footer wrapped:\n%s", w, got)
+				}
+				if n := lipgloss.Width(got); n > w {
+					t.Fatalf("width %d: footer is %d columns wide: %q", w, n, got)
+				}
+			}
+		})
 	}
 }
