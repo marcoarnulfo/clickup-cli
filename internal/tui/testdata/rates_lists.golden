@@ -8,5 +8,5 @@ Billing settings
 
 Effective for Website: 50.00 EUR
 
-Tab: section · ↑/↓ select · Enter: rate (0: bill at zero) · c: currency · g: budget (submit empty to clear either) · d: use default rate · b: browse lists · s: save · Esc: cancel
 Rate precedence: (list,member) > member > list > default
+A rate of 0 bills at zero — to unset a value instead, submit an empty field.

@@ -17,10 +17,19 @@ type keyDefaults struct {
 
 	// ForceQuit is the unconditional ctrl+c kill switch (app.go's Update,
 	// migrated in Task 4 step 4): unlike Quit, its enablement never varies
-	// per screen, so it lives only here — never in keyMap/allBindings — and
-	// is checked directly against defaultKeys(), bypassing keysFor(m)
-	// entirely, both before and after this migration.
+	// per screen, so it is checked directly against defaultKeys(), bypassing
+	// keysFor(m) entirely, both before and after that migration. As of #69
+	// Task 2 it ALSO lives in keyMap (assigned by every constructor, listed
+	// in allBindings) purely so the footer can advertise it on the six
+	// screens where q cannot quit — that copy's Enabled() is never what
+	// key.Matches consults for the actual kill switch.
 	ForceQuit key.Binding
+
+	// Help toggles the full-help overlay (#69 Task 4). Unlike ForceQuit, its
+	// enablement genuinely varies per screen: keysFor leaves it unassigned
+	// wherever a '?' keypress already means something else (a focused
+	// textinput, an any-key confirmation, Error's own catch-all).
+	Help key.Binding
 
 	// Home (home.go's updateHome switch, migrated in full here since Home is
 	// the one screen this task fully covers).
@@ -110,6 +119,7 @@ func defaultKeys() keyDefaults {
 		Quit:      key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		ForceQuit: key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "force quit")),
+		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 
 		PrevMonth:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("◂/h", "prev month (this_month only)")),
 		NextMonth:   key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("▸/l", "next month (this_month only)")),
@@ -168,8 +178,10 @@ func defaultKeys() keyDefaults {
 // and the ? overlay (#69) will render them in. A zero Binding is disabled
 // and matches nothing — that is how contextual keys are switched off.
 type keyMap struct {
-	Quit key.Binding
-	Back key.Binding
+	Quit      key.Binding
+	Back      key.Binding
+	ForceQuit key.Binding
+	Help      key.Binding
 
 	PrevMonth   key.Binding
 	NextMonth   key.Binding
@@ -234,12 +246,12 @@ func (k keyMap) FullHelp() [][]key.Binding { return k.full }
 // parity test, so TestAllBindingsCoversEveryField pins the count by reflection
 // rather than trusting anyone to remember.
 //
-// full is populated for Home and Report only. Nothing renders FullHelp() yet;
-// the ? overlay (#69) either fills in the other ten screens or stops reading
-// the field — do not assume it is complete.
+// full is populated for every screen except Error, which has no key worth a
+// full-help column (any key returns Home) and keeps its inline sentence
+// instead. Nothing renders FullHelp() yet — Task 4's ? overlay is what will.
 func (k keyMap) allBindings() []key.Binding {
 	return []key.Binding{
-		k.Quit, k.Back,
+		k.Quit, k.Back, k.ForceQuit, k.Help,
 		k.PrevMonth, k.NextMonth, k.ToggleWeek, k.Range, k.ToggleScope,
 		k.LogHours, k.Timer, k.Members, k.Generate,
 		k.Up, k.Down, k.Confirm, k.ToggleItem, k.SelectAll, k.NextField, k.PrevField,
@@ -261,10 +273,17 @@ func keysFor(m Model) keyMap {
 	switch m.screen {
 	case screenHome:
 		return homeKeys(m, d)
-	case screenLoading, screenError:
-		// No key handler, but both accept q today; a zero keyMap would
-		// silently disable it and leave Loading with no exit at all.
-		return keyMap{Quit: d.Quit, short: []key.Binding{d.Quit}}
+	case screenLoading:
+		k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help}
+		k.short = []key.Binding{k.Help, k.Quit}
+		k.full = [][]key.Binding{{k.Help, k.Quit}}
+		return k
+	case screenError:
+		// Every key returns Home here, so ? must not claim one. ForceQuit is
+		// assigned because ctrl+c is accepted — it is simply not advertised.
+		k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Quit}
+		return k
 	case screenSetup:
 		return setupKeys(m, d)
 	case screenReport:
@@ -297,14 +316,16 @@ func keysFor(m Model) keyMap {
 // switch. Members, Timer and the month-nav pair are
 // the contextually gated bindings: Members to the team scope, Timer to a
 // running timer, PrevMonth/NextMonth to the this_month preset outside week
-// mode — home.go's own view already hides/shows the first two conditionally
-// (the "f: select members" and "c: manage timer" help fragments); the guard
+// mode. home.go's view used to hide and show the first two through
+// hand-written help fragments, which the generated footer replaced; the guard
 // for all three used to live inline in the handler and now lives here
 // instead (see TestHomeMembersKeyIsTeamScopeOnly, TestHomeTimerKeyMatchesGuard
 // and TestHomeMonthNavKeysMatchGuard).
 func homeKeys(m Model, d keyDefaults) keyMap {
 	k := keyMap{
 		Quit:        d.Quit,
+		ForceQuit:   d.ForceQuit,
+		Help:        d.Help,
 		PrevMonth:   d.PrevMonth,
 		NextMonth:   d.NextMonth,
 		ToggleWeek:  d.ToggleWeek,
@@ -322,12 +343,13 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 	monthNav := m.preset == report.PresetThisMonth && m.periodMode != periodModeWeek
 	k.PrevMonth.SetEnabled(monthNav)
 	k.NextMonth.SetEnabled(monthNav)
-	k.short = []key.Binding{k.Generate, k.Range, k.Members, k.Quit}
+	monthPair := pairHelp(k.PrevMonth, k.NextMonth, "◂/▸/h/l", "change month")
+	k.short = []key.Binding{k.Generate, k.Range, k.Members, k.Help, k.Quit}
 	k.full = [][]key.Binding{
-		{k.PrevMonth, k.NextMonth, k.ToggleWeek},
+		{monthPair, k.ToggleWeek},
 		{k.Range, k.ToggleScope, k.Members},
 		{k.Generate, k.LogHours, k.Timer},
-		{k.Quit},
+		{k.Help, k.Quit},
 	}
 	return k
 }
@@ -338,14 +360,21 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 // react to Confirm (everything else is forwarded to the focused textinput);
 // stepWorkspace also has a list to move through.
 func setupKeys(m Model, d keyDefaults) keyMap {
-	k := keyMap{Confirm: d.Confirm}
+	k := keyMap{Confirm: d.Confirm, ForceQuit: d.ForceQuit}
 	if m.setup.step == stepWorkspace {
 		k.Up = d.Up
 		k.Down = d.Down
-		k.short = []key.Binding{k.Up, k.Down, k.Confirm}
+		k.Help = d.Help
+		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		k.short = []key.Binding{pair, k.Confirm, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.ForceQuit}}
 		return k
 	}
-	k.short = []key.Binding{k.Confirm}
+	// stepToken, stepRate and stepCurrency forward everything but Enter to a
+	// focused textinput, so ? must not claim a keystroke there — Help stays
+	// unassigned (zero Binding), which help.FullHelpView silently drops.
+	k.short = []key.Binding{k.Confirm, k.ForceQuit}
+	k.full = [][]key.Binding{{k.Confirm}, {k.ForceQuit}}
 	return k
 }
 
@@ -365,43 +394,56 @@ func logKeys(m Model, d keyDefaults) keyMap {
 	lg := m.logScreen
 	switch lg.step {
 	case logModeSelect:
-		k := keyMap{Back: d.Back, PickGuided: d.PickGuided, PickByID: d.PickByID, PickTimer: d.PickTimer}
-		k.short = []key.Binding{k.PickGuided, k.PickByID, k.PickTimer, k.Back}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, PickGuided: d.PickGuided, PickByID: d.PickByID, PickTimer: d.PickTimer}
+		k.short = []key.Binding{k.PickGuided, k.PickByID, k.PickTimer, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{k.PickGuided, k.PickByID, k.PickTimer}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 
 	case logTimerPick:
-		k := keyMap{Back: d.Back, PickGuided: d.PickGuided, PickByID: d.PickByID}
-		k.short = []key.Binding{k.PickGuided, k.PickByID, k.Back}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, PickGuided: d.PickGuided, PickByID: d.PickByID}
+		k.short = []key.Binding{k.PickGuided, k.PickByID, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{k.PickGuided, k.PickByID}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 
 	case logListPick, logTaskPick:
-		k := keyMap{Back: d.Back, Up: d.Up, Down: d.Down, Confirm: d.Confirm}
-		k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Back}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, Confirm: d.Confirm}
+		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 
 	case logIDInput:
-		k := keyMap{Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Confirm, k.Back}
+		// A focused textinput takes '?' as a character, so Help stays
+		// unassigned here.
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 
 	case logForm:
 		if lg.formField == 3 { // billable toggle (keypress, not a text field)
-			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back}
-			k.short = []key.Binding{k.Yes, k.No, k.Back}
+			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+			k.short = []key.Binding{k.Yes, k.No, k.Back, k.Help, k.ForceQuit}
+			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit}}
 			return k
 		}
-		k := keyMap{Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Confirm, k.Back}
+		// Every other form field is a focused textinput, so Help stays
+		// unassigned here too.
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 
 	case logTimerRunning:
-		k := keyMap{StopTimer: d.StopTimer, Back: d.Back}
-		k.short = []key.Binding{k.StopTimer, k.Back}
+		k := keyMap{StopTimer: d.StopTimer, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k.short = []key.Binding{k.StopTimer, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{k.StopTimer}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 
 	case logDone:
-		k := keyMap{Reload: d.Reload, Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Reload, k.Confirm, k.Back}
+		k := keyMap{Reload: d.Reload, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k.short = []key.Binding{k.Reload, k.Confirm, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Reload, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 	}
 	return keyMap{}
@@ -426,42 +468,63 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 
 	switch es.mode {
 	case entriesConfirmDelete:
-		k := keyMap{ConfirmDelete: d.ConfirmDelete}
-		k.short = []key.Binding{k.ConfirmDelete}
+		// The default clause ("any other key cancels") has no real binding —
+		// anyKeyHelp stands in for it — and that catch-all is also why Help
+		// stays unassigned: a '?' here cancels like any other key would.
+		k := keyMap{ConfirmDelete: d.ConfirmDelete, ForceQuit: d.ForceQuit}
+		cancel := anyKeyHelp("cancel")
+		k.short = []key.Binding{k.ConfirmDelete, cancel, k.ForceQuit}
+		k.full = [][]key.Binding{{k.ConfirmDelete, cancel}, {k.ForceQuit}}
 		return k
 
 	case entriesEdit:
 		if es.editStep == 4 {
-			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back}
-			k.short = []key.Binding{k.Yes, k.No, k.Back}
+			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+			k.short = []key.Binding{k.Yes, k.No, k.Back, k.Help, k.ForceQuit}
+			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit}}
 			return k
 		}
-		k := keyMap{Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Confirm, k.Back}
+		// Steps 0-3 forward everything but Enter/Esc to a focused textinput,
+		// so Help stays unassigned.
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 
 	case entriesHistory:
-		k := keyMap{Back: d.Back}
-		k.short = []key.Binding{k.Back}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k.short = []key.Binding{k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Help, k.Back, k.ForceQuit}}
 		return k
 
 	case entriesTags:
 		if es.tagNewMode {
-			k := keyMap{Confirm: d.Confirm, Back: d.Back}
-			k.short = []key.Binding{k.Confirm, k.Back}
+			// A focused textinput takes '?' as a character, so Help stays
+			// unassigned here.
+			k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+			k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
+			k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
 			return k
 		}
 		k := keyMap{
 			Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
 			NewTag: d.NewTag, Confirm: d.Confirm, Back: d.Back,
+			ForceQuit: d.ForceQuit, Help: d.Help,
 		}
-		k.short = []key.Binding{k.Up, k.Down, k.ToggleItem, k.NewTag, k.Confirm, k.Back}
+		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		k.short = []key.Binding{k.ToggleItem, k.NewTag, k.Confirm, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{
+			{pair, k.ToggleItem},
+			{k.NewTag, k.Confirm},
+			{k.Help, k.Back, k.ForceQuit},
+		}
 		return k
 
 	default: // entriesList
 		k := keyMap{
 			Up: d.Up, Down: d.Down, Back: d.Back,
 			Delete: d.Delete, Edit: d.Edit, History: d.History, Tags: d.Tags,
+			ForceQuit: d.ForceQuit, Help: d.Help,
 		}
 		hasEntries := len(es.entries) > 0
 		editable := hasEntries && canEdit(es.entries[es.idx], m.userID)
@@ -469,7 +532,13 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 		k.Edit.SetEnabled(editable)
 		k.Tags.SetEnabled(editable)
 		k.History.SetEnabled(hasEntries)
-		k.short = []key.Binding{k.Up, k.Down, k.Edit, k.Delete, k.Tags, k.History, k.Back}
+		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		k.short = []key.Binding{k.Edit, k.Delete, k.Tags, k.History, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{
+			{pair},
+			{k.Edit, k.Delete, k.Tags, k.History},
+			{k.Help, k.Back, k.ForceQuit},
+		}
 		return k
 	}
 }
@@ -491,13 +560,19 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 	rt := m.ratesScreen
 
 	if rt.editing {
-		k := keyMap{Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Confirm, k.Back}
+		// A focused textinput takes '?' as a character, so Help stays
+		// unassigned here — this is also reached via the override draft's
+		// rate step (rt.draft.active && rt.editing).
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 	}
 	if rt.draft.active {
-		k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
-		k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Back}
+		k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
 		return k
 	}
 
@@ -507,13 +582,35 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 		ListCurrency: d.ListCurrency, ListBudget: d.ListBudget,
 		NewOverride: d.NewOverride, ClearValue: d.ClearValue,
 		BrowseList: d.BrowseList, Save: d.Save, Back: d.Back,
+		ForceQuit: d.ForceQuit, Help: d.Help,
 	}
 	listsWithRows := rt.sec == secLists && len(rt.rows) > 0
 	k.ListCurrency.SetEnabled(listsWithRows)
 	k.ListBudget.SetEnabled(listsWithRows)
 	k.NewOverride.SetEnabled(rt.sec == secOverrides)
 	k.BrowseList.SetEnabled(rt.sec == secLists)
-	k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Save, k.Back}
+
+	// d is four different actions depending on the section, and one of them
+	// destroys a row. The generic "clear/revert" was accurate nowhere and
+	// dangerously vague on Overrides, so each section names its own.
+	switch rt.sec {
+	case secLists:
+		k.ClearValue.SetHelp("d", "use the default rate")
+		k.ListCurrency.SetHelp("c", "currency (empty clears)")
+		k.ListBudget.SetHelp("g", "budget (empty clears)")
+	case secMembers:
+		k.ClearValue.SetHelp("d", "use the default rate")
+	case secOverrides:
+		k.ClearValue.SetHelp("d", "delete this override")
+	}
+	sectionPair := pairHelp(k.NextSection, k.PrevSection, "tab/⇧tab", "section")
+	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{movePair, k.Confirm, k.Save, k.Back, k.Help, k.ForceQuit}
+	k.full = [][]key.Binding{
+		{sectionPair, movePair, k.Confirm},
+		{k.ListCurrency, k.ListBudget, k.NewOverride, k.ClearValue, k.BrowseList},
+		{k.Save, k.Help, k.Back, k.ForceQuit},
+	}
 	return k
 }
 
@@ -522,16 +619,23 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 // the active mode (rangeScreen.editing) decides which are live. Quit stays
 // off in both modes (q does not quit this screen today).
 func rangeKeys(m Model, d keyDefaults) keyMap {
-	k := keyMap{Confirm: d.Confirm, Back: d.Back}
+	k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
 	if m.rangeScreen.editing {
+		// Both fromInput and toInput are focused textinputs here, so Help
+		// stays unassigned — one keysFor branch covers both fields.
 		k.NextField = d.NextField
 		k.PrevField = d.PrevField
-		k.short = []key.Binding{k.Confirm, k.NextField, k.PrevField, k.Back}
+		pair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "next/prev field")
+		k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 	}
 	k.Up = d.Up
 	k.Down = d.Down
-	k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Back}
+	k.Help = d.Help
+	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
 	return k
 }
 
@@ -542,8 +646,10 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 // there is no separate loading state to model here. Quit stays off (q does
 // not quit this screen today).
 func listBrowserKeys(d keyDefaults) keyMap {
-	k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
-	k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Back}
+	k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
 	return k
 }
 
@@ -552,45 +658,67 @@ func listBrowserKeys(d keyDefaults) keyMap {
 // filters.go, budget.go); q DOES quit these screens today.
 func reportKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
 		Export: d.Export, Rates: d.Rates, LogHours: d.LogHours, Filters: d.Filters,
 		Budget: d.Budget, OpenEntries: d.OpenEntries,
 	}
-	k.short = []key.Binding{k.GroupBy, k.Export, k.Filters, k.Budget, k.Back, k.Quit}
+	k.short = []key.Binding{k.GroupBy, k.Export, k.Filters, k.Budget, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{k.GroupBy, k.Export, k.Rates, k.LogHours},
 		{k.Filters, k.Budget, k.OpenEntries},
-		{k.ChangeRange, k.Reload, k.Back, k.Quit},
+		{k.ChangeRange, k.Reload, k.Help, k.Back, k.Quit},
 	}
 	return k
 }
 
 func exportKeys(d keyDefaults) keyMap {
-	k := keyMap{Quit: d.Quit, Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
-	k.short = []key.Binding{k.Up, k.Down, k.Confirm, k.Back, k.Quit}
+	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
+	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.Quit}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.Quit}}
 	return k
 }
 
 func membersKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
 		SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
-	k.short = []key.Binding{k.Up, k.Down, k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Quit}
+	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
+	k.full = [][]key.Binding{
+		{pair, k.ToggleItem, k.SelectAll},
+		{k.Confirm},
+		{k.Help, k.Back, k.Quit},
+	}
 	return k
 }
 
 func filtersKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
 		ToggleItem: d.ToggleItem, SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
-	k.short = []key.Binding{k.NextField, k.Up, k.Down, k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Quit}
+	// "section", not "field": on this screen tab cycles the four filter
+	// sections (filters.go's NextField/PrevField arms move fs.sec), which is
+	// what the hand-written line it replaced said too.
+	sectionPair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "section")
+	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	k.short = []key.Binding{sectionPair, k.ToggleItem, k.Confirm, k.Back, k.Help, k.Quit}
+	k.full = [][]key.Binding{
+		{sectionPair, movePair, k.ToggleItem, k.SelectAll},
+		{k.Confirm},
+		{k.Help, k.Back, k.Quit},
+	}
 	return k
 }
 
 func budgetKeys(d keyDefaults) keyMap {
-	k := keyMap{Quit: d.Quit, Back: d.Back, Budget: d.Budget}
-	k.short = []key.Binding{k.Back, k.Budget, k.Quit}
+	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Back: d.Back, Budget: d.Budget}
+	// The default help text ("budgets") describes b from the report, where it
+	// opens this screen. Here the same key closes it.
+	k.Budget.SetHelp("b", "close budgets")
+	k.short = []key.Binding{k.Back, k.Budget, k.Help, k.Quit}
+	k.full = [][]key.Binding{{k.Budget}, {k.Help, k.Back, k.Quit}}
 	return k
 }

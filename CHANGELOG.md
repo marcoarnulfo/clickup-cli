@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`space`) or create a new one (`n`), then `Enter` to save. These are the
   entry's own time-tracking tags, distinct from a task's tags. The browser row
   now also shows an entry's tags compactly (`#focus #client-A`).
+- `?` opens a full list of the keys the current screen accepts.
 - Release pipeline (#97, #99, #103): pushing a `v*` tag now builds prebuilt
   binaries for darwin/linux/windows × amd64/arm64 and attaches them to the
   GitHub release, with `checksums.txt` signed via cosign keyless (verify with
@@ -32,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Navigation is handled by a single back-stack, so `esc` always returns to
   wherever you came from — including when the same screen is reachable from
   more than one place.
+- Every screen now shows the same generated key footer, built from the same
+  keymap that dispatches the keys — so it can no longer drift from what the
+  keys actually do. Four screens that never showed how to quit now do.
 
 ## [1.8.0] - 2026-07-23
 

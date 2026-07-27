@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,6 +95,11 @@ type Model struct {
 	latestVersion string
 
 	width, height int
+
+	// helpAll toggles the footer between short and full help (#69 Task 4).
+	// Flipped by '?' wherever keysFor(m).Help is enabled for the current
+	// screen; nothing renders it yet — Task 5 wires the footer into View().
+	helpAll bool
 
 	// current selection
 	year        int
@@ -610,6 +616,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, defaultKeys().ForceQuit) {
 			return m, tea.Quit
 		}
+		// Checked here, beside Quit/ForceQuit, rather than inside routeKey: that
+		// makes '?' behave identically on every screen keysFor enables it for,
+		// including screenLoading, which routeKey has no case for at all.
+		// keysFor(m).Help is already unassigned (a no-op key.Binding, so
+		// key.Matches never fires) on every screen where '?' must mean
+		// something else — the ten textinput-forwarding contexts, screenError
+		// (any key -> Home), and entriesConfirmDelete (any key but y cancels).
+		if key.Matches(msg, keysFor(m).Help) {
+			m.helpAll = !m.helpAll
+			return m, nil
+		}
 		return m.routeKey(msg)
 
 	case errMsg:
@@ -890,7 +907,7 @@ func (m Model) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m Model) screenBody() string {
 	switch m.screen {
 	case screenSetup:
 		return m.setup.view(m.theme)
@@ -898,7 +915,7 @@ func (m Model) View() string {
 		timerLine := ""
 		if m.runningTimer != nil {
 			if label := elapsedLabel(m.runningTimer.Start, m.now()); label != "" {
-				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label + "   (c: manage)"
+				timerLine = "⏱  running on " + m.runningTimer.TaskName + " — " + label
 			}
 		}
 		return m.home.view(m.theme, m.rangeLabel(), m.scope, m.homeMembersNote(), m.latestVersion, timerLine)
@@ -930,4 +947,16 @@ func (m Model) View() string {
 			m.theme.Help.Render("press a key to return home")
 	}
 	return ""
+}
+
+func (m Model) View() string {
+	body := m.screenBody()
+	if m.screen == screenError {
+		// Every key returns Home here, which is not a binding — the screen
+		// says so in its own sentence instead.
+		return body
+	}
+	// Screens differ on whether their body ends with a newline; trimming here
+	// is what puts the footer the same distance below every one of them.
+	return strings.TrimRight(body, "\n") + "\n\n" + footerView(m.theme, m.width, m.helpAll, keysFor(m))
 }

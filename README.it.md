@@ -121,6 +121,16 @@ di setup.
 
 ### Comandi nella TUI
 
+Ogni schermata mostra un footer con i tasti che accetta in quel momento, generato
+direttamente dalla stessa keymap che li instrada — non può quindi più disallinearsi
+da ciò che i tasti fanno davvero. Il footer è anche contestuale: un tasto che in quel
+momento non farebbe nulla semplicemente non compare. Nel browser delle voci ore, ad
+esempio, i tasti `e`/`x`/`t` (modifica/cancella/tag) scompaiono finché la voce
+evidenziata appartiene a un collega, perché quelle azioni funzionano solo sulle tue
+voci. Premi `?` per espandere il footer nell'elenco completo dei tasti di quella
+schermata, raggruppati per funzione; premi di nuovo `?` per richiuderlo — lo stato
+espanso resta attivo anche cambiando schermata, finché non lo disattivi.
+
 | Tasto | Schermata | Azione |
 |---|---|---|
 | `d` | Home | Apre il **selettore del periodo** (preset + personalizzato from/to) |
@@ -143,6 +153,7 @@ di setup.
 | `↑`/`↓` (anche `k`/`j`) | Export | Seleziona il formato |
 | `Enter` | Export | Salva `clickup-report-<periodo>.<ext>` nella cwd (la fattura CSV viene salvata come `clickup-invoice-<periodo>.csv`; `<periodo>` è `YYYY-MM` per un mese di calendario, oppure `YYYY-MM-DD_YYYY-MM-DD` per un periodo personalizzato) |
 | `Esc` | Export | Torna al report senza esportare |
+| `?` | Ovunque tranne mentre si scrive in un campo, la conferma di cancellazione e la schermata di errore | Espande il footer nell'elenco completo dei tasti accettati dalla schermata corrente (premi di nuovo per richiuderlo) |
 | `q` | Ovunque tranne setup / rates / range / browser liste / log ore / voci ore | Esce dall'applicazione |
 | `Ctrl+C` | Sempre | Esce dall'applicazione |
 

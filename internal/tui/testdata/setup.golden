@@ -4,5 +4,3 @@ ClickUp Hours CLI — Setup
 Paste your personal API token:
 
 > pk_xxx… (ClickUp → Settings → Apps → API Token) 
-
-Enter: confirm · Ctrl+C: quit

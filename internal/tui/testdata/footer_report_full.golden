@@ -1,0 +1,5 @@
+g grouping     f filters    m/s change range/scope
+e export       b budgets    r   reload            
+p rates        v entries    ?   help              
+n log hours                 esc back              
+                            q   quit              

@@ -14,7 +14,7 @@ import (
 func TestExportKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenExport}
-	want := []string{"down", "enter", "esc", "j", "k", "q", "up"}
+	want := []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "q", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("export labels = %v, want %v", got, want)
 	}

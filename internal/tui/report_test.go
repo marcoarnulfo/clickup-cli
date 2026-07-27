@@ -17,7 +17,7 @@ import (
 func TestReportKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenReport}
-	want := []string{"b", "e", "esc", "f", "g", "m", "n", "p", "q", "r", "s", "v"}
+	want := []string{"?", "b", "ctrl+c", "e", "esc", "f", "g", "m", "n", "p", "q", "r", "s", "v"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("report labels = %v, want %v", got, want)
 	}

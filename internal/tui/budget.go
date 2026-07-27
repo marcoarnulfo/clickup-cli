@@ -51,9 +51,8 @@ func renderBudgetBar(percentUsed float64) string {
 
 func (bm budgetModel) view(th theme) string {
 	title := th.Title.Render("Budget burn-down")
-	help := th.Help.Render("Esc/b: back to report · q: quit")
 	if len(bm.lines) == 0 {
-		return title + "\n\n" + th.Box.Render("No budgets configured.") + "\n\n" + help
+		return title + "\n\n" + th.Box.Render("No budgets configured.")
 	}
 	var rows strings.Builder
 	for _, l := range bm.lines {
@@ -61,5 +60,5 @@ func (bm budgetModel) view(th theme) string {
 			truncate(l.ListName, 24), renderBudgetBar(l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
 	}
 	body := th.Box.Render(strings.TrimRight(rows.String(), "\n"))
-	return title + "\n\n" + body + "\n\n" + help
+	return title + "\n\n" + body
 }

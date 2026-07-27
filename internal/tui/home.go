@@ -121,16 +121,7 @@ func (m homeModel) view(th theme, rangeLabel, scope, membersNote, latestVersion,
 	}
 	sel := th.Box.Render(fmt.Sprintf("Range: %s    Scope: %s",
 		th.Accent.Render(rangeLabel), scopeStr))
-	help := "d: range · ◂/▸ change month (this_month only) · w: this week/month · t: me/team · "
-	if scope == "team" {
-		help += "f: select members · " // only active in team scope
-	}
-	help += "Enter: generate report · n: log hours · "
-	if timerLine != "" {
-		help += "c: manage timer · "
-	}
-	help += "q: quit"
-	out := title + "\n\n" + sel + "\n\n" + th.Help.Render(help)
+	out := title + "\n\n" + sel
 	if m.errText != "" {
 		out += "\n\n" + th.Err.Render(m.errText)
 	}

@@ -639,7 +639,7 @@ func TestRatesNewOverrideOnExistingPairUpdatesIt(t *testing.T) {
 func TestRatesNormalModeKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{sec: secRules}}
-	want := []string{"d", "down", "enter", "esc", "h", "j", "k", "l", "left", "right", "s", "shift+tab", "tab", "up"}
+	want := []string{"?", "ctrl+c", "d", "down", "enter", "esc", "h", "j", "k", "l", "left", "right", "s", "shift+tab", "tab", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("rates normal-mode labels = %v, want %v", got, want)
 	}
@@ -689,7 +689,7 @@ func TestRatesNewOverrideKeyGatedToOverridesSection(t *testing.T) {
 func TestRatesDraftPickListKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{draft: overrideDraft{active: true, step: draftPickList}}}
-	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	want := []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("rates draft pick-list labels = %v, want %v", got, want)
 	}
@@ -698,7 +698,7 @@ func TestRatesDraftPickListKeyLabels(t *testing.T) {
 func TestRatesDraftPickMemberKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{draft: overrideDraft{active: true, step: draftPickMember}}}
-	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	want := []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("rates draft pick-member labels = %v, want %v", got, want)
 	}
@@ -717,7 +717,7 @@ func TestRatesDraftRateStepKeyLabels(t *testing.T) {
 		edit:    editOverrideRate,
 		draft:   overrideDraft{active: true, step: draftRate},
 	}}
-	want := []string{"enter", "esc"}
+	want := []string{"ctrl+c", "enter", "esc"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("rates draft rate-step labels = %v, want %v", got, want)
 	}
@@ -731,7 +731,7 @@ func TestRatesDraftRateStepKeyLabels(t *testing.T) {
 func TestRatesEditingModeKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{editing: true, edit: editListRate}}
-	want := []string{"enter", "esc"}
+	want := []string{"ctrl+c", "enter", "esc"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("rates editing-mode labels = %v, want %v", got, want)
 	}

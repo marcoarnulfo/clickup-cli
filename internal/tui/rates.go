@@ -896,8 +896,12 @@ func (rt ratesModel) view(th theme) string {
 	if rt.msg != "" {
 		b += "\n" + th.Err.Render(rt.msg) + "\n"
 	}
-	b += "\n" + th.Help.Render(rt.help())
 	b += "\n" + th.Help.Render("Rate precedence: (list,member) > member > list > default")
+	// A rate of 0 is a real rate, not an unset one — the distinction decides
+	// what a client is billed, so it belongs on the screen rather than only in
+	// the README. It used to ride along in the key-hint line ("Enter: rate (0:
+	// bill at zero)"); the generated footer names keys, not values.
+	b += "\n" + th.Help.Render("A rate of 0 bills at zero — to unset a value instead, submit an empty field.")
 	return b
 }
 

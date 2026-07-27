@@ -573,8 +573,7 @@ func (m Model) entriesView(th theme) string {
 		e := es.entries[es.idx]
 		return th.Title.Render("Delete entry") + "\n\n" +
 			"Delete " + th.Accent.Render(truncate(e.TaskName, 40)) + " (" +
-			duration.FormatHours(e.Duration) + ")?\n\n" +
-			th.Help.Render("y: delete · any other key: cancel")
+			duration.FormatHours(e.Duration) + ")?"
 	}
 	if es.mode == entriesEdit {
 		return entriesEditView(th, es)
@@ -586,7 +585,7 @@ func (m Model) entriesView(th theme) string {
 		b := th.Title.Render("Tags") + "  " + th.Accent.Render(truncate(tagPickerTaskName(es), 40)) + "\n\n"
 		if es.tagLoading {
 			b += th.Help.Render("Loading tags…") + "\n"
-			return b + "\n" + th.Help.Render("Esc: cancel")
+			return b
 		}
 		for i, name := range es.tagAll {
 			cursor := "  "
@@ -606,13 +605,11 @@ func (m Model) entriesView(th theme) string {
 		}
 		if es.tagNewMode {
 			b += "\n" + es.input.View() + "\n"
-			b += "\n" + th.Help.Render("Enter: add · Esc: back")
 			if es.msg != "" {
 				b += "\n" + th.Err.Render(es.msg)
 			}
 			return b
 		}
-		b += "\n" + th.Help.Render("↑/↓ select · space: toggle · n: new tag · Enter: save · Esc: cancel")
 		if es.msg != "" {
 			b += "\n" + th.Err.Render(es.msg)
 		}
@@ -621,7 +618,6 @@ func (m Model) entriesView(th theme) string {
 	b := th.Title.Render("Entries") + "\n\n"
 	if len(es.entries) == 0 {
 		b += th.Help.Render("No entries in the current range.") + "\n"
-		b += "\n" + th.Help.Render("Esc: back to the report")
 		return b
 	}
 	for i, e := range es.entries {
@@ -648,7 +644,6 @@ func (m Model) entriesView(th theme) string {
 		}
 		b += cursor + line + "\n"
 	}
-	b += "\n" + th.Help.Render("↑/↓ select · e: edit · x: delete · t: tags · h: history · Esc: back")
 	if es.msg != "" {
 		style := th.OK
 		if es.msgErr {
@@ -672,7 +667,6 @@ func entriesEditView(th theme, es entriesModel) string {
 	if es.msg != "" {
 		b += "\n" + th.Err.Render(es.msg)
 	}
-	b += "\n\n" + th.Help.Render("Esc: cancel")
 	return b
 }
 

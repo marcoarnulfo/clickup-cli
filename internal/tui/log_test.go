@@ -453,7 +453,7 @@ func TestDemoGuidedListPickIssuesDemoTaskListMsg(t *testing.T) {
 
 func TestDemoFormSubmitIssuesLogDoneMsgNoIO(t *testing.T) {
 	m := demoLogModel()
-	m.logScreen = enterForm(m.logScreen)
+	m.logScreen = enterForm(m.logScreen, m.now())
 	m.logScreen.taskID = "demo-t1"
 	m.logScreen.durStr = "1h"
 	m.logScreen.formField = 3 // billable step
@@ -599,17 +599,17 @@ func TestLogKeyLabelsPerStep(t *testing.T) {
 		formField int
 		want      []string
 	}{
-		{"mode select", logModeSelect, 0, []string{"1", "2", "3", "esc"}},
-		{"timer pick", logTimerPick, 0, []string{"1", "2", "esc"}},
-		{"list pick", logListPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
-		{"task pick", logTaskPick, 0, []string{"down", "enter", "esc", "j", "k", "up"}},
-		{"id input", logIDInput, 0, []string{"enter", "esc"}},
-		{"form duration", logForm, 0, []string{"enter", "esc"}},
-		{"form date", logForm, 1, []string{"enter", "esc"}},
-		{"form note", logForm, 2, []string{"enter", "esc"}},
-		{"form billable", logForm, 3, []string{"N", "Y", "enter", "esc", "n", "y"}},
-		{"timer running", logTimerRunning, 0, []string{"esc", "s"}},
-		{"done", logDone, 0, []string{"enter", "esc", "r"}},
+		{"mode select", logModeSelect, 0, []string{"1", "2", "3", "?", "ctrl+c", "esc"}},
+		{"timer pick", logTimerPick, 0, []string{"1", "2", "?", "ctrl+c", "esc"}},
+		{"list pick", logListPick, 0, []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}},
+		{"task pick", logTaskPick, 0, []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}},
+		{"id input", logIDInput, 0, []string{"ctrl+c", "enter", "esc"}},
+		{"form duration", logForm, 0, []string{"ctrl+c", "enter", "esc"}},
+		{"form date", logForm, 1, []string{"ctrl+c", "enter", "esc"}},
+		{"form note", logForm, 2, []string{"ctrl+c", "enter", "esc"}},
+		{"form billable", logForm, 3, []string{"?", "N", "Y", "ctrl+c", "enter", "esc", "n", "y"}},
+		{"timer running", logTimerRunning, 0, []string{"?", "ctrl+c", "esc", "s"}},
+		{"done", logDone, 0, []string{"?", "ctrl+c", "enter", "esc", "r"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

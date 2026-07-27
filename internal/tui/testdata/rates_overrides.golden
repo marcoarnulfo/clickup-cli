@@ -7,5 +7,5 @@ Billing settings
 
 No (list,member) overrides — the most specific level of the precedence.
 
-Tab: section · ↑/↓ select · Enter: edit (0: bill at zero) · n: new override · d: delete · s: save · Esc: cancel
 Rate precedence: (list,member) > member > list > default
+A rate of 0 bills at zero — to unset a value instead, submit an empty field.
