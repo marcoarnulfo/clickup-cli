@@ -36,7 +36,7 @@ func TestHomeKeyLabels(t *testing.T) {
 	m := newTestModel()
 	m.screen = screenHome
 	m.scope = "me"
-	want := []string{"d", "enter", "h", "l", "left", "n", "q", "right", "t", "w"}
+	want := []string{"?", "ctrl+c", "d", "enter", "h", "l", "left", "n", "q", "right", "t", "w"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("home labels (me scope, no running timer) = %v, want %v", got, want)
 	}
@@ -113,6 +113,32 @@ func TestQuitBindingPerScreen(t *testing.T) {
 		m.screen = s
 		if got := keysFor(m).Quit.Enabled(); got != want {
 			t.Errorf("screen %v: Quit enabled = %v, want %v", s, got, want)
+		}
+	}
+}
+
+// ForceQuit is accepted everywhere but advertised only where q cannot quit.
+// The two mechanisms are different on purpose: Enabled() is what key.Matches
+// consults, short is what the footer renders.
+func TestForceQuitAcceptedEverywhereAdvertisedOnSix(t *testing.T) {
+	t.Parallel()
+	advertised := map[screen]bool{
+		screenSetup: true, screenRates: true, screenLog: true,
+		screenRange: true, screenListBrowser: true, screenEntries: true,
+	}
+	for s := range 14 {
+		sc := screen(s)
+		m := newTestModel()
+		m.screen = sc
+		k := keysFor(m)
+		if !k.ForceQuit.Enabled() {
+			t.Errorf("screen %v: ctrl+c not accepted", sc)
+		}
+		shown := slices.ContainsFunc(k.ShortHelp(), func(b key.Binding) bool {
+			return slices.Contains(b.Keys(), "ctrl+c")
+		})
+		if shown != advertised[sc] {
+			t.Errorf("screen %v: ctrl+c advertised = %v, want %v", sc, shown, advertised[sc])
 		}
 	}
 }

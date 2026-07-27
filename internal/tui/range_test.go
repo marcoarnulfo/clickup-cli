@@ -15,7 +15,7 @@ import (
 func TestRangeListModeKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
-	want := []string{"down", "enter", "esc", "j", "k", "up"}
+	want := []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("range list-mode labels = %v, want %v", got, want)
 	}
@@ -28,7 +28,7 @@ func TestRangeEditingModeKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRange, rangeScreen: newRange(report.PresetThisMonth), nav: []screen{screenHome}}
 	m.rangeScreen.editing = true
-	want := []string{"enter", "esc", "shift+tab", "tab"}
+	want := []string{"ctrl+c", "enter", "esc", "shift+tab", "tab"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("range editing-mode labels = %v, want %v", got, want)
 	}

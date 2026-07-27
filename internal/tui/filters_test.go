@@ -176,7 +176,7 @@ func TestFiltersBillableANoOp(t *testing.T) {
 func TestFiltersKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := filtersFixture()
-	want := []string{" ", "a", "down", "enter", "esc", "j", "k", "q", "shift+tab", "tab", "up"}
+	want := []string{" ", "?", "a", "ctrl+c", "down", "enter", "esc", "j", "k", "q", "shift+tab", "tab", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("filters labels = %v, want %v", got, want)
 	}

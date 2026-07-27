@@ -18,10 +18,10 @@ func TestSetupKeyLabelsPerStep(t *testing.T) {
 		step setupStep
 		want []string
 	}{
-		{"token", stepToken, []string{"enter"}},
-		{"workspace", stepWorkspace, []string{"down", "enter", "j", "k", "up"}},
-		{"rate", stepRate, []string{"enter"}},
-		{"currency", stepCurrency, []string{"enter"}},
+		{"token", stepToken, []string{"ctrl+c", "enter"}},
+		{"workspace", stepWorkspace, []string{"?", "ctrl+c", "down", "enter", "j", "k", "up"}},
+		{"rate", stepRate, []string{"ctrl+c", "enter"}},
+		{"currency", stepCurrency, []string{"ctrl+c", "enter"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
