@@ -263,10 +263,11 @@ git commit -m "feat(tui): render a screen's bindings as a help footer (#69)"
 **Files:**
 - Modify: `internal/tui/keys.go`
 - Modify: `internal/tui/keys_test.go` and the per-screen `_test.go` files holding parity tests (`home_test.go` or `keys_test.go`, `report_test.go`, `export_test.go`, `members_test.go`, `filters_test.go`, `budget_test.go`, `range_test.go`, `listbrowser_test.go`, `setup_test.go`, `log_test.go`, `entries_test.go`, `rates_test.go` — find them with `grep -rn enabledLabels internal/tui/*_test.go`)
-- Create: `internal/tui/testdata/footer_<screen>[_<mode>].golden`, one per distinct label set
+
+**This task creates no golden and changes none** — nothing it declares is rendered yet. Task 3 adds the footer goldens.
 
 **Interfaces:**
-- Consumes: `footerView`, `pairHelp`, `anyKeyHelp` from Task 1.
+- Consumes: `pairHelp` and `anyKeyHelp` from Task 1.
 - Produces: `keyMap.Help`, `keyMap.ForceQuit`, and a populated `full` on every constructor.
 
 - [ ] **Step 1: Add the two bindings to `keyMap`**
