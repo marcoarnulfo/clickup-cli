@@ -44,9 +44,12 @@ Promoting it later is a change to one function.
   `(c: manage)` (assembled in `app.go`, rendered at `home.go:145`), and
   `rates_view.go:64` says `press 'b' to browse the workspace`.
 - **`full` is populated by 2 of the 12 `keysFor` constructors** (`homeKeys`,
-  `reportKeys`), and both are shaped one-binding-per-group — which
-  `help.FullHelpView` renders as one wide row, not as columns. Ten constructors
-  leave it nil.
+  4 columns; `reportKeys`, 3), and both are already grouped semantically with
+  the globals last. Ten constructors leave it nil. **The convention exists; it
+  just has not been applied to the other ten.**
+- **`short` is already curated**, not a dump of every binding: `reportKeys`
+  advertises 6 of its 11. What it does not do yet is collapse key pairs — it
+  lists `Up` and `Down` as two items.
 - **`ForceQuit` (ctrl+c) is accepted on all 14 screens** — `app.go:610` checks
   it before routing — but it lives only in `keyDefaults`, never in `keyMap`, so
   no parity test declares it and no screen advertises it except Setup and Log,
@@ -115,34 +118,58 @@ entries a quit hint they have never had. Every screen's parity test gains
 `ctrl+c` — a correction, not an expansion: the key was always accepted and
 never declared.
 
-**Key pairs.** Listing every binding separately turns today's `↑/↓ select` into
-`↑/k move up · ↓/j move down` on eight screens. Instead one representative per
-pair goes into `short`/`full`, and its help text names the whole pair:
-`↑/↓/j/k` + `move`. The partner binding stays enabled and matches as before.
-This is also the first time the vim aliases are documented anywhere.
+**Key pairs.** `short` lists `Up` and `Down` separately today, which would
+render as `↑/k move up · ↓/j move down` where the hand-written line says
+`↑/↓ select`. Instead one representative per pair goes into `short`/`full`, and
+its help text names the whole pair: `↑/↓/j/k` + `move`. The partner binding
+stays enabled and matches as before — only the advertisement collapses. This is
+also the first time the vim aliases are documented anywhere.
 
-### 4.4 Full help is three columns
+The three pairs are `Up`/`Down`, `NextField`/`PrevField` (tab / shift+tab) and
+`PrevMonth`/`NextMonth`. `NextSection`/`PrevSection` on Rates is a fourth.
+
+**Display-only bindings.** A pair item is a `key.Binding` that exists solely to
+be rendered — it is never passed to `key.Matches`, because matching only ever
+reads `keyMap`'s own fields. That makes it the right tool for one more case the
+generated footer would otherwise lose: the delete confirmation currently reads
+`y: delete · any other key: cancel`, and "any other key" is the *absence* of a
+match, which no real binding can express. It becomes a display-only item so the
+footer keeps saying it.
+
+### 4.4 Full help is columns, globals last
 
 `help.FullHelpView` renders **one column per group**, bindings stacked
-vertically inside it. All 12 constructors adopt the same grouping:
+vertically inside it. `homeKeys` and `reportKeys` already do this well; the
+convention they embody is extended to the other ten rather than invented:
 
-| Column | Contents |
-|---|---|
-| Movement | cursor, section/field switching, month navigation |
-| Actions | what this screen does |
-| Global | `?`, back, quit / force-quit |
+- one column per coherent group of actions, in the order a user would look for
+  them (movement first where a screen has it, then what the screen *does*);
+- **the last column is always the globals** — `?`, back, quit or force-quit;
+- a screen with few bindings gets one column plus the globals. Empty groups are
+  skipped by bubbles itself (`shouldRenderColumn`), so no special case is
+  needed.
 
-Empty groups are skipped by bubbles itself (`shouldRenderColumn`), so a screen
-with no movement keys needs no special case.
-
-The two existing `full` slices are reshaped: today they are one binding per
-group, which renders as a single wide row.
+The two existing slices are **not reshaped**. They gain `Help`, and
+`reportKeys` keeps `Back`/`Quit` where they are.
 
 ### 4.5 `?` toggles, and `esc` is not involved
 
-`?` is a new binding, enabled everywhere **except the 10 input-forwarding
-contexts** — typing `?` into a note or a task ID must insert the character.
-`keysFor` already branches on exactly those modes, so the gate has a home.
+`?` is a new binding, enabled everywhere except **12 contexts**:
+
+- the **10 input-forwarding contexts** — typing `?` into a note or a task ID
+  must insert the character. `keysFor` already branches on exactly those modes,
+  so the gate has a home.
+- **`screenError`**, whose handler returns Home on *any* key. Enabling `?`
+  there would swallow the only way out.
+- **`entriesConfirmDelete`**, whose `default` arm cancels on *any other key*.
+  Enabling `?` there would turn a cancel into a help toggle.
+
+The last two matter more than they look: on both screens every key is already
+spoken for, so a new global binding does not add a feature, it removes one.
+
+`?` is handled in `Update`, next to `Quit` and `ForceQuit` and before
+`routeKey`, so it works identically on every screen that enables it — including
+`screenLoading`, which routes no keys at all.
 
 `?` toggles `m.helpAll`. It persists across screens for the session.
 **`esc` does not close it**: `Back` keeps meaning `pop()` and nothing else.
@@ -203,11 +230,14 @@ new code in isolation, which the composed ones cannot do as precisely.
    here** — this is the task where `short`/`full` become real, and a golden of
    the real footer is the only thing that shows a group was mis-assigned.
    Nothing renders them on screen yet.
-3. **Wiring.** `Model.View()` appends the footer; the 25 hint lines are
+3. **`?`.** `m.helpAll`, the toggle arm in `Update`, and the gating tests.
+   Nothing renders it yet, so nothing moves.
+4. **Wiring.** `Model.View()` appends the footer; the 25 hint lines are
    deleted; `(c: manage)` is stripped. All 21 goldens regenerate **once**, and
    every diff is read.
-4. **`?`.** `helpAll`, the toggle arm, and tests that full help renders columns
-   and that `?` still types into the inputs where it is gated off.
+
+The toggle deliberately lands *before* the wiring. The other order would ship
+one task in which the footer advertises `? help` and pressing `?` does nothing.
 5. **Docs.** `CHANGELOG`, both READMEs.
 
 **A golden that moves during tasks 1 or 2 is a bug, not an update.**
@@ -217,8 +247,10 @@ new code in isolation, which the composed ones cannot do as precisely.
 - **Footer content tests, per screen and per mode**: assert the rendered footer
   against a golden. This is where the tranche's correctness lives — the 16 body
   goldens only prove a line was removed.
-- **`?` gating**: assert `keysFor(m).Help.Enabled()` is false in each of the 10
-  input contexts, and that a `?` keypress there reaches the `textinput`.
+- **`?` gating**: assert `keysFor(m).Help.Enabled()` is false in each of the 12
+  contexts; that a `?` keypress reaches the `textinput` in the 10 input ones;
+  that it still returns Home from `screenError`; and that it still cancels a
+  pending delete.
 - **Advertisement vs acceptance**: assert that `ForceQuit` is enabled on all 14
   screens but present in `short` on exactly the six where `Quit` is disabled.
 - **Truncation**: assert that a narrow width truncates with `…` and that width
