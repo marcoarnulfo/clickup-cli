@@ -316,8 +316,8 @@ func keysFor(m Model) keyMap {
 // switch. Members, Timer and the month-nav pair are
 // the contextually gated bindings: Members to the team scope, Timer to a
 // running timer, PrevMonth/NextMonth to the this_month preset outside week
-// mode — home.go's own view already hides/shows the first two conditionally
-// (the "f: select members" and "c: manage timer" help fragments); the guard
+// mode. home.go's view used to hide and show the first two through
+// hand-written help fragments, which the generated footer replaced; the guard
 // for all three used to live inline in the handler and now lives here
 // instead (see TestHomeMembersKeyIsTeamScopeOnly, TestHomeTimerKeyMatchesGuard
 // and TestHomeMonthNavKeysMatchGuard).

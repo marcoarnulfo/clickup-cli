@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -955,5 +956,7 @@ func (m Model) View() string {
 		// says so in its own sentence instead.
 		return body
 	}
-	return body + "\n\n" + footerView(m.theme, m.width, m.helpAll, keysFor(m))
+	// Screens differ on whether their body ends with a newline; trimming here
+	// is what puts the footer the same distance below every one of them.
+	return strings.TrimRight(body, "\n") + "\n\n" + footerView(m.theme, m.width, m.helpAll, keysFor(m))
 }
