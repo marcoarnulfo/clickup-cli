@@ -612,7 +612,7 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 		k.NextField = d.NextField
 		k.PrevField = d.PrevField
 		pair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "next/prev field")
-		k.short = []key.Binding{k.Confirm, pair, k.Back, k.ForceQuit}
+		k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}
 		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit}}
 		return k
 	}
@@ -685,7 +685,10 @@ func filtersKeys(d keyDefaults) keyMap {
 		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
 		ToggleItem: d.ToggleItem, SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
-	sectionPair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "next/prev field")
+	// "section", not "field": on this screen tab cycles the four filter
+	// sections (filters.go's NextField/PrevField arms move fs.sec), which is
+	// what the hand-written line it replaced said too.
+	sectionPair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "section")
 	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 	k.short = []key.Binding{sectionPair, movePair, k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
@@ -698,6 +701,9 @@ func filtersKeys(d keyDefaults) keyMap {
 
 func budgetKeys(d keyDefaults) keyMap {
 	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Back: d.Back, Budget: d.Budget}
+	// The default help text ("budgets") describes b from the report, where it
+	// opens this screen. Here the same key closes it.
+	k.Budget.SetHelp("b", "close budgets")
 	k.short = []key.Binding{k.Back, k.Budget, k.Help, k.Quit}
 	k.full = [][]key.Binding{{k.Budget}, {k.Help, k.Back, k.Quit}}
 	return k
