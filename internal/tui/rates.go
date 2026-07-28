@@ -525,6 +525,21 @@ func (rt ratesModel) startDraft() ratesModel {
 	return rt
 }
 
+// selected returns the selected row of a section. It exists so tests can name
+// a section's selection without depending on how the model stores it.
+func (rt ratesModel) selected(sec ratesSection) int {
+	switch sec {
+	case secMembers:
+		return rt.memIdx
+	case secOverrides:
+		return rt.ovIdx
+	case secRules:
+		return rt.ruleIdx
+	default:
+		return rt.idx
+	}
+}
+
 // selCount is the number of selectable rows in the active section (the
 // Overrides section has one extra row: "new override").
 func (rt ratesModel) selCount() int {

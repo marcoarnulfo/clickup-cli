@@ -710,6 +710,44 @@ func TestRatesDraftPickMemberKeyLabels(t *testing.T) {
 // editing branch as every other field edit (TestRatesEditingModeKeyLabels) —
 // there is no dedicated "draft rate" branch in ratesKeys, only the shared
 // editing one, reached here via the draft.
+// Each section keeps its own selected row: moving in one section must not
+// disturb another, and returning to a section must restore where you were.
+// This is the property the four parallel indices existed to provide, and the
+// one a single array indexed by section has to preserve.
+func TestRatesSelectionIsPerSection(t *testing.T) {
+	t.Parallel()
+	m := Model{screen: screenRates, ratesScreen: ratesModel{
+		sec:     secLists,
+		rows:    []rateRow{{listID: "l1", name: "Website"}, {listID: "l2", name: "Internal"}},
+		members: []memberRow{{id: 1, name: "alice"}, {id: 2, name: "bob"}},
+	}}
+
+	// Move to the second list, then switch to Members.
+	mm, _ := m.updateRates(keyMsg("down"))
+	mm, _ = mm.(Model).updateRates(keyMsg("tab"))
+	rt := mm.(Model).ratesScreen
+	if rt.sec != secMembers {
+		t.Fatalf("tab did not reach the Members section: sec=%v", rt.sec)
+	}
+	if got := rt.selected(secMembers); got != 0 {
+		t.Errorf("Members selection = %d, want 0: a fresh section starts at its first row", got)
+	}
+
+	// Move inside Members, then come back to Lists.
+	mm, _ = mm.(Model).updateRates(keyMsg("down"))
+	mm, _ = mm.(Model).updateRates(keyMsg("shift+tab"))
+	rt = mm.(Model).ratesScreen
+	if rt.sec != secLists {
+		t.Fatalf("shift+tab did not return to the Lists section: sec=%v", rt.sec)
+	}
+	if got := rt.selected(secLists); got != 1 {
+		t.Errorf("Lists selection = %d, want 1: leaving and returning must not reset it", got)
+	}
+	if got := rt.selected(secMembers); got != 1 {
+		t.Errorf("Members selection = %d, want 1: it must survive leaving the section", got)
+	}
+}
+
 func TestRatesDraftRateStepKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{
