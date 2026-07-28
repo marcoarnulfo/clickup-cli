@@ -204,9 +204,24 @@ func reportTable(th theme, r report.Report, width int) string
 scrivono due tabelle diverse:
 
 - `Hours` e `Billed`: larghezza fissa **8**.
-- `Amount`: la più lunga delle stringhe effettivamente renderizzate, **senza
-  tetto**. Troncare un importo nasconde soldi; se un bucket multi-valuta è
-  largo, a cedere è l'etichetta.
+- `Amount`: la più lunga delle stringhe effettivamente renderizzate. A cedere
+  per prima è sempre l'etichetta.
+
+  > **Emendamento (review finale whole-branch).** Questa regola diceva
+  > originariamente «**senza tetto**: troncare un importo nasconde soldi», ed
+  > era sbagliata. `GroupByTotal` è il raggruppamento del primo caricamento e il
+  > suo unico bucket porta **tutte** le valute dello workspace: con tre valute
+  > la tabella sforava già a 60 colonne, con cinque anche a 100. La colonna
+  > `Amount` ha quindi un tetto, e viene troncata **come ultima risorsa**, solo
+  > quando `Item` è già al suo pavimento.
+  >
+  > Il ragionamento originale era sbagliato nella premessa, non nella
+  > conclusione: un importo *per bucket* è **indicativo**, come dice già il
+  > commento di `reportRows` — l'arrotondamento `PerDay` può scostarsi di
+  > qualche centesimo dai sottototali su un raggruppamento fine. La cifra
+  > autorevole è `CurrencySubtotals`, che ha righe proprie più in basso nella
+  > stessa tabella. Troncare un indicativo non nasconde soldi: l'esatto è
+  > quattro righe sotto.
 - Overhead: **2** bordi verticali (solo esterni: i separatori fra colonne sono
   spenti, vedi sotto) + 4 colonne × 2 di padding = **10**. La costante è una
   previsione sul comportamento di `lipgloss/table`, non un dato: l'invariante
