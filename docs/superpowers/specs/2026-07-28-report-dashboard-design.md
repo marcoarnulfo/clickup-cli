@@ -41,14 +41,18 @@ aperta a milestone chiusa.
 
 - `ratesModel` porta quattro campi di selezione: `idx` (Liste), `memIdx`
   (Membri), `ovIdx` (Override), `ruleIdx` (Regole).
-- `move` fa **due switch a 4 vie**, uno per leggere l'indice della sezione
-  attiva e uno per riscriverlo. È l'unica funzione la cui duplicazione sia
-  interamente eliminabile.
-- `selCount`, `startEdit`, `commit` e `clearSelected` fanno anch'esse uno switch
-  sulla sezione, ma **il loro switch non è duplicazione**: i conteggi sono
+- `move` fa **due switch**, uno per leggere l'indice della sezione attiva (a 3
+  vie: `secLists` è gestito dall'inizializzatore `cur := rt.idx`) e uno a 4 vie
+  per riscriverlo. È l'unica funzione la cui duplicazione sia interamente
+  eliminabile.
+- `selCount`, `startEdit` e `clearSelected` fanno anch'esse uno switch sulla
+  sezione, ma **il loro switch non è duplicazione**: i conteggi sono
   genuinamente diversi (`len(rows)`, `len(members)`, `len(overrides)+1`,
   `ruleCount`) e i comportamenti di modifica/cancellazione divergono per
   sezione. In quelle funzioni cambia solo la *lettura* dell'indice.
+- `commit` **non** fa uno switch sulla sezione: il suo switch è a 8 vie su
+  `rt.edit` (`editKind`). Legge i quattro indici, e basta. La issue #117 dice
+  altro; la issue si sbaglia.
 - `rates_view.go` legge i quattro campi in **sette occorrenze** distribuite
   sulle quattro sezioni (righe 54 e 56 per le Liste, 77 e 79 per i Membri, 95 e
   97 per gli Override, 134 per le Regole).
@@ -104,10 +108,11 @@ aperta a milestone chiusa.
 Verificato leggendo il sorgente delle versioni bloccate in `go.mod`, non la
 documentazione:
 
-- **`lipgloss/table` v1.1.0** — `table.New()` inizializza `borderStyle` con
-  `lipgloss.NewStyle()`, cioè **il renderer di default**: va iniettato con
-  `BorderStyle`, altrimenti è la stessa falla che la tranche B2 ha evitato non
-  usando `help.New()`. I default sono `borderColumn: true` (separatori fra
+- **`lipgloss/table` v1.1.0** — `table.New()` lascia `borderStyle` al suo valore
+  zero, e uno `lipgloss.Style` zero renderizza attraverso **il renderer di
+  default**: va iniettato con `BorderStyle`, altrimenti è la stessa falla che la
+  tranche B2 ha evitato non usando `help.New()`. I default sono
+  `borderColumn: true` (separatori fra
   colonne) e **`wrap: true`** — quest'ultimo manderebbe a capo un'etichetta
   lunga invece di troncarla, spezzando l'invariante "una riga per bucket".
   Entrambi vanno spenti.
@@ -207,17 +212,36 @@ scrivono due tabelle diverse:
   previsione sul comportamento di `lipgloss/table`, non un dato: l'invariante
   vincolante è la *larghezza renderizzata*, ed è il test §7.3 a stabilirla. Se
   il conteggio reale risulta diverso, si corregge la costante, non il test.
-- `itemW = width - 10 - 8 - 8 - amountW`, clampato in `[12, maxLabel]`, dove
-  `maxLabel` è la più lunga fra le etichette dei bucket **e** quelle dei totali
-  (`TOTAL`, `  subtotal EUR`).
-  - Sopra `maxLabel` non si allarga: niente spazio vuoto stirato.
-  - Sotto 12 si accetta lo sforamento e lo si documenta: a 30 colonne non c'è
-    niente da salvare.
-- `width <= 0` → `itemW = min(maxLabel, 32)`, cioè esattamente il layout di
-  oggi.
+- `itemW = width - 10 - 8 - 8 - amountW`, dove `maxLabel` è la più lunga fra le
+  etichette dei bucket **e** quelle dei totali (`TOTAL`, `  subtotal EUR`), poi:
+  - non si allarga sopra `maxLabel`: niente spazio vuoto stirato;
+  - non si stringe sotto 12: a quel punto si accetta lo sforamento, perché a 30
+    colonne non c'è niente da salvare.
+  - **Quando `maxLabel` è minore di 12 vince il tetto, non il pavimento.** Non è
+    un caso di scuola: `GroupByTotal` è il raggruppamento del primo caricamento
+    e le sue etichette sono `Total` e `TOTAL`, cioè `maxLabel = 5`. Un
+    `clamp(x, 12, 5)` è un intervallo invertito, e prendere il pavimento per
+    primo stirerebbe la colonna a 12 contraddicendo la riga sopra. La formula è
+    quindi `max(min(12, maxLabel), min(maxLabel, disponibile))`.
+- `width <= 0` → `itemW = min(maxLabel, 32)`. È la stessa **regola** di prima
+  della #66 (un tetto a 32 colonne), non lo stesso rendering: oggi la colonna è
+  larga 32 fisse anche quando le etichette sono corte, mentre questa si adatta
+  al contenuto. Il primo render cambierà aspetto, ed è voluto.
 
 Le etichette si troncano a `itemW` con la `truncate` esistente, che taglia per
 rune e non per byte.
+
+**Il dimensionamento è implicito, e `Table.Width()` non va chiamata.** Le
+colonne si dimensionano da sole sul contenuto: celle numeriche già formattate,
+etichette già troncate a `itemW`, `Padding(0, 1)` applicato a ogni cella dalla
+`StyleFunc`. `Table.Width(w)` è una trappola con questa configurazione: in
+`resizing.go`, `totalHorizontalBorder()` conta **solo i separatori fra colonne**,
+quindi con `BorderColumn(false)` restituisce 0 e ignora i due bordi esterni,
+mentre `String()` taglia l'output con `MaxWidth(t.width)`. Il risultato è una
+tabella renderizzata a `w+2` e poi amputata a `w`: **il bordo destro sparisce**.
+Il suo resizer inoltre restringe le colonne più larghe senza riguardo per le
+larghezze fisse (che onora solo via `style.GetWidth()`, dove `Style.Width`
+include il padding, quindi «8» darebbe 6 colonne di contenuto).
 
 **Configurazione della tabella:**
 
@@ -280,6 +304,10 @@ Regole, tutte vincolanti:
 - Le ore di un'entry sono accreditate **al giorno in cui l'entry inizia**,
   letto in `loc` — la stessa regola di `groupKeys` per `GroupByDay`, così le
   due viste non possono divergere.
+- **Si contano tutte le ore, fatturabili e non**, coerentemente con
+  `Bucket.Hours` e con l'etichetta `hours/day`. Non è ovvio e va detto: la
+  sparkline risponde a «quando ho lavorato», non a «quando ho fatturato», e la
+  quota fatturabile ha già la sua riga sotto la tabella.
 - I giorni si iterano per `AddDate(0, 0, 1)` sulla mezzanotte in `loc` e si
   indicizzano per chiave formattata, **mai** per aritmetica sui secondi: con
   l'ora legale un giorno non dura 24 ore.
@@ -316,8 +344,10 @@ entry visibili e `loc`:
 func (m Model) dailySeries() []float64
 ```
 
-**Non** si aggiunge un campo `Daily` a `report.Report`: cambierebbe il tipo di
-dominio e l'output JSON del CLI per un bisogno di rendering.
+**Non** si aggiunge un campo `Daily` a `report.Report`: caricherebbe il tipo di
+dominio di un campo che esiste solo per una vista. (L'output JSON del CLI non
+c'entra: `export.JSON` serializza una sua `jsonReport`, non `report.Report`,
+quindi un campo in più lì non lo toccherebbe comunque.)
 
 La sparkline compare sotto la riga di summary, **solo** se il range copre ≥ 2
 giorni e il report ha almeno un bucket, seguita dall'etichetta attenuata
@@ -326,7 +356,9 @@ giorni e il report ha almeno un bucket, seguita dall'etichetta attenuata
 è il mese più lungo.
 
 La demo la esercita senza modifiche a `demo.go`: le entry fixture cadono nei
-giorni 3, 5, 6, 7, 9 e 10 del range, quindi i buchi si vedono.
+giorni **2, 3, 5, 6, 7, 9 e 10** del range, quindi i buchi si vedono. Il giorno
+2 è la sessione di sprint planning non fatturabile, e comparirà come barra
+proprio perché la serie conta tutte le ore.
 
 ### 6.4 #80 — il gauge
 
@@ -365,8 +397,10 @@ cancella** (§3.4). Ogni scelta invisibile ai golden ha un test diretto.
   giorno con più entry, attraversamento di un cambio d'ora legale, `end <= start`,
   slice vuota.
 - `sparkline`, table-driven: vuota, tutti zero, un solo valore, valori uguali,
-  ricampionamento quando `n > maxCells`, mappatura dei livelli agli estremi
-  (il minimo non-zero dà `▁`, il massimo dà `█`).
+  ricampionamento quando `n > maxCells`, mappatura dei livelli agli estremi. Su
+  quest'ultimo punto la formula va letta prima di scrivere il caso: con
+  `clamp(ceil(v/max*8), 1, 8)` il minimo non-zero dà `▁` **solo se è ≤ max/8** —
+  per `{7, 8}` dà `▇`. Il caso di test va costruito rispettando il vincolo.
 
 ### 7.3 Larghezza
 
@@ -381,6 +415,22 @@ prima a cedere, le colonne numeriche non si restringono mai.
   totali con lo stile dei totali e non zebrate, header con lo stile dell'header.
 - `TestBudgetBarOverBudget`: verifica che oltre il 100% lo stile del pieno sia
   `th.Err` e non `th.OK`. Il *numero* (130%) lo vede già il golden; il colore no.
+
+### 7.4-bis Test esistenti che il cambio di firma rompe
+
+Due test di `budget_test.go` vanno riscritti, non solo ricompilati:
+`TestRenderBudgetBarClampsFillNotPercent` (riga 38) chiama
+`renderBudgetBar(150)` con un argomento solo e asserisce
+`strings.Repeat("#", budgetBarWidth)`, e `TestBudgetViewRendersProgressBar`
+(riga 24) asserisce che la barra sia fatta di `#` e `-`. Entrambi vanno portati
+alla nuova firma e ai nuovi glifi.
+
+I due golden della palette (`palette_dark`, `palette_light`) cambiano perché
+`paletteSample` in `theme_test.go` va esteso con i token nuovi — altrimenti
+`Border` e `Zebra` non comparirebbero nell'unico posto della suite che cattura
+le sequenze di colore reali. Va aggiornato anche il commento in cima a
+`theme.go`, che oggi dice che un tema utente sovrascriverà «questi cinque
+valori».
 
 ### 7.5 Golden
 

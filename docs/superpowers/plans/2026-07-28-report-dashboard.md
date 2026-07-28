@@ -29,7 +29,7 @@
 **This task is a pure refactor. There is no RED step.** The characterization test in Step 1 must pass *before* you change anything — it pins the property the four indices existed to provide. Do not invent a failing test to satisfy a TDD habit; if the test in Step 1 fails before the refactor, you have written it wrong.
 
 **Files:**
-- Modify: `internal/tui/rates.go` (21 occurrences)
+- Modify: `internal/tui/rates.go` (26 occurrences: 4 struct fields, 8 inside `move`, 14 in the Step 6 table)
 - Modify: `internal/tui/rates_view.go` (7 occurrences)
 - Modify: `internal/tui/listbrowser.go:152` (1 occurrence)
 - Test: `internal/tui/rates_test.go` (add one test; change nothing else)
@@ -157,11 +157,13 @@ func (rt ratesModel) move(delta int) ratesModel {
 
 - [ ] **Step 6: Update every remaining read and write**
 
-Each of these keeps its surrounding `switch rt.sec` — the *behaviour* differs per section, only the index lookup changes. Inside a `case secLists:` write `rt.sel[secLists]`, **not** `rt.sel[rt.sec]`: the constant names the invariant, the variable hides it.
+Each of these keeps its surrounding `switch` — the *behaviour* differs per section, only the index lookup changes. (`commit`'s switch is on `rt.edit`, not on the section; it only reads the indices.) Inside a `case secLists:` write `rt.sel[secLists]`, **not** `rt.sel[rt.sec]`: the constant names the invariant, the variable hides it.
+
+⚠️ **Match by the "Was" text, not by the line number.** The numbers below are measured on the file as it stands *before* Step 1. Step 1 inserts the `selected` method, Step 4 rewrites the struct and Step 5 shrinks `move`, so by the time you reach this step every rates.go line number has shifted by several lines. Two entries look ambiguous — `switch rt.ruleIdx {` appears twice and `id := rt.rows[rt.idx].listID` appears twice — but each pair takes an identical replacement, so matching on text is safe.
 
 In `internal/tui/rates.go`:
 
-| Line (before) | Was | Becomes |
+| Line (pre-Step-1) | Was | Becomes |
 |---|---|---|
 | 588 | `if rt.ovIdx >= len(rt.overrides) {` | `if rt.sel[secOverrides] >= len(rt.overrides) {` |
 | 594 | `switch rt.ruleIdx {` | `switch rt.sel[secRules] {` |
@@ -305,6 +307,8 @@ In `newTheme`'s returned literal:
 ```
 
 `Cell` exists so the table's style function never has to call `lipgloss.NewStyle()`, which would silently render base rows through the *default* renderer while zebra rows go through the injected one. It is the same discipline that kept `help.New()` out of the footer.
+
+Finally, `theme.go`'s file-level comment above `palette` says a future user-supplied theme "will override these five values". There are now six. Update the sentence.
 
 - [ ] **Step 5: Run the tests, then regenerate the palette goldens**
 
@@ -665,6 +669,14 @@ func reportStyleFunc(th theme, firstTotal int) table.StyleFunc {
 // off: BorderColumn draws separators between columns, Wrap sends a long label
 // onto a second line instead of letting truncate cut it, and the zero
 // BorderStyle renders the frame through the default renderer.
+//
+// Sizing is implicit and Table.Width is deliberately NOT called. With
+// BorderColumn off, the library's resizer counts only the separators between
+// columns, so it believes the frame costs nothing, while String clips the
+// result with MaxWidth — the table would render two columns too wide and then
+// have its right border sliced off. Pre-formatted numeric cells, labels
+// truncated to itemW and Padding(0, 1) from the style function give the exact
+// widths this arithmetic assumes.
 func reportTable(th theme, r report.Report, width int) string {
 	rows, firstTotal := reportRows(r)
 	itemW := reportItemWidth(rows, reportHeaders, width)
@@ -716,11 +728,12 @@ In `internal/tui/app.go`, the `screenReport` case of `screenBody` becomes:
 		return m.rep.view(m.theme, m.width)
 ```
 
-In the tests, add a width argument to every `view(testTheme(true))` call on a `reportModel`:
+In the tests, add a width argument to every `view(testTheme(true))` call on a `reportModel`. There are **four**:
 - `internal/tui/golden_test.go:120` → `newReport(goldenReport(), "").view(testTheme(true), 80)`
 - `internal/tui/report_test.go:104` and `:122` → `.view(testTheme(true), 80)`
+- `internal/tui/report_test.go:157` → `mm.rep.view(testTheme(true), 80)` (inside `TestReportViewShowsSummaryAndBillableSplit`)
 
-Run `go build ./... && go vet ./...` and fix any other call site the compiler names.
+Run `go vet ./...` — **not** `go build ./...`, which does not compile `_test.go` files and would report a clean tree while the tests are broken — and fix any call site it names.
 
 - [ ] **Step 7: Regenerate the report golden and add two width goldens**
 
@@ -729,15 +742,20 @@ In `internal/tui/golden_test.go`, replace `TestGoldenReport` with:
 ```go
 func TestGoldenReport(t *testing.T) {
 	t.Parallel()
-	// Three widths, because the layout is now a function of the terminal: 60
-	// is where the label starts losing, 80 is a bare terminal or a split tmux
-	// pane, 120 is a wide window where the label must not stretch past its
-	// content.
+	// One bucket gets a label long enough that the three widths actually
+	// diverge. goldenReport's own labels are 8 columns, so without this all
+	// three goldens would be byte-identical and would pin nothing about width.
+	// At 60 the label is cut to 24 columns, at 80 to 44, and at 120 it fits
+	// whole — which is also the case that proves the column does not stretch
+	// past its content.
+	r := goldenReport()
+	r.Buckets[0].Label = "Website — landing page redesign and checkout hardening"
+
 	for _, tc := range []struct {
 		name  string
 		width int
 	}{{"report_narrow", 60}, {"report", 80}, {"report_wide", 120}} {
-		golden(t, tc.name, newReport(goldenReport(), "").view(testTheme(true), tc.width))
+		golden(t, tc.name, newReport(r, "").view(testTheme(true), tc.width))
 	}
 }
 
@@ -762,7 +780,7 @@ func TestGoldenReportMultiCurrency(t *testing.T) {
 Run: `go test ./internal/tui -run 'TestGoldenReport' -update && go test ./internal/tui -run 'TestGoldenReport' -v`
 Expected: PASS.
 
-**Then read all four golden files.** Check by eye: the header sits above a separator line, `Hours`/`Billed`/`Amount` are right-aligned and incolumnated (the old layout did not align `Amount` at all), `TOTAL` is present, the billable split sits *below* the border, and `report_narrow` is not wider than 60 columns.
+**Then read all four golden files.** Check by eye: the header sits above a separator line, `Hours`/`Billed`/`Amount` are right-aligned and incolumnated (the old layout did not align `Amount` at all), `TOTAL` is present, the billable split sits *below* the border, and `report_narrow` is not wider than 60 columns. **The three width goldens must differ from each other** — the long label is cut at 60 and 80 and whole at 120. If they came out identical, `reportItemWidth` is not being consulted.
 
 - [ ] **Step 8: Full gate and commit**
 
@@ -931,6 +949,10 @@ import "time"
 // the entries that STARTED that day, read in loc. It returns nil when the
 // range is empty or inverted.
 //
+// It counts ALL hours, billable and not — the same total Bucket.Hours carries.
+// The series answers "when did I work", not "when did I bill"; the billable
+// share has its own line under the report table.
+//
 // The hours of an entry land entirely on its start day, which is the same rule
 // groupKeys uses for GroupByDay — the two views cannot disagree about which
 // day an overnight entry belongs to.
@@ -973,8 +995,8 @@ Expected: PASS, both tests and all seven sub-cases.
 
 - [ ] **Step 5: Confirm the package is still pure**
 
-Run: `go list -deps ./internal/report | grep -v '^internal/\|^\(vendor\|golang.org\)' | grep 'clickup-cli'`
-Expected: only `github.com/marcoarnulfo/clickup-cli/internal/duration` (or no output). If `internal/config` or `internal/clickup` appears, the purity constraint is broken.
+Run: `go list -deps ./internal/report | grep 'clickup-cli'`
+Expected: exactly two lines — `.../internal/duration` (imported by `model.go` for `duration.RoundMode`) and `.../internal/report` itself, since `-deps` includes the root package. **Neither `internal/config` nor `internal/clickup` may appear**; that is the whole assertion. Anything else in the list is a purity break.
 
 - [ ] **Step 6: Full gate and commit**
 
@@ -991,8 +1013,8 @@ git commit -m "feat(report): add DailyHours, a zero-filled per-day series (#80)"
 **Files:**
 - Create: `internal/tui/sparkline.go`
 - Create: `internal/tui/sparkline_test.go`
-- Modify: `internal/tui/report.go` (`reportModel`, `newReport`, `view`)
-- Modify: `internal/tui/app.go` (the `newReport` call at line ~689, plus a new `Model` helper)
+- Modify: `internal/tui/report.go` (`reportModel`, `newReport`, `view`, and the new `Model.dailySeries` helper — it goes here, next to `memberFilterNote`, not in app.go)
+- Modify: `internal/tui/app.go` (the `newReport` call at line ~689)
 - Modify: `internal/tui/rates.go:869`, `internal/tui/report.go:73` and `:195` (the other `newReport` call sites)
 - Modify: `internal/tui/golden_test.go`, `internal/tui/report_test.go`, `internal/tui/log_test.go` (test call sites)
 
@@ -1220,7 +1242,7 @@ Each already has the range and the entries in scope, so all four become the same
 - `internal/tui/report.go:73` → same
 - `internal/tui/report.go:195` (`applyReport`) → same
 
-Then `go build ./...` and add `nil` as the third argument at every test call site the compiler names (`log_test.go:51`, `report_test.go:57`, `:73`, `:104`, `:122`, `golden_test.go`) — except the goldens, which Step 8 gives a real series.
+Then add `nil` as the third argument at these five test call sites — `log_test.go:51`, `report_test.go:57`, `:73`, `:104`, `:122` — and run `go vet ./...` to catch any that moved. Use `go vet`, **not** `go build ./...`: `go build` does not compile `_test.go` files, so it would report a clean tree while every test call site is still broken. The golden tests are the exception: Step 8 gives them a real series instead of `nil`.
 
 - [ ] **Step 8: Give the goldens a real series and regenerate**
 
@@ -1244,7 +1266,7 @@ Expected: PASS.
 - [ ] **Step 9: Check demo mode by hand**
 
 Run: `go run ./cmd/clup` with `CLICKUP_DEMO=1`, press Enter to generate the report.
-Expected: a sparkline with visible gaps (the fixture entries fall on days 3, 5, 6, 7, 9 and 10 of the range), a bordered table with aligned numbers, and a footer.
+Expected: a sparkline with visible gaps, a bordered table with aligned numbers, and a footer. The fixture entries fall on days **2, 3, 5, 6, 7, 9 and 10** of the range, so days 1, 4 and 8 are gaps. Day 2 is the non-billable sprint-planning session and **must** appear as a bar: the series counts all hours, not only billable ones.
 
 - [ ] **Step 10: Full gate and commit**
 
