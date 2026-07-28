@@ -225,9 +225,11 @@ func (rm reportModel) view(th theme, width int) string {
 		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
 	summary := th.Accent.Render(export.SummaryLine(r))
 
-	body := reportTable(th, r, width)
+	var body string
 	if len(r.Buckets) == 0 {
 		body = th.Box.Render("No hours to show.")
+	} else {
+		body = reportTable(th, r, width)
 	}
 	// The billable split is a note, not a row of data: inside the table it
 	// would take the zebra stripe and be split across columns.

@@ -147,6 +147,18 @@ func reportTable(th theme, r report.Report, width int) string {
 	itemW := reportItemWidth(rows, reportHeaders, width)
 	for i := range rows {
 		rows[i][0] = truncate(rows[i][0], itemW)
+		// truncate cuts by RUNE count (it never breaks a multi-byte UTF-8
+		// character), but reportItemWidth and lipgloss/table's own resizer both
+		// measure in DISPLAY columns (lipgloss.Width). The two agree for ASCII
+		// but not for double-width runes (CJK, emoji): a label truncated to
+		// itemW runes of e.g. "🚀" still renders at up to 2*itemW columns,
+		// which is exactly the "table wider than the terminal" bug this whole
+		// file exists to prevent. Bucket labels are ClickUp list/task names, so
+		// this is reachable, not theoretical. Shave one more rune at a time
+		// until the rendered width actually fits.
+		for lipgloss.Width(rows[i][0]) > itemW {
+			rows[i][0] = truncate(rows[i][0], len([]rune(rows[i][0]))-1)
+		}
 	}
 	return table.New().
 		Border(lipgloss.RoundedBorder()).

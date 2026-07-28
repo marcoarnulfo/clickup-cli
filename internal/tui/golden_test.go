@@ -147,7 +147,13 @@ func TestGoldenReportMultiCurrency(t *testing.T) {
 		{Currency: "EUR", Hours: 15.5, BillableHours: 12.5, BilledHours: 12.5, Amount: 625},
 		{Currency: "USD", Hours: 4, BillableHours: 4, BilledHours: 4, Amount: 200},
 	}
-	r.TotalHours, r.BilledHours = 19.5, 16.5
+	// goldenReport's own BillableHours (12.5, from Website only) must grow by
+	// Mobile's 4 billable hours too, or the split line below the table
+	// contradicts the TOTAL row above it (a 19.5h total next to a 12.5h
+	// billable + 3h non-billable split, which only adds up to 15.5h).
+	// NonBillableHours is unchanged: Mobile is fully billable, so the 3h from
+	// Internal is still the whole non-billable side.
+	r.TotalHours, r.BillableHours, r.BilledHours = 19.5, 16.5, 16.5
 	golden(t, "report_multicurrency", newReport(r, "").view(testTheme(true), 80))
 }
 

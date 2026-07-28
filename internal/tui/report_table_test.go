@@ -35,23 +35,38 @@ func tableFixture() report.Report {
 // The widths start at 60 because below roughly 48 the Item column hits its
 // 12-column floor and the table deliberately overflows instead of shrinking
 // into illegibility; TestReportTableFloorsRatherThanVanishing covers that end.
+//
+// The second label is all double-width runes (🚀). truncate cuts by rune
+// count, but reportItemWidth's budget and lipgloss/table's own resizer both
+// measure in display columns — without reportTable's second truncation pass
+// this label alone renders at up to 2x its rune-counted width and blows the
+// terminal budget. An all-ASCII label can never exercise that mismatch.
 func TestReportTableNeverExceedsWidth(t *testing.T) {
 	t.Parallel()
-	r := tableFixture()
-	r.Buckets[0].Label = "A very long list name that will not fit anywhere near a narrow terminal"
-	for _, width := range []int{60, 80, 100, 120} {
-		out := reportTable(testTheme(true), r, width)
-		for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-			if w := lipgloss.Width(line); w > width {
-				t.Errorf("width %d: line is %d columns:\n%s", width, w, line)
+	for _, label := range []string{
+		"A very long list name that will not fit anywhere near a narrow terminal",
+		strings.Repeat("🚀", 40),
+	} {
+		r := tableFixture()
+		r.Buckets[0].Label = label
+		for _, width := range []int{60, 80, 100, 120} {
+			out := reportTable(testTheme(true), r, width)
+			for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+				if w := lipgloss.Width(line); w > width {
+					t.Errorf("label %q, width %d: line is %d columns:\n%s", label, width, w, line)
+				}
 			}
 		}
 	}
 }
 
-// Under about 48 columns there is not enough room for a 12-column label plus
-// the numeric columns, and the table overflows rather than cutting labels down
-// to nothing. Pinning it makes the trade-off deliberate instead of accidental.
+// At width 30 the numeric-column arithmetic alone goes negative, and
+// reportItemWidth clamps to what the labels actually need instead of
+// collapsing to nothing. tableFixture's longest label ("Internal", 8 columns)
+// is itself under reportMinItemWidth, so this exercises the "cap wins over
+// the floor" branch — the table overflows width 30 rather than truncating a
+// short label down to illegibility. TestReportItemWidthGivesSlackToTheLabel
+// covers the floor itself, with a label long enough for it to bind.
 func TestReportTableFloorsRatherThanVanishing(t *testing.T) {
 	t.Parallel()
 	out := reportTable(testTheme(true), tableFixture(), 30)
@@ -76,6 +91,14 @@ func TestReportItemWidthGivesSlackToTheLabel(t *testing.T) {
 	if narrow < 12 {
 		t.Errorf("item width %d fell below the 12-column floor", narrow)
 	}
+	// At width 30 the numeric-column budget alone is negative (see
+	// TestReportTableFloorsRatherThanVanishing), so with a label this long the
+	// result must be exactly reportMinItemWidth, not some other value that
+	// merely happens to sit in [8, 24] — this is the case where the floor
+	// itself, not the label length, decides the answer.
+	if got := reportItemWidth(rows, headers, 30); got != reportMinItemWidth {
+		t.Errorf("reportItemWidth(_, _, 30) = %d, want the %d-column floor", got, reportMinItemWidth)
+	}
 }
 
 // width <= 0 is the first render, before the terminal has sent WindowSizeMsg.
@@ -90,8 +113,14 @@ func TestReportItemWidthZeroIsNaturalWidth(t *testing.T) {
 	}
 }
 
-// A long label must be cut short, never wrapped onto a second line: one bucket
-// is one row. lipgloss/table wraps by default, so this pins Wrap(false).
+// A long label must render as one row, never spread across several lines.
+// This does not actually exercise Wrap(false): reportTable never calls
+// Table.Width, so every column is sized to exactly its own content's width
+// (see resizing.go) and lipgloss/table has no spare width to wrap a cell
+// into regardless of the Wrap setting — verified empirically, the rendered
+// output is byte-identical with and without Wrap(false). Wrap(false) is kept
+// as insurance against a future change that starts calling Width(); what this
+// test actually pins is the real invariant: one bucket is one row.
 func TestReportTableTruncatesRatherThanWraps(t *testing.T) {
 	t.Parallel()
 	r := tableFixture()
@@ -154,6 +183,9 @@ func TestReportStyleFunc(t *testing.T) {
 	}
 	if !f(firstTotal, 0).GetBold() {
 		t.Error("the TOTAL row is not bold")
+	}
+	if f(firstTotal+1, 0).GetBold() {
+		t.Error("a per-currency subtotal row is bold; only the TOTAL row should be")
 	}
 	if f(0, 0).GetAlign() != lipgloss.Left {
 		t.Error("the Item column is not left-aligned")

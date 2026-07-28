@@ -128,6 +128,28 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 	}
 }
 
+// TestReportViewEmptyReportShowsNoHoursAndSplit pins the empty-report shape:
+// with no buckets, reportTable is never called (the table would have nothing
+// to size against) and "No hours to show." renders instead. The billable
+// split line, previously folded inside the box and so absent for an empty
+// report, is now always rendered below it — nothing else in the suite exercises
+// the zero-bucket path, so this is the only place that would catch either
+// regressing.
+func TestReportViewEmptyReportShowsNoHoursAndSplit(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	r := report.Report{
+		Start: start, End: start.AddDate(0, 1, 0), Scope: "me", GroupBy: report.GroupByTotal,
+		DefaultCurrency: "EUR",
+	}
+	out := newReport(r, "").view(testTheme(true), 80)
+	if !strings.Contains(out, "No hours to show.") {
+		t.Errorf("empty report view missing \"No hours to show.\"; got:\n%s", out)
+	}
+	if !strings.Contains(out, "billable 0.00h · non-billable 0.00h") {
+		t.Errorf("empty report view missing the billable split line; got:\n%s", out)
+	}
+}
+
 // TestReportViewShowsSummaryAndBillableSplit drives Update to build a report
 // from a mixed-currency fixture and asserts the rendered view carries the
 // shared export.SummaryLine ("N billing lines · Xh · amounts"), an explicit
