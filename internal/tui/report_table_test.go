@@ -41,14 +41,37 @@ func tableFixture() report.Report {
 // measure in display columns — without reportTable's second truncation pass
 // this label alone renders at up to 2x its rune-counted width and blows the
 // terminal budget. An all-ASCII label can never exercise that mismatch.
+//
+// The threeCurrencies/fiveCurrencies buckets exercise the equivalent mismatch
+// on the Amount column: formatAmounts joins every currency onto one line
+// ("12345.00 EUR + 6789.00 USD + ..."), which a GroupByTotal report — the
+// default first-load grouping — produces from its single bucket for every
+// currency in the workspace. Before Amount was allowed to truncate too, 3
+// currencies overflowed at width 60 and 5 currencies overflowed even at 100.
 func TestReportTableNeverExceedsWidth(t *testing.T) {
 	t.Parallel()
+	threeCurrencies := []report.CurrencyAmount{
+		{Currency: "EUR", Amount: 12345},
+		{Currency: "USD", Amount: 6789},
+		{Currency: "GBP", Amount: 4321},
+	}
+	fiveCurrencies := []report.CurrencyAmount{
+		{Currency: "EUR", Amount: 12345},
+		{Currency: "USD", Amount: 6789},
+		{Currency: "GBP", Amount: 4321},
+		{Currency: "CHF", Amount: 999},
+		{Currency: "JPY", Amount: 50000},
+	}
 	for _, label := range []string{
 		"A very long list name that will not fit anywhere near a narrow terminal",
 		strings.Repeat("🚀", 40),
 	} {
 		r := tableFixture()
 		r.Buckets[0].Label = label
+		r.Buckets = append(r.Buckets,
+			report.Bucket{Label: "Consulting", Key: "l3", Hours: 5, BilledHours: 5, Amounts: threeCurrencies},
+			report.Bucket{Label: "Global Ops", Key: "l4", Hours: 2, BilledHours: 2, Amounts: fiveCurrencies},
+		)
 		for _, width := range []int{60, 80, 100, 120} {
 			out := reportTable(testTheme(true), r, width)
 			for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
@@ -75,16 +98,18 @@ func TestReportTableFloorsRatherThanVanishing(t *testing.T) {
 	}
 }
 
-// The Item column is the only one allowed to lose: truncating an amount would
-// hide money, and the numeric columns are the point of having a grid.
+// The Item column is the one that gives up its space first: the numeric
+// columns are the point of having a grid, so Item shrinks before they do.
+// Amount only gives up space once Item is already at its floor and the row
+// would still overflow (TestReportTableNeverExceedsWidth's multi-currency
+// cases), which this fixture's short, single-currency Amounts never trigger.
 func TestReportItemWidthGivesSlackToTheLabel(t *testing.T) {
 	t.Parallel()
-	headers := []string{"Item", "Hours", "Billed", "Amount"}
 	rows, _ := reportRows(tableFixture())
 	rows[0][0] = strings.Repeat("x", 200) // a label longer than any terminal
 
-	narrow := reportItemWidth(rows, headers, 60)
-	wide := reportItemWidth(rows, headers, 120)
+	narrow := reportItemWidth(rows, 60)
+	wide := reportItemWidth(rows, 120)
 	if narrow >= wide {
 		t.Errorf("item width did not grow with the terminal: 60 -> %d, 120 -> %d", narrow, wide)
 	}
@@ -96,8 +121,8 @@ func TestReportItemWidthGivesSlackToTheLabel(t *testing.T) {
 	// result must be exactly reportMinItemWidth, not some other value that
 	// merely happens to sit in [8, 24] — this is the case where the floor
 	// itself, not the label length, decides the answer.
-	if got := reportItemWidth(rows, headers, 30); got != reportMinItemWidth {
-		t.Errorf("reportItemWidth(_, _, 30) = %d, want the %d-column floor", got, reportMinItemWidth)
+	if got := reportItemWidth(rows, 30); got != reportMinItemWidth {
+		t.Errorf("reportItemWidth(_, 30) = %d, want the %d-column floor", got, reportMinItemWidth)
 	}
 }
 
@@ -105,10 +130,9 @@ func TestReportItemWidthGivesSlackToTheLabel(t *testing.T) {
 // It must reproduce the fixed 32-column layout the report had before #66.
 func TestReportItemWidthZeroIsNaturalWidth(t *testing.T) {
 	t.Parallel()
-	headers := []string{"Item", "Hours", "Billed", "Amount"}
 	rows, _ := reportRows(tableFixture())
 	rows[0][0] = strings.Repeat("x", 200)
-	if got := reportItemWidth(rows, headers, 0); got != 32 {
+	if got := reportItemWidth(rows, 0); got != 32 {
 		t.Errorf("natural item width = %d, want 32", got)
 	}
 }

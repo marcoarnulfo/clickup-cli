@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -207,19 +206,6 @@ func (m *Model) applyReport() bool {
 	return true
 }
 
-// formatAmounts renders a bucket's per-currency amounts on one line, e.g.
-// "150.00 EUR + 90.00 USD". An empty slice renders as a zero in fallback.
-func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
-	if len(amounts) == 0 {
-		return fmt.Sprintf("%.2f %s", 0.0, fallback)
-	}
-	parts := make([]string, 0, len(amounts))
-	for _, a := range amounts {
-		parts = append(parts, fmt.Sprintf("%.2f %s", a.Amount, a.Currency))
-	}
-	return strings.Join(parts, " + ")
-}
-
 // hoursOf renders hours the same way export.SummaryLine does, via
 // duration.FormatHours — one hours formatter shared across TUI and export.
 func hoursOf(h float64) string {
@@ -273,8 +259,14 @@ func (rm reportModel) sparkView(th theme, width int) string {
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
-// in task names with accents or emoji.
+// in task names with accents or emoji. n <= 1 always yields "…": r[:n-1] would
+// otherwise index negatively (a panic) for n <= 0, and the whole package now
+// relies on that guard rather than on each call site keeping n >= some floor
+// itself (see report_table.go's shaveToWidth for why that matters).
 func truncate(s string, n int) string {
+	if n <= 1 {
+		return "…"
+	}
 	r := []rune(s)
 	if len(r) <= n {
 		return s

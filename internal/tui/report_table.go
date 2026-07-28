@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -9,8 +10,9 @@ import (
 )
 
 // The report grid's fixed dimensions. Slack is taken from and given to the
-// Item column alone: the numeric columns are the reason to have a grid, and an
-// amount must never be truncated because a truncated amount hides money.
+// Item column first: the numeric columns are the reason to have a grid, so
+// Item gives up its space before they do. Amount is the one exception, and
+// only as a last resort — see reportAmountWidth for why that is safe.
 const (
 	reportNumWidth     = 8  // reserved for each of Hours and Billed
 	reportMinItemWidth = 12 // below this the labels stop being labels
@@ -70,6 +72,19 @@ func reportRows(r report.Report) ([][]string, int) {
 	return rows, firstTotal
 }
 
+// formatAmounts renders a bucket's per-currency amounts on one line, e.g.
+// "150.00 EUR + 90.00 USD". An empty slice renders as a zero in fallback.
+func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
+	if len(amounts) == 0 {
+		return fmt.Sprintf("%.2f %s", 0.0, fallback)
+	}
+	parts := make([]string, 0, len(amounts))
+	for _, a := range amounts {
+		parts = append(parts, fmt.Sprintf("%.2f %s", a.Amount, a.Currency))
+	}
+	return strings.Join(parts, " + ")
+}
+
 // reportItemWidth splits width between the fixed numeric columns and the Item
 // column. It never stretches Item past the longest label (empty space is not a
 // feature) and never shrinks it below reportMinItemWidth — unless the labels
@@ -77,10 +92,15 @@ func reportRows(r report.Report) ([][]string, int) {
 //
 // Reserving reportNumWidth for Hours and Billed is a worst case: real values
 // are shorter, so the table often renders narrower than the terminal. Narrower
-// is fine; wider is the bug this arithmetic exists to prevent.
-func reportItemWidth(rows [][]string, headers []string, width int) int {
-	maxLabel := lipgloss.Width(headers[0])
-	amount := lipgloss.Width(headers[3])
+// is fine; wider is the bug this arithmetic exists to prevent — but this
+// function alone cannot promise it: it assumes Amount keeps its natural,
+// untruncated width, and a multi-currency bucket's Amount can blow well past
+// whatever is left once Item is already at its floor. reportAmountWidth is the
+// other half of that promise: it is what actually claws space back from
+// Amount, as a last resort, once Item has none left to give.
+func reportItemWidth(rows [][]string, width int) int {
+	maxLabel := lipgloss.Width(reportHeaders[0])
+	amount := lipgloss.Width(reportHeaders[3])
 	for _, row := range rows {
 		maxLabel = max(maxLabel, lipgloss.Width(row[0]))
 		amount = max(amount, lipgloss.Width(row[3]))
@@ -91,6 +111,37 @@ func reportItemWidth(rows [][]string, headers []string, width int) int {
 	floor := min(reportMinItemWidth, maxLabel)
 	item := width - reportTableChrome - 2*reportNumWidth - amount
 	return max(floor, min(maxLabel, item))
+}
+
+// reportAmountWidth is reportItemWidth's counterpart for the Amount column.
+// Item yields first — it is the point of having a grid, so it gives up all
+// the slack reportItemWidth is willing to give before Amount loses a single
+// column. Only once Item is already at its floor and the row would still
+// overflow does this claw space back from Amount, as a last resort.
+//
+// That resort is safe because a per-bucket Amount is indicative only:
+// reportRows' own doc comment already says so — PerDay rounding can drift a
+// few cents from the subtotals at a fine grouping, and CurrencySubtotals is
+// authoritative. Those authoritative per-currency figures render as their own
+// rows at the bottom of the same table, at full precision, and are never
+// truncated because their labels are short. So cutting an over-long
+// indicative amount does not hide money: the exact figure is four rows down.
+//
+// width <= 0 is the first render, before the terminal has sent its
+// WindowSizeMsg: nothing is sized against it yet, so Amount stays at its
+// natural width, same as Item. Otherwise this never stretches Amount past
+// what the content needs, only ever shrinks it — down to 1, never lower:
+// truncate's own guard (n <= 1) is what makes that safe, not a floor here.
+func reportAmountWidth(rows [][]string, width, itemW int) int {
+	natural := lipgloss.Width(reportHeaders[3])
+	for _, row := range rows {
+		natural = max(natural, lipgloss.Width(row[3]))
+	}
+	if width <= 0 {
+		return natural
+	}
+	budget := width - reportTableChrome - 2*reportNumWidth - itemW
+	return max(1, min(natural, budget))
 }
 
 // reportStyleFunc decides every per-cell style: alignment, the header, the
@@ -144,21 +195,11 @@ func reportStyleFunc(th theme, firstTotal int) table.StyleFunc {
 // widths this arithmetic assumes.
 func reportTable(th theme, r report.Report, width int) string {
 	rows, firstTotal := reportRows(r)
-	itemW := reportItemWidth(rows, reportHeaders, width)
+	itemW := reportItemWidth(rows, width)
+	amountW := reportAmountWidth(rows, width, itemW)
 	for i := range rows {
-		rows[i][0] = truncate(rows[i][0], itemW)
-		// truncate cuts by RUNE count (it never breaks a multi-byte UTF-8
-		// character), but reportItemWidth and lipgloss/table's own resizer both
-		// measure in DISPLAY columns (lipgloss.Width). The two agree for ASCII
-		// but not for double-width runes (CJK, emoji): a label truncated to
-		// itemW runes of e.g. "🚀" still renders at up to 2*itemW columns,
-		// which is exactly the "table wider than the terminal" bug this whole
-		// file exists to prevent. Bucket labels are ClickUp list/task names, so
-		// this is reachable, not theoretical. Shave one more rune at a time
-		// until the rendered width actually fits.
-		for lipgloss.Width(rows[i][0]) > itemW {
-			rows[i][0] = truncate(rows[i][0], len([]rune(rows[i][0]))-1)
-		}
+		rows[i][0] = shaveToWidth(rows[i][0], itemW)
+		rows[i][3] = shaveToWidth(rows[i][3], amountW)
 	}
 	return table.New().
 		Border(lipgloss.RoundedBorder()).
@@ -170,4 +211,31 @@ func reportTable(th theme, r report.Report, width int) string {
 		Rows(rows...).
 		StyleFunc(reportStyleFunc(th, firstTotal)).
 		String()
+}
+
+// shaveToWidth truncates s until it renders at no more than w display
+// columns. truncate cuts by RUNE count (it never breaks a multi-byte UTF-8
+// character), but the widths this file computes (reportItemWidth,
+// reportAmountWidth) and lipgloss/table's own resizer all measure in DISPLAY
+// columns (lipgloss.Width). The two agree for ASCII but not for double-width
+// runes (CJK, emoji) or a multi-currency Amount like "12345.00 EUR + 6789.00
+// USD + 4321.00 GBP": a value truncated to w runes can still render at up to
+// 2w columns, which is exactly the "table wider than the terminal" bug this
+// whole file exists to prevent. Bucket labels are ClickUp list/task names and
+// a wide workspace can carry any number of currencies, so both are reachable,
+// not theoretical. Shave one more rune at a time until the rendered width
+// actually fits.
+//
+// Safe for any w, including w <= 1, without the caller keeping its own floor:
+// truncate itself guards n <= 1. reportItemWidth's own floor
+// (reportMinItemWidth, itself bounded below by "Item"'s own width) keeps its
+// w at 4 or above, so the loop never gets near that guard for the Item
+// column; reportAmountWidth has no equivalent floor and can legitimately hand
+// back 1 — exactly the case the guard exists for.
+func shaveToWidth(s string, w int) string {
+	s = truncate(s, w)
+	for lipgloss.Width(s) > w {
+		s = truncate(s, len([]rune(s))-1)
+	}
+	return s
 }
