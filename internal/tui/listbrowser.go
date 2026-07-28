@@ -149,7 +149,7 @@ func (m *Model) selectBrowsedList(id, name string) tea.Cmd {
 			rt.rows = append(rt.rows, rateRow{listID: id, name: name})
 			found = len(rt.rows) - 1
 		}
-		rt.idx = found
+		rt.sel[secLists] = found
 		rt.sec = secLists // the browsed list is a row of the Lists section
 		m.ratesScreen = rt
 		*m = m.pop()

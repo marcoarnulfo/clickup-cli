@@ -51,9 +51,9 @@ func (rt ratesModel) listsView(th theme) string {
 		bud, hasBud := rt.budgets[r.listID]
 		line := fmt.Sprintf("%-24s %10.2f %-5s %10s  %s",
 			truncate(r.name, 24), rate, rt.effectiveCurrency(r.listID), moneyOrDash(bud, hasBud), tag)
-		b += billingRow(th, i == rt.idx, line)
+		b += billingRow(th, i == rt.sel[secLists], line)
 	}
-	sel := rt.rows[rt.idx]
+	sel := rt.rows[rt.sel[secLists]]
 	note := fmt.Sprintf("Effective for %s: %.2f %s", truncate(sel.name, 24), rt.rateFor(sel.listID), rt.effectiveCurrency(sel.listID))
 	if n := rt.pairsForList(sel.listID); n > 0 {
 		note += fmt.Sprintf(" · %d (list,member) override(s) take precedence here", n)
@@ -74,9 +74,9 @@ func (rt ratesModel) membersView(th theme) string {
 			rate, tag = v, "member rate"
 		}
 		line := fmt.Sprintf("%-30s %10.2f  %s", truncate(fmt.Sprintf("%s (%d)", mr.name, mr.id), 30), rate, tag)
-		b += billingRow(th, i == rt.memIdx, line)
+		b += billingRow(th, i == rt.sel[secMembers], line)
 	}
-	sel := rt.members[rt.memIdx]
+	sel := rt.members[rt.sel[secMembers]]
 	note := "A member rate wins over any per-list rate, on every list."
 	if n := rt.listsForMember(sel.id); n > 0 {
 		note = fmt.Sprintf("%s is overridden on %d list(s) by a (list,member) rate.", truncate(sel.name, 24), n)
@@ -92,9 +92,9 @@ func (rt ratesModel) overridesView(th theme) string {
 			truncate(rt.listName(o.listID), 20),
 			truncate(fmt.Sprintf("%s (%d)", rt.memberName(o.member), o.member), 22),
 			o.rate, below, src)
-		b += billingRow(th, i == rt.ovIdx, line)
+		b += billingRow(th, i == rt.sel[secOverrides], line)
 	}
-	b += billingRow(th, rt.ovIdx >= len(rt.overrides), "+ new (list,member) override")
+	b += billingRow(th, rt.sel[secOverrides] >= len(rt.overrides), "+ new (list,member) override")
 	if len(rt.overrides) == 0 {
 		b += "\n" + th.Help.Render("No (list,member) overrides — the most specific level of the precedence.") + "\n"
 	}
@@ -131,7 +131,7 @@ func (rt ratesModel) rulesView(th theme) string {
 	}
 	b := ""
 	for i, f := range fields {
-		b += billingRow(th, i == rt.ruleIdx, fmt.Sprintf("%-22s %s", f[0], f[1]))
+		b += billingRow(th, i == rt.sel[secRules], fmt.Sprintf("%-22s %s", f[0], f[1]))
 	}
 	return b + "\n" + th.Help.Render("The default currency and rounding rule apply to every list without its own currency.") + "\n"
 }
