@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-28
+
 ### Added
 - Edit a time entry's tags from the entry browser (`v` from the report screen):
   press `t` on your **own** entry to open a tag picker — toggle existing tags
