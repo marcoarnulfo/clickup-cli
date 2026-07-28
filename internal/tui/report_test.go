@@ -54,7 +54,7 @@ func TestNextGroupByMeSkipsMember(t *testing.T) {
 func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
 	m := Model{scope: "team", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByDay}
-	m.rep = newReport(m.report, "")
+	m.rep = newReport(m.report, "", nil)
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	m = u.(Model)
 	if m.report.GroupBy != report.GroupByTag {
@@ -70,7 +70,7 @@ func TestReportCycleGroupByWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 	cfg.Billing.Rounding.Increment = "not-a-duration"
 	m := Model{cfg: cfg, scope: "me", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByTotal}
-	m.rep = newReport(m.report, "")
+	m.rep = newReport(m.report, "", nil)
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	mm := u.(Model)
 	if mm.screen != screenError {
@@ -101,7 +101,7 @@ func TestReportViewRendersPerCurrencyAmounts(t *testing.T) {
 		},
 		TotalHours: 4, BillableHours: 3, NonBillableHours: 1, BilledHours: 3,
 	}
-	out := newReport(r, "").view(testTheme(true), 80)
+	out := newReport(r, "", nil).view(testTheme(true), 80)
 	for _, want := range []string{"200.00 EUR", "100.00 USD", "subtotal EUR", "subtotal USD", "non-billable"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q; got:\n%s", want, out)
@@ -119,7 +119,7 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 2, BillableHours: 2, BilledHours: 2, Amount: 100}},
 		TotalHours:        2, BillableHours: 2, BilledHours: 2, TotalAmount: 100,
 	}
-	out := newReport(r, "").view(testTheme(true), 80)
+	out := newReport(r, "", nil).view(testTheme(true), 80)
 	if strings.Contains(out, "subtotal") {
 		t.Errorf("single-currency report should not list subtotals; got:\n%s", out)
 	}
@@ -141,7 +141,7 @@ func TestReportViewEmptyReportShowsNoHoursAndSplit(t *testing.T) {
 		Start: start, End: start.AddDate(0, 1, 0), Scope: "me", GroupBy: report.GroupByTotal,
 		DefaultCurrency: "EUR",
 	}
-	out := newReport(r, "").view(testTheme(true), 80)
+	out := newReport(r, "", nil).view(testTheme(true), 80)
 	if !strings.Contains(out, "No hours to show.") {
 		t.Errorf("empty report view missing \"No hours to show.\"; got:\n%s", out)
 	}

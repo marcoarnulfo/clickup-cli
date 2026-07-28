@@ -854,7 +854,7 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	start, end := m.currentRange()
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	m = m.pop()
 	return m, nil
 }

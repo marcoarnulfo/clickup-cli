@@ -14,11 +14,14 @@ import (
 )
 
 type reportModel struct {
-	r    report.Report
-	note string
+	r     report.Report
+	note  string
+	daily []float64 // one entry per day of the range; see report.DailyHours
 }
 
-func newReport(r report.Report, note string) reportModel { return reportModel{r: r, note: note} }
+func newReport(r report.Report, note string, daily []float64) reportModel {
+	return reportModel{r: r, note: note, daily: daily}
+}
 
 // nextGroupBy cycles total -> task -> list -> day -> tag -> [member] -> total.
 // The member grouping is only offered for the team scope.
@@ -56,6 +59,14 @@ func (m Model) memberFilterNote() string {
 	return fmt.Sprintf(" (%d/%d members)", k, n)
 }
 
+// dailySeries is the per-day hours of the visible entries over the current
+// range. It lives on the Model because reportModel has no entries — the report
+// is a rendering of an already-aggregated value.
+func (m Model) dailySeries() []float64 {
+	start, end := m.currentRange()
+	return report.DailyHours(m.visibleEntries(), start, end, m.loc)
+}
+
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := keysFor(m)
 	switch {
@@ -70,7 +81,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if p, ok := m.pricingOrErr(); ok {
 			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 			m.report.Scope = m.scope
-			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 		}
 	case key.Matches(msg, k.ChangeRange):
 		m = m.pop()
@@ -192,7 +203,7 @@ func (m *Model) applyReport() bool {
 	start, end := m.currentRange()
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	return true
 }
 
@@ -235,7 +246,30 @@ func (rm reportModel) view(th theme, width int) string {
 	// would take the zebra stripe and be split across columns.
 	split := th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s",
 		hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
-	return title + "\n\n" + summary + "\n\n" + body + "\n" + split
+	out := title + "\n\n" + summary + "\n\n"
+	if line := rm.sparkView(th, width); line != "" {
+		out += line + "\n\n"
+	}
+	return out + body + "\n" + split
+}
+
+// sparkLabel is appended to the sparkline. Its width plus a margin is what
+// sparkView reserves, and it guarantees the line never ends in the space a
+// zero-hours day renders as.
+const sparkLabel = " hours/day"
+
+// sparkView renders the per-day sparkline, or "" when there is nothing worth
+// drawing: a range of one day is a single cell, and a report with no buckets
+// already says so in its body.
+func (rm reportModel) sparkView(th theme, width int) string {
+	if len(rm.daily) < 2 || len(rm.r.Buckets) == 0 {
+		return ""
+	}
+	cells := 31 // the longest month, used until the terminal reports its width
+	if width > 0 {
+		cells = max(1, width-len(sparkLabel)-2)
+	}
+	return th.Accent.Render(sparkline(rm.daily, cells)) + th.Help.Render(sparkLabel)
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters

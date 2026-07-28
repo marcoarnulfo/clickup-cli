@@ -87,6 +87,12 @@ func goldenReport() report.Report {
 	}
 }
 
+// goldenDaily is a fixed per-day series with two idle days, so the golden
+// pins both a bar and a gap.
+func goldenDaily() []float64 {
+	return []float64{3.5, 0, 1.25, 4, 0, 2, 6}
+}
+
 // goldenEntries is the fixed entry set the browser, filters and rates screens
 // render from.
 func goldenEntries() []report.TimeEntry {
@@ -130,7 +136,7 @@ func TestGoldenReport(t *testing.T) {
 		name  string
 		width int
 	}{{"report_narrow", 60}, {"report", 80}, {"report_wide", 120}} {
-		golden(t, tc.name, newReport(r, "").view(testTheme(true), tc.width))
+		golden(t, tc.name, newReport(r, "", goldenDaily()).view(testTheme(true), tc.width))
 	}
 }
 
@@ -154,7 +160,7 @@ func TestGoldenReportMultiCurrency(t *testing.T) {
 	// NonBillableHours is unchanged: Mobile is fully billable, so the 3h from
 	// Internal is still the whole non-billable side.
 	r.TotalHours, r.BillableHours, r.BilledHours = 19.5, 16.5, 16.5
-	golden(t, "report_multicurrency", newReport(r, "").view(testTheme(true), 80))
+	golden(t, "report_multicurrency", newReport(r, "", goldenDaily()).view(testTheme(true), 80))
 }
 
 func TestGoldenExport(t *testing.T) {
