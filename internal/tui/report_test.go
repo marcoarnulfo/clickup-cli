@@ -101,7 +101,7 @@ func TestReportViewRendersPerCurrencyAmounts(t *testing.T) {
 		},
 		TotalHours: 4, BillableHours: 3, NonBillableHours: 1, BilledHours: 3,
 	}
-	out := newReport(r, "").view(testTheme(true))
+	out := newReport(r, "").view(testTheme(true), 80)
 	for _, want := range []string{"200.00 EUR", "100.00 USD", "subtotal EUR", "subtotal USD", "non-billable"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q; got:\n%s", want, out)
@@ -119,7 +119,7 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 2, BillableHours: 2, BilledHours: 2, Amount: 100}},
 		TotalHours:        2, BillableHours: 2, BilledHours: 2, TotalAmount: 100,
 	}
-	out := newReport(r, "").view(testTheme(true))
+	out := newReport(r, "").view(testTheme(true), 80)
 	if strings.Contains(out, "subtotal") {
 		t.Errorf("single-currency report should not list subtotals; got:\n%s", out)
 	}
@@ -154,7 +154,7 @@ func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 		t.Fatalf("screen = %v, want screenReport (err: %v)", mm.screen, mm.err)
 	}
 	// billable: 2h @ 100 EUR/h = 200 EUR, 1h @ 90 USD/h = 90 USD.
-	out := mm.rep.view(testTheme(true))
+	out := mm.rep.view(testTheme(true), 80)
 	for _, want := range []string{
 		"2 billing lines · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
 		"subtotal EUR", "200.00 EUR",

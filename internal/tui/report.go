@@ -215,7 +215,7 @@ func hoursOf(h float64) string {
 	return duration.FormatHours(time.Duration(h * float64(time.Hour)))
 }
 
-func (rm reportModel) view(th theme) string {
+func (rm reportModel) view(th theme, width int) string {
 	r := rm.r
 	// Timezone is surfaced here (#83): with no configured `timezone` it reads
 	// "Local" (time.Local.String()), not a portable IANA name — accepted, see
@@ -225,37 +225,15 @@ func (rm reportModel) view(th theme) string {
 		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
 	summary := th.Accent.Render(export.SummaryLine(r))
 
-	header := th.Header.Render(
-		fmt.Sprintf("%-32s %8s %8s %s", "Item", "Hours", "Billed", "Amount"))
-	rows := header + "\n"
-	for _, b := range r.Buckets {
-		rows += fmt.Sprintf("%-32s %8.2f %8.2f %s\n",
-			truncate(b.Label, 32), b.Hours, b.BilledHours, formatAmounts(b.Amounts, r.DefaultCurrency))
-	}
-
-	// Totals: one line when the report is single-currency, otherwise a TOTAL
-	// hours line plus one authoritative subtotal line per currency (no FX).
-	// Per-bucket Amounts are indicative only (PerDay rounding can drift a few
-	// cents from these subtotals with a finer grouping) — CurrencySubtotals
-	// below is the authoritative total, never re-derived from the bucket rows.
-	var total string
-	if len(r.CurrencySubtotals) <= 1 {
-		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
-			"TOTAL", r.TotalHours, r.BilledHours, r.TotalAmount, r.DefaultCurrency))
-	} else {
-		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f", "TOTAL", r.TotalHours, r.BilledHours))
-		for _, s := range r.CurrencySubtotals {
-			total += "\n" + th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
-				"  subtotal "+s.Currency, s.Hours, s.BilledHours, s.Amount, s.Currency))
-		}
-	}
-	total += "\n" + th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
-
-	body := th.Box.Render(rows + total)
+	body := reportTable(th, r, width)
 	if len(r.Buckets) == 0 {
 		body = th.Box.Render("No hours to show.")
 	}
-	return title + "\n\n" + summary + "\n\n" + body
+	// The billable split is a note, not a row of data: inside the table it
+	// would take the zebra stripe and be split across columns.
+	split := th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s",
+		hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
+	return title + "\n\n" + summary + "\n\n" + body + "\n" + split
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters

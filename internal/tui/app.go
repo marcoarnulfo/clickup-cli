@@ -922,7 +922,7 @@ func (m Model) screenBody() string {
 	case screenLoading:
 		return m.theme.Title.Render("Loading hours…")
 	case screenReport:
-		return m.rep.view(m.theme)
+		return m.rep.view(m.theme, m.width)
 	case screenExport:
 		return m.export.view(m.theme)
 	case screenRates:
