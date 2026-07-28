@@ -34,6 +34,12 @@ jobs:
       - name: Extract release notes from CHANGELOG.md
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # A prerelease tag (vX.Y.Z-rcN) exists to exercise this pipeline, not
+          # to describe a different set of changes, so it reads the base
+          # version's section. Without this the documented rc smoke test cannot
+          # run at all: the extraction below would find no
+          # '## [X.Y.Z-rcN]' heading and fail the release before publishing.
+          version="${version%%-*}"
           awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { found=1; next }
             /^## \[/ && found { exit }
@@ -44,7 +50,12 @@ jobs:
             exit 1
           fi
 
-      - uses: sigstore/cosign-installer@v4
+      # Pinned to an exact tag on purpose: sigstore/cosign-installer publishes
+      # floating v2 and v3 refs but NO floating v4, so '@v4' does not resolve
+      # and the job dies before anything runs. The v4 line is the one that
+      # installs cosign v3, which is what .goreleaser.yaml's
+      # 'sign-blob --bundle' needs.
+      - uses: sigstore/cosign-installer@v4.1.2
 
       - uses: goreleaser/goreleaser-action@v7
         with:
