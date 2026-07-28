@@ -44,8 +44,10 @@ jobs:
             $0 ~ "^## \\[" v "\\]" { found=1; next }
             /^## \[/ && found { exit }
             found
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
+          # Written outside the checkout: goreleaser refuses to release from a
+          # dirty tree, and an untracked notes.md in the repo root is dirty.
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ ! -s "$RUNNER_TEMP/notes.md" ]; then
             echo "::error::CHANGELOG.md has no '## [$version]' section"
             exit 1
           fi
@@ -61,7 +63,7 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --release-notes=notes.md
+          args: release --clean --release-notes=${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Personal access token with contents:write on homebrew-tap and
