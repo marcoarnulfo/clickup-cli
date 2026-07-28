@@ -1313,7 +1313,7 @@ func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 // Over budget is the state the view exists to surface, so it must not look the
 // same as a healthy one. The goldens run under termenv.Ascii, which strips the
 // color entirely, so this asserts on the style rather than the output.
-func TestBudgetBarColoursOverBudget(t *testing.T) {
+func TestBudgetBarColorsOverBudget(t *testing.T) {
 	t.Parallel()
 	th := paletteTheme(true) // real colors, so foregrounds are comparable
 	under := budgetFillStyle(th, 60)
@@ -1337,7 +1337,7 @@ And in `TestBudgetViewRendersProgressBar`, replace the `#`/`-` assertion with:
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `go test ./internal/tui -run 'TestRenderBudgetBar|TestBudgetBarColours|TestBudgetViewRendersProgressBar' -v`
+Run: `go test ./internal/tui -run 'TestRenderBudgetBar|TestBudgetBarColors|TestBudgetViewRendersProgressBar' -v`
 Expected: FAIL — `gaugeFull`, `gaugeEmpty` and `budgetFillStyle` are undefined, and `renderBudgetBar` takes one argument.
 
 - [ ] **Step 3: Implement**
