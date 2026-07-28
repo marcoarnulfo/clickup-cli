@@ -119,13 +119,21 @@ func reportItemWidth(rows [][]string, width int) int {
 // column. Only once Item is already at its floor and the row would still
 // overflow does this claw space back from Amount, as a last resort.
 //
-// That resort is safe because a per-bucket Amount is indicative only:
+// That resort mostly targets a per-bucket Amount, which is indicative only:
 // reportRows' own doc comment already says so — PerDay rounding can drift a
 // few cents from the subtotals at a fine grouping, and CurrencySubtotals is
-// authoritative. Those authoritative per-currency figures render as their own
-// rows at the bottom of the same table, at full precision, and are never
-// truncated because their labels are short. So cutting an over-long
-// indicative amount does not hide money: the exact figure is four rows down.
+// authoritative. Those authoritative per-currency figures do render as their
+// own rows at the bottom of the same table, at full precision — but amountW
+// is one column width shared by every row, subtotals included, so a subtotal
+// cell truncates exactly like a bucket cell once its natural width no longer
+// fits. That only happens below about 52 columns (a 3-currency subtotal like
+// "1234567.00 EUR" needs 14 of its own); at 60 columns and above — the width
+// this file's own tests treat as the table's design range
+// (TestReportTableNeverExceedsWidth starts there) — every subtotal fits
+// whole. Below roughly 48 columns the Item column has already hit its
+// reportMinItemWidth floor and the whole table is in the degraded regime that
+// floor exists to accept; a truncated subtotal in that band is one more
+// symptom of the same accepted trade-off, not a new one.
 //
 // width <= 0 is the first render, before the terminal has sent its
 // WindowSizeMsg: nothing is sized against it yet, so Amount stays at its
