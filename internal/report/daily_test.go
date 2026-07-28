@@ -89,21 +89,23 @@ func TestDailyHours(t *testing.T) {
 	}
 }
 
-// A day is not 24 hours across a DST transition. Rome springs forward on
-// 2026-03-29, making that day 23 hours long: a series built by adding 24h
-// would drift into the next day and mis-credit every entry after it.
+// A day is not 24 hours across a DST transition. Rome falls back on
+// 2026-10-25, making that day 25 hours long: a series built by adding 24h
+// real-world hours would produce a duplicate calendar-day key and lose the
+// third day entirely. Advancing by AddDate(0,0,1) correctly handles both
+// 23-hour (spring) and 25-hour (autumn) transitions.
 func TestDailyHoursSurvivesDST(t *testing.T) {
 	t.Parallel()
 	rome, err := time.LoadLocation("Europe/Rome")
 	if err != nil {
 		t.Skipf("tzdata unavailable: %v", err)
 	}
-	start := time.Date(2026, time.March, 28, 0, 0, 0, 0, rome)
-	end := time.Date(2026, time.March, 31, 0, 0, 0, 0, rome)
+	start := time.Date(2026, time.October, 24, 0, 0, 0, 0, rome)
+	end := time.Date(2026, time.October, 27, 0, 0, 0, 0, rome)
 	entries := []TimeEntry{
-		{Start: time.Date(2026, time.March, 28, 10, 0, 0, 0, rome), Duration: time.Hour},
-		{Start: time.Date(2026, time.March, 29, 10, 0, 0, 0, rome), Duration: 2 * time.Hour},
-		{Start: time.Date(2026, time.March, 30, 10, 0, 0, 0, rome), Duration: 3 * time.Hour},
+		{Start: time.Date(2026, time.October, 24, 10, 0, 0, 0, rome), Duration: time.Hour},
+		{Start: time.Date(2026, time.October, 25, 10, 0, 0, 0, rome), Duration: 2 * time.Hour},
+		{Start: time.Date(2026, time.October, 26, 10, 0, 0, 0, rome), Duration: 3 * time.Hour},
 	}
 	got := DailyHours(entries, start, end, rome)
 	want := []float64{1, 2, 3}
