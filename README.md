@@ -116,6 +116,11 @@ the **range picker**, which offers presets (this month, last month, last 7 days,
 report you can change the grouping, re-export, or go back home. If the token becomes
 invalid or is revoked while in use, the TUI automatically re-runs the setup wizard.
 
+The report itself renders as a table sized to your terminal: as the window narrows,
+the label column gives up its space first, so the numeric and amount columns keep
+their footing. Above the table, a per-day sparkline shows the shape of the period at a
+glance — a day with no logged hours renders as a gap, not a bar.
+
 ### TUI commands
 
 Every screen shows a footer with the keys it currently accepts, generated directly
