@@ -65,6 +65,12 @@ jobs:
           version: "~> v2"
           args: release --clean --release-notes=${{ runner.temp }}/notes.md
         env:
+          # Release the tag that triggered this run, not whatever `git describe`
+          # picks. When a release tag and its rc sit on the same commit — which
+          # is the normal shape of the documented smoke test — describe can
+          # resolve to the rc, and the run publishes rc artifacts under the
+          # release tag's name.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Personal access token with contents:write on homebrew-tap and
           # scoop-bucket (GITHUB_TOKEN cannot push to other repos).
