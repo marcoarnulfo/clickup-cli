@@ -234,13 +234,23 @@ func reportTable(th theme, r report.Report, width int) string {
 // not theoretical. Shave one more rune at a time until the rendered width
 // actually fits.
 //
-// Safe for any w, including w <= 1, without the caller keeping its own floor:
-// truncate itself guards n <= 1. reportItemWidth's own floor
-// (reportMinItemWidth, itself bounded below by "Item"'s own width) keeps its
-// w at 4 or above, so the loop never gets near that guard for the Item
-// column; reportAmountWidth has no equivalent floor and can legitimately hand
-// back 1 — exactly the case the guard exists for.
+// Safe for w >= 1, without the caller keeping its own floor: truncate itself
+// guards n <= 1. reportItemWidth's own floor (reportMinItemWidth, itself
+// bounded below by "Item"'s own width) keeps its w at 4 or above, so the loop
+// never gets near that guard for the Item column; reportAmountWidth has no
+// equivalent floor and can legitimately hand back 1 — exactly the case the
+// guard exists for.
+//
+// w <= 0 is NOT safe and the caller must not pass it: truncate(s, 0) (like
+// truncate(s, 1)) returns "…", which is 1 column wide, so "> w" stays true
+// forever and the loop never returns. Both of today's callers keep w at 1 or
+// above (see above), so this is unreached, not merely untested — the guard
+// below exists so a future caller that breaks that invariant gets an empty
+// string back instead of a hang with no diagnosis.
 func shaveToWidth(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
 	s = truncate(s, w)
 	for lipgloss.Width(s) > w {
 		s = truncate(s, len([]rune(s))-1)

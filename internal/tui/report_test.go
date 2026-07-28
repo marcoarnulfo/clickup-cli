@@ -317,3 +317,38 @@ func TestSparkViewLabelLeadsWithTrailingZeroDays(t *testing.T) {
 		t.Errorf("sparkView = %q, want %q", got, want)
 	}
 }
+
+// TestSparkViewAllZeroSeriesHasNoTrailingWhitespace covers a series with
+// buckets but zero hours on every day of the range: sparkline itself renders
+// as all spaces (no ink anywhere), and the old fix only trimmed the chart, so
+// the label's own trailing separator space ("hours/day ") was left dangling
+// with nothing after it — the same defect the trim exists to prevent, just
+// moved one segment left. The line still renders (a chart with no ink is
+// itself the information, same as one idle day among several rendering as a
+// blank cell rather than vanishing); it must simply carry no trailing space.
+func TestSparkViewAllZeroSeriesHasNoTrailingWhitespace(t *testing.T) {
+	t.Parallel()
+	rm := newReport(report.Report{Buckets: []report.Bucket{{Label: "x"}}}, "",
+		[]float64{0, 0, 0, 0, 0, 0, 0})
+	got := rm.sparkView(testTheme(true), 0)
+	if got != strings.TrimRight(got, " ") {
+		t.Errorf("sparkView = %q, has trailing whitespace", got)
+	}
+	if got != "hours/day" {
+		t.Errorf("sparkView = %q, want the label alone with no separator space", got)
+	}
+}
+
+// TestTruncateEmptyStringAlwaysEmpty covers the deliberately empty Amount
+// cell in the multi-currency TOTAL row (see reportRows): with the n <= 1
+// guard alone, truncate("", n) for n <= 1 returned "…" — an ellipsis standing
+// in for nothing, rendered whenever that cell's column shrinks to 1 or less.
+// An empty input has nothing to mark as cut, whatever n is.
+func TestTruncateEmptyStringAlwaysEmpty(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{0, 1, 5} {
+		if got := truncate("", n); got != "" {
+			t.Errorf("truncate(%q, %d) = %q, want %q", "", n, got, "")
+		}
+	}
+}

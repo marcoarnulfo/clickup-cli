@@ -263,20 +263,34 @@ func (rm reportModel) sparkView(th theme, width int) string {
 	}
 	// Trailing idle days render as trailing spaces (see sparkline.go); with
 	// the label leading rather than trailing, those spaces would otherwise
-	// dangle at the end of the line for no reader to see. Trimming them
-	// changes nothing visible — idle days carry no ink either way — but keeps
-	// the line, and every golden that captures it, free of trailing
-	// whitespace an editor could silently strip.
-	chart := strings.TrimRight(sparkline(rm.daily, cells), " ")
-	return th.Help.Render(sparkLabel) + th.Accent.Render(chart)
+	// dangle at the end of the line for no reader to see. The trim runs on
+	// the label and chart ASSEMBLED, not on the chart alone: when every day
+	// in the range is idle, sparkline itself is all spaces, and trimming only
+	// the chart would leave the label's OWN trailing separator space dangling
+	// instead ("hours/day" followed by one space and then nothing — the exact
+	// defect this trim exists to prevent, just moved one segment to the
+	// left). A chart with no ink still renders (see the doc comment above:
+	// only "no buckets" and "fewer than two days" skip the line entirely) —
+	// zero hours on every day of the range is itself the information, the
+	// same way one idle day among several already renders as a blank cell
+	// rather than vanishing.
+	raw := strings.TrimRight(sparkLabel+sparkline(rm.daily, cells), " ")
+	cut := min(len(sparkLabel), len(raw))
+	label, chart := raw[:cut], raw[cut:]
+	return th.Help.Render(label) + th.Accent.Render(chart)
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
-// in task names with accents or emoji. n <= 1 always yields "…": r[:n-1] would
-// otherwise index negatively (a panic) for n <= 0, and the whole package now
-// relies on that guard rather than on each call site keeping n >= some floor
-// itself (see report_table.go's shaveToWidth for why that matters).
+// in task names with accents or emoji. An empty s always yields "", whatever
+// n is: there is nothing to truncate, so there is nothing to mark as cut.
+// Otherwise n <= 1 always yields "…": r[:n-1] would otherwise index
+// negatively (a panic) for n <= 0, and the whole package now relies on that
+// guard rather than on each call site keeping n >= some floor itself (see
+// report_table.go's shaveToWidth for why that matters).
 func truncate(s string, n int) string {
+	if s == "" {
+		return ""
+	}
 	if n <= 1 {
 		return "…"
 	}
