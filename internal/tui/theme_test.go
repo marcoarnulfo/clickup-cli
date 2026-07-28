@@ -72,6 +72,7 @@ func paletteSample(th theme) string {
 	}{
 		{"Title", th.Title}, {"Help", th.Help}, {"Err", th.Err},
 		{"OK", th.OK}, {"Accent", th.Accent}, {"Box", th.Box},
+		{"Border", th.Border}, {"Zebra", th.Zebra},
 	} {
 		fmt.Fprintf(&b, "%-8s%s\n", row.name, row.st.Render(row.name))
 	}
@@ -100,6 +101,7 @@ func TestPaletteIsAdaptive(t *testing.T) {
 	}{
 		{"Primary", p.Primary}, {"Accent", p.Accent},
 		{"Danger", p.Danger}, {"Success", p.Success},
+		{"Subtle", p.Subtle},
 	} {
 		if tc.c.Light == tc.c.Dark {
 			t.Errorf("%s is not adaptive: Light == Dark == %q", tc.name, tc.c.Dark)
@@ -140,6 +142,18 @@ func TestNoColorProducesNoEscapes(t *testing.T) {
 	out := paletteSample(th)
 	if strings.Contains(out, "\x1b") {
 		t.Errorf("NO_COLOR=1 still produced escape sequences:\n%q", out)
+	}
+}
+
+// The zebra style must actually carry a background: it is the only thing that
+// distinguishes an odd row, and the package goldens run under termenv.Ascii,
+// which strips backgrounds — so nothing else in the suite would notice it
+// going missing.
+func TestZebraCarriesBackground(t *testing.T) {
+	t.Parallel()
+	th := paletteTheme(true)
+	if th.Zebra.GetBackground() == th.Cell.GetBackground() {
+		t.Error("Zebra has the same background as a plain cell, so odd rows are indistinguishable")
 	}
 }
 

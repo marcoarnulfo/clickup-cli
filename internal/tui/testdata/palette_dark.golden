@@ -7,3 +7,5 @@ Accent  [38;5;205mAccent[0m
 Box     ╭─────╮
 │ Box │
 ╰─────╯
+Border  [38;5;240mBorder[0m
+Zebra   [48;5;236mZebra[0m
