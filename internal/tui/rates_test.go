@@ -704,12 +704,6 @@ func TestRatesDraftPickMemberKeyLabels(t *testing.T) {
 	}
 }
 
-// TestRatesDraftRateStepKeyLabels pins the draft's third step: by the time
-// draft.step is draftRate, rt.editing is already true (rates.go's "enter" on
-// draftPickMember sets both), so this step's labels come from the SAME
-// editing branch as every other field edit (TestRatesEditingModeKeyLabels) —
-// there is no dedicated "draft rate" branch in ratesKeys, only the shared
-// editing one, reached here via the draft.
 // Each section keeps its own selected row: moving in one section must not
 // disturb another, and returning to a section must restore where you were.
 // This is the property the four parallel indices existed to provide, and the
@@ -748,6 +742,12 @@ func TestRatesSelectionIsPerSection(t *testing.T) {
 	}
 }
 
+// TestRatesDraftRateStepKeyLabels pins the draft's third step: by the time
+// draft.step is draftRate, rt.editing is already true (rates.go's "enter" on
+// draftPickMember sets both), so this step's labels come from the SAME
+// editing branch as every other field edit (TestRatesEditingModeKeyLabels) —
+// there is no dedicated "draft rate" branch in ratesKeys, only the shared
+// editing one, reached here via the draft.
 func TestRatesDraftRateStepKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenRates, ratesScreen: ratesModel{

@@ -29,7 +29,7 @@ type theme struct {
 	Accent lipgloss.Style
 	Box    lipgloss.Style
 	Header lipgloss.Style // bold, uncolored: the report's column header row
-	Cell   lipgloss.Style // a plain report-table cell: no colour, just the renderer
+	Cell   lipgloss.Style // a plain report-table cell: no color, just the renderer
 	Border lipgloss.Style // the report table's frame
 	Zebra  lipgloss.Style // alternate report-table row
 }
