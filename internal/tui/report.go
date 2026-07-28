@@ -2,10 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -239,10 +241,14 @@ func (rm reportModel) view(th theme, width int) string {
 	return out + body + "\n" + split
 }
 
-// sparkLabel is appended to the sparkline. Its width plus a margin is what
-// sparkView reserves, and it guarantees the line never ends in the space a
-// zero-hours day renders as.
-const sparkLabel = " hours/day"
+// sparkLabel prefixes the sparkline. It leads rather than trails so the chart
+// always reads left-to-right from a fixed origin: DailyHours zero-fills the
+// whole range and a zero renders as a space (see sparkline.go), so a label
+// appended after the chart drifts as many columns as there are idle days at
+// the end of the range — visibly so for the current month, viewed partway
+// through, which is most of the trailing days. Its width plus a margin is
+// what sparkView reserves for the chart.
+const sparkLabel = "hours/day "
 
 // sparkView renders the per-day sparkline, or "" when there is nothing worth
 // drawing: a range of one day is a single cell, and a report with no buckets
@@ -253,9 +259,16 @@ func (rm reportModel) sparkView(th theme, width int) string {
 	}
 	cells := 31 // the longest month, used until the terminal reports its width
 	if width > 0 {
-		cells = max(1, width-len(sparkLabel)-2)
+		cells = max(1, width-lipgloss.Width(sparkLabel)-2)
 	}
-	return th.Accent.Render(sparkline(rm.daily, cells)) + th.Help.Render(sparkLabel)
+	// Trailing idle days render as trailing spaces (see sparkline.go); with
+	// the label leading rather than trailing, those spaces would otherwise
+	// dangle at the end of the line for no reader to see. Trimming them
+	// changes nothing visible — idle days carry no ink either way — but keeps
+	// the line, and every golden that captures it, free of trailing
+	// whitespace an editor could silently strip.
+	chart := strings.TrimRight(sparkline(rm.daily, cells), " ")
+	return th.Help.Render(sparkLabel) + th.Accent.Render(chart)
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters

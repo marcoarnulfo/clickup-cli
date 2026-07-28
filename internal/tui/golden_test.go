@@ -93,6 +93,17 @@ func goldenDaily() []float64 {
 	return []float64{3.5, 0, 1.25, 4, 0, 2, 6}
 }
 
+// goldenDailyPartialMonth is a 31-day series with 10 days of data followed by
+// 21 zero-hours days — the shape of the default view (the current month,
+// viewed partway through) that goldenDaily() never depicts, since its own
+// 7-value series ends non-zero. This is the exact shape that let the
+// "hours/day" label drift 21 columns from the chart before it was moved to a
+// prefix (visible in the shipped docs/demo.gif).
+func goldenDailyPartialMonth() []float64 {
+	days := []float64{3.5, 0, 1.25, 4, 0, 2, 6, 1, 5, 2.5} // 10 days worked
+	return append(days, make([]float64, 21)...)            // the rest of July, not yet worked
+}
+
 // goldenEntries is the fixed entry set the browser, filters and rates screens
 // render from.
 func goldenEntries() []report.TimeEntry {
@@ -161,6 +172,16 @@ func TestGoldenReportMultiCurrency(t *testing.T) {
 	// Internal is still the whole non-billable side.
 	r.TotalHours, r.BillableHours, r.BilledHours = 19.5, 16.5, 16.5
 	golden(t, "report_multicurrency", newReport(r, "", goldenDaily()).view(testTheme(true), 80))
+}
+
+// The default view: the current month, viewed partway through, so the daily
+// series ends in a run of zero-hours days. goldenDaily() never depicted this
+// shape (its own series ends non-zero) — it is exactly the shape that let the
+// sparkline's "hours/day" label drift away from the chart before the label
+// became a prefix.
+func TestGoldenReportPartialMonth(t *testing.T) {
+	t.Parallel()
+	golden(t, "report_partial_month", newReport(goldenReport(), "", goldenDailyPartialMonth()).view(testTheme(true), 80))
 }
 
 func TestGoldenExport(t *testing.T) {

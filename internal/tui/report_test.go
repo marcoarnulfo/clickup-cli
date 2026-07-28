@@ -299,3 +299,21 @@ func TestMemberFilterNotePartial(t *testing.T) {
 		t.Errorf("memberFilterNote = %q, want ' (2/3 members)'", got)
 	}
 }
+
+// TestSparkViewLabelLeadsWithTrailingZeroDays pins the fix for the label
+// detaching from the chart: the series ends in three idle days (zero-fills,
+// rendered as spaces — see sparkline.go), the shape of the default view (the
+// current month, viewed partway through) that goldenDaily() never exercised
+// because its own series ends non-zero. Before this fix, the label was
+// appended after the chart and the trailing spaces were never trimmed, so it
+// drifted as many columns as there were trailing idle days — visibly so in
+// the shipped docs/demo.gif. With the label leading and the trailing spaces
+// trimmed, it now sits immediately before the first cell every time.
+func TestSparkViewLabelLeadsWithTrailingZeroDays(t *testing.T) {
+	t.Parallel()
+	rm := newReport(report.Report{Buckets: []report.Bucket{{Label: "x"}}}, "",
+		[]float64{3.5, 0, 1.25, 4, 0, 0, 0})
+	if got, want := rm.sparkView(testTheme(true), 0), "hours/day ▇ ▃█"; got != want {
+		t.Errorf("sparkView = %q, want %q", got, want)
+	}
+}
