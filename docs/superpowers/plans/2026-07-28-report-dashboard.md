@@ -4,7 +4,7 @@
 
 **Goal:** Collapse the billing editor's four parallel selection indices into one array (#117), replace the hand-built report with a width-aware `lipgloss/table` (#66), and turn the report into a dashboard with a per-day sparkline and a block-glyph budget gauge (#80).
 
-**Architecture:** Domain stays pure — the per-day series is a new pure function in `internal/report`; everything else is presentation. The table lives in its own file so `report.go` keeps its size, and every choice that `termenv.Ascii` erases (zebra background, over-budget colour, total styling) is tested by asserting on the returned `lipgloss.Style`, never on rendered bytes.
+**Architecture:** Domain stays pure — the per-day series is a new pure function in `internal/report`; everything else is presentation. The table lives in its own file so `report.go` keeps its size, and every choice that `termenv.Ascii` erases (zebra background, over-budget color, total styling) is tested by asserting on the returned `lipgloss.Style`, never on rendered bytes.
 
 **Tech Stack:** Go 1.26.5, bubbletea v1.3.10, **lipgloss v1.1.0 including its `table` sub-package** (already an indirect part of an existing dependency — `go.mod` must not gain a new module).
 
@@ -293,7 +293,7 @@ Extend the doc comment above `defaultPalette` with this paragraph:
 In the `theme` struct:
 
 ```go
-	Cell   lipgloss.Style // a plain report-table cell: no colour, just the renderer
+	Cell   lipgloss.Style // a plain report-table cell: no color, just the renderer
 	Border lipgloss.Style // the report table's frame
 	Zebra  lipgloss.Style // alternate report-table row
 ```
@@ -484,13 +484,13 @@ func TestReportRowsMultiCurrencyTotals(t *testing.T) {
 	}
 }
 
-// TestReportStyleFunc is the ONLY check on the grid's colours. The package
+// TestReportStyleFunc is the ONLY check on the grid's colors. The package
 // goldens run under termenv.Ascii, which strips backgrounds and bold, so a
-// broken zebra or an uncoloured TOTAL would leave every golden byte-identical.
+// broken zebra or an uncolored TOTAL would leave every golden byte-identical.
 // It therefore asserts on the Style the function returns, not on rendered text.
 func TestReportStyleFunc(t *testing.T) {
 	t.Parallel()
-	th := paletteTheme(true) // real colours, so backgrounds are comparable
+	th := paletteTheme(true) // real colors, so backgrounds are comparable
 	const firstTotal = 2
 	f := reportStyleFunc(th, firstTotal)
 
@@ -507,7 +507,7 @@ func TestReportStyleFunc(t *testing.T) {
 		t.Error("the TOTAL row is striped; totals are not part of the zebra sequence")
 	}
 	if f(firstTotal, 0).GetForeground() != th.OK.GetForeground() {
-		t.Error("the TOTAL row does not carry the OK colour")
+		t.Error("the TOTAL row does not carry the OK color")
 	}
 	if !f(firstTotal, 0).GetBold() {
 		t.Error("the TOTAL row is not bold")
@@ -633,7 +633,7 @@ func reportItemWidth(rows [][]string, headers []string, width int) int {
 //
 // It is a separate function because a golden cannot see what it does. TestMain
 // pins termenv.Ascii, which strips backgrounds and bold, so a broken stripe or
-// an uncoloured TOTAL leaves every golden byte-identical. The test asserts on
+// an uncolored TOTAL leaves every golden byte-identical. The test asserts on
 // the Style this returns.
 //
 // It never calls lipgloss.NewStyle(): that would build on the DEFAULT
@@ -1288,7 +1288,7 @@ git commit -m "feat(tui): draw a per-day sparkline on the report (#80)"
 - Consumes: `theme.OK`, `theme.Err`, `theme.Help` (all pre-existing).
 - Produces: `renderBudgetBar(th theme, percentUsed float64) string` — **signature change**.
 
-**Background — why not `bubbles/progress`:** #80's checkbox names it, and it is the wrong tool here. `progress.percentageView` runs `math.Max(0, math.Min(1, percent))` *before* formatting, so a budget burned to 130% renders as `100%` — it hides the single fact this screen exists to show. (`progress.New()` also reads `termenv.ColorProfile()`, the real terminal rather than the injected renderer, which would force the colour profile onto the `theme` for one caller.) The existing pure function already gets this right and only needs better glyphs and colour.
+**Background — why not `bubbles/progress`:** #80's checkbox names it, and it is the wrong tool here. `progress.percentageView` runs `math.Max(0, math.Min(1, percent))` *before* formatting, so a budget burned to 130% renders as `100%` — it hides the single fact this screen exists to show. (`progress.New()` also reads `termenv.ColorProfile()`, the real terminal rather than the injected renderer, which would force the color profile onto the `theme` for one caller.) The existing pure function already gets this right and only needs better glyphs and color.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1312,17 +1312,17 @@ func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 
 // Over budget is the state the view exists to surface, so it must not look the
 // same as a healthy one. The goldens run under termenv.Ascii, which strips the
-// colour entirely, so this asserts on the style rather than the output.
+// color entirely, so this asserts on the style rather than the output.
 func TestBudgetBarColoursOverBudget(t *testing.T) {
 	t.Parallel()
-	th := paletteTheme(true) // real colours, so foregrounds are comparable
+	th := paletteTheme(true) // real colors, so foregrounds are comparable
 	under := budgetFillStyle(th, 60)
 	over := budgetFillStyle(th, 130)
 	if under.GetForeground() != th.OK.GetForeground() {
-		t.Error("a bar under budget is not drawn in the OK colour")
+		t.Error("a bar under budget is not drawn in the OK color")
 	}
 	if over.GetForeground() != th.Err.GetForeground() {
-		t.Error("a bar over budget is not drawn in the Err colour")
+		t.Error("a bar over budget is not drawn in the Err color")
 	}
 }
 ```
@@ -1352,10 +1352,10 @@ const (
 	gaugeEmpty = '░'
 )
 
-// budgetFillStyle is the colour of the filled part of a gauge. Over budget is
+// budgetFillStyle is the color of the filled part of a gauge. Over budget is
 // the state this screen exists to surface, so it must not look like a healthy
 // one. It is a named function because the package goldens run under
-// termenv.Ascii, which strips the colour: asserting on the style is the only
+// termenv.Ascii, which strips the color: asserting on the style is the only
 // way to test the choice.
 func budgetFillStyle(th theme, percentUsed float64) lipgloss.Style {
 	if percentUsed > 100 {
@@ -1436,7 +1436,7 @@ Under `## [Unreleased]` in `CHANGELOG.md`, in the existing `### Added` / `### Ch
 - The report is rendered as a real table that sizes itself to the terminal:
   the numeric columns are right-aligned and the label column takes the slack,
   instead of a fixed 32-column layout that wrapped on a narrow terminal (#66).
-- The budget burn-down bars are drawn with block glyphs and coloured — green
+- The budget burn-down bars are drawn with block glyphs and colored — green
   under budget, red over it — while still showing the true, unclamped
   percentage (#80).
 ```
@@ -1462,9 +1462,9 @@ git commit -m "docs: record the report dashboard and refresh the demo GIF"
 
 These are for the controller to do after the branch merges — they are **not** commits:
 
-1. **Open an issue** for the budget screen's width: its rendered line is 94 columns and wraps on an 80-column terminal. This is pre-existing (it predates this tranche) and out of scope here, but this tranche touched that exact line's glyphs and colours, so it must not be left unrecorded. Bilingual body, `area:tui` + `area:billing`.
+1. **Open an issue** for the budget screen's width: its rendered line is 94 columns and wraps on an 80-column terminal. This is pre-existing (it predates this tranche) and out of scope here, but this tranche touched that exact line's glyphs and colors, so it must not be left unrecorded. Bilingual body, `area:tui` + `area:billing`.
 2. **Close #117** with a note that the four indices are now `sel [secCount]int` and that `selCount`'s switch was deliberately kept, since its four counts genuinely differ.
-3. **Close #66**, noting that column separators and row separators are off by design and that `TOTAL` is distinguished by weight and colour because `lipgloss/table`'s `BorderRow` is all-or-nothing.
+3. **Close #66**, noting that column separators and row separators are off by design and that `TOTAL` is distinguished by weight and color because `lipgloss/table`'s `BorderRow` is all-or-nothing.
 4. **Close #80**, noting that `bubbles/progress` was evaluated and rejected: it clamps the percentage to 100 before formatting, which would hide exactly the over-budget state the view exists to show.
 
 ---
