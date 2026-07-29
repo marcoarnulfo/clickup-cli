@@ -636,8 +636,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		// An open overlay owns the keyboard, and this check MUST stay above
-		// Quit: below it, typing "q" into the palette's query would end the
-		// program. TestPaletteQueryAcceptsQ pins the ordering.
+		// Palette: below it, ctrl+p would call openPalette a second time and
+		// wipe the query instead of closing.
+		// TestPaletteCtrlPClosesRatherThanReopening pins the ordering.
 		if m.overlay != overlayNone {
 			return m.updateOverlay(msg)
 		}

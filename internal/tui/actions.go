@@ -34,7 +34,7 @@ func paletteActions(m Model) []action {
 //
 // Three things fall out of that for free: the gating (a disabled binding simply
 // is not here), the wording (the label is the footer's own description, so the
-// two surfaces cannot drift), and the behaviour (run replays the key, so there
+// two surfaces cannot drift), and the behavior (run replays the key, so there
 // is no duplicated handler to diverge).
 //
 // screenKeys, not keysFor: with the palette open keysFor answers for the
@@ -115,7 +115,7 @@ func globalActions(m Model) []action {
 			return mm, cmd
 		}},
 		// "Go to log hours", not "Log hours": on Home and Report the screen
-		// keymap already yields an action labelled exactly "Log hours", and two
+		// keymap already yields an action labeled exactly "Log hours", and two
 		// identical rows in one list read as a bug rather than as the legible
 		// do-it-here / take-me-there pair the other duplicates form.
 		{"Go to log hours", screenLog, true, func(m Model) (tea.Model, tea.Cmd) {

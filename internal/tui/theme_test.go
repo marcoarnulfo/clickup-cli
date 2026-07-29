@@ -62,7 +62,7 @@ func paletteTheme(dark bool) theme {
 	return newTheme(r, defaultPalette())
 }
 
-// paletteSample renders one labelled line per style, so a single golden pins
+// paletteSample renders one labeled line per style, so a single golden pins
 // every token's color.
 func paletteSample(th theme) string {
 	var b strings.Builder

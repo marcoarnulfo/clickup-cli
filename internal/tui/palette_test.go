@@ -59,6 +59,19 @@ func TestPaletteOpensAndClosesWithoutTouchingNav(t *testing.T) {
 	}
 }
 
+// openPalette's doc comment explains why: the expanded footer is several
+// lines tall, and paletteRows subtracts a fixed two rows for the blank line
+// plus footer, so a surviving helpAll would misdraw the box on top of it.
+func TestPaletteOpenClearsHelpAll(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	m.helpAll = true
+	m = m.openPalette()
+	if m.helpAll {
+		t.Error("openPalette left helpAll set")
+	}
+}
+
 // A regression test, NOT a red-green one. Moving the overlay check below the
 // Quit check does not break it: with the palette open, keysFor answers with
 // paletteKeys, where Quit is unassigned, so q reaches the query either way.
@@ -255,6 +268,45 @@ func TestPaletteCursorClampsAndScrolls(t *testing.T) {
 	}
 }
 
+// A query typed with the cursor sitting near the bottom of a longer list can
+// shrink the list out from under it. Without refreshPalette resetting idx and
+// top on every keystroke, idx would stay past the end of the new, shorter
+// items slice, and Confirm's m.palette.items[m.palette.idx] would panic with
+// an index out of range.
+func TestPaletteRefreshResetsCursorWhenQueryShrinksTheList(t *testing.T) {
+	t.Parallel()
+	m := openPaletteOn(newTestModelOnReport())
+	m.height = 24
+	if len(m.palette.items) <= paletteMaxRows {
+		t.Fatalf("the fixture has only %d actions; this test needs more than %d", len(m.palette.items), paletteMaxRows)
+	}
+
+	for range len(m.palette.items) - 1 {
+		got, _ := m.updateOverlay(tea.KeyMsg{Type: tea.KeyDown})
+		m = got.(Model)
+	}
+	if i, n := m.palette.idx, len(m.palette.items); i != n-1 {
+		t.Fatalf("idx = %d, want %d — the cursor did not reach the bottom of the full list", i, n-1)
+	}
+
+	m = typeInto(m, "export")
+	if n := len(m.palette.items); n == 0 || n >= paletteMaxRows {
+		t.Fatalf(`query "export" left %d items; this test needs a short list for the old idx to land past its end`, n)
+	}
+	if i, n := m.palette.idx, len(m.palette.items); i < 0 || i >= n {
+		t.Fatalf("idx = %d out of range for %d items after the query shrank the list", i, n)
+	}
+	if m.palette.top < 0 || m.palette.top > m.palette.idx {
+		t.Errorf("top = %d, idx = %d — the scroll window was not reset with the cursor", m.palette.top, m.palette.idx)
+	}
+
+	// Confirm must not panic indexing into the shrunk list.
+	got, _ := m.updateOverlay(keyMsg("enter"))
+	if after := got.(Model); after.screen != screenExport {
+		t.Errorf("screen = %v, want screenExport", after.screen)
+	}
+}
+
 func TestPaletteEnterRunsTheSelectedActionAndCloses(t *testing.T) {
 	t.Parallel()
 	m := newTestModelOnReport()
@@ -315,6 +367,25 @@ func TestPaletteBoxIsExactlyItsWidth(t *testing.T) {
 	}
 	if x+want > m.width {
 		t.Errorf("the box overflows: x=%d width=%d terminal=%d", x, want, m.width)
+	}
+}
+
+// A query longer than the box's inner width must be shaved like every other
+// line box builds, or it breaks the box's own right border with nothing
+// noticing.
+func TestPaletteLongQueryStaysInsideTheBox(t *testing.T) {
+	t.Parallel()
+	m := openPaletteOn(newTestModelOnReport())
+	m.width, m.height = 100, 30
+	m = typeInto(m, strings.Repeat("x", paletteWidth*2))
+
+	box, _, _ := m.palette.layout(testTheme(true), m.width, m.height, 12)
+	lines := strings.Split(box, "\n")
+	want := lipgloss.Width(lines[0])
+	for i, l := range lines {
+		if w := lipgloss.Width(l); w != want {
+			t.Errorf("box line %d is %d cells, want %d: %q", i, w, want, l)
+		}
 	}
 }
 

@@ -73,7 +73,7 @@ func TestMatchRanks(t *testing.T) {
 		better string
 		worse  string
 	}{
-		// "Export", not "Export report": screen actions are labelled
+		// "Export", not "Export report": screen actions are labeled
 		// capitalize(binding.Help().Desc), and Export's description is "export".
 		{"a screen action beats the navigation row", "exp", "Export", "Go to export"},
 		{"a prefix beats a match buried inside", "rep", "Report", "Go to prep"},

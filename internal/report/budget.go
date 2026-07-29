@@ -23,7 +23,7 @@ type BudgetLine struct {
 // exactly as it does when the money is computed.
 //
 // A budgeted list with no hours in the period has no entry in listNames (the
-// caller derives them from the report's buckets) — it is labelled by its id
+// caller derives them from the report's buckets) — it is labeled by its id
 // rather than left blank, because an untouched budget is precisely the row a
 // user opens this view to see.
 func BudgetLines(billedByList, budgets map[string]float64, p Pricing, listNames map[string]string) []BudgetLine {

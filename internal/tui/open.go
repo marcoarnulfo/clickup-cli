@@ -7,7 +7,7 @@ import tea "github.com/charmbracelet/bubbletea"
 // the same way instead of each knowing how.
 //
 // Three older members of this family live elsewhere and stay there — moving
-// them would inflate a diff for no behavioural gain: openListBrowser in app.go,
+// them would inflate a diff for no behavioral gain: openListBrowser in app.go,
 // openEntries in entries.go, openBudgetView in report.go.
 
 // openExport builds the export screen for the current report.

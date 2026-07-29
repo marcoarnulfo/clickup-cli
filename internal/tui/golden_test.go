@@ -386,7 +386,7 @@ func TestGoldenPaletteNoMatch(t *testing.T) {
 	golden(t, "palette_no_match", m.View())
 }
 
-// A terminal narrower than the preferred box, to pin the floor and the centring.
+// A terminal narrower than the preferred box, to pin the floor and the centering.
 func TestGoldenPaletteNarrow(t *testing.T) {
 	t.Parallel()
 	m := goldenPaletteModel()

@@ -22,6 +22,11 @@ import (
 // lines and the palette is ten. And a wide glyph straddling either edge gets
 // dropped rather than kept, because half a glyph cannot be drawn and staying
 // aligned matters more than one character under the box's border.
+//
+// box must be rectangular — every line the same display width (boxW below).
+// The right-hand segment of each composited row resumes at x+boxW regardless
+// of that box line's own width, so a ragged box silently loses body cells on
+// any line narrower than the others.
 func composite(body, box string, x, y int) string {
 	if box == "" {
 		return body
@@ -55,9 +60,14 @@ func composite(body, box string, x, y int) string {
 			left += ansi.ResetStyle
 		}
 
-		// Skipped rather than cut-and-discarded when the box reaches the end of
-		// the line: past the end ansi.Cut returns a zero-width escape pair, not
-		// an empty string, and every composited line would collect one.
+		// Guarded rather than left to Cut alone: ansi.Cut(row, x+boxW, rowW)
+		// already returns "" once the box reaches or exceeds the line's width
+		// (right <= left is Cut's own early return). But without this guard the
+		// straddle correction just below still runs against that empty string,
+		// and left+bl alone can exceed rowW when the box is wider than the line
+		// — firing spuriously and appending a stray space that does not belong.
+		// TestCompositeBoxWiderThanBody pins a box wider than the body catching
+		// no such space.
 		right := ""
 		if x+boxW < rowW {
 			right = ansi.Cut(row, x+boxW, rowW)

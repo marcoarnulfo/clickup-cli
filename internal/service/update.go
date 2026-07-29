@@ -44,7 +44,7 @@ type updateCache struct {
 	Latest    string    `json:"latest"`
 }
 
-// defaultCachePath returns the cache location. os.UserCacheDir honours
+// defaultCachePath returns the cache location. os.UserCacheDir honors
 // XDG_CACHE_HOME on Linux and gives the right directory on macOS, mirroring
 // how internal/config uses os.UserConfigDir rather than a hardcoded path.
 func defaultCachePath() (string, error) {

@@ -112,9 +112,10 @@ func TestCompositeDoesNotLeakStyleIntoTheBox(t *testing.T) {
 	}
 }
 
-// Past the end of a line ansi.Cut returns a zero-width escape pair rather than
-// "", so the right-hand segment must be skipped by construction instead of
-// being cut and discovered empty.
+// Past the end of a line the right-hand segment is skipped by construction
+// (composite's x+boxW < rowW guard), not cut and discovered empty: without
+// that guard the straddle correction would still run against Cut's own empty
+// result and could append a stray character.
 func TestCompositeAddsNoTrailingEscapes(t *testing.T) {
 	t.Parallel()
 	r := lipgloss.NewRenderer(io.Discard)
