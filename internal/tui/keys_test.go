@@ -217,6 +217,20 @@ func TestKeysForFollowsTheOverlayAndScreenKeysDoesNot(t *testing.T) {
 	}
 }
 
-// TestEveryPaletteBindingIsReplayable is deferred to Task 5: it needs
-// keyMsgFor and keyDefaults.paletteDefaults, and Task 5 repeats this exact
-// test's code when it adds keyMsgFor.
+// Every binding the palette offers must be replayable through routeKey, which
+// means its first key round-trips through keyMsgFor. Anything else would build
+// a KeyMsg whose String() does not match the binding, and the action would
+// silently do nothing.
+func TestEveryPaletteBindingIsReplayable(t *testing.T) {
+	t.Parallel()
+	for _, b := range defaultKeys().paletteDefaults() {
+		keys := b.Keys()
+		if len(keys) == 0 {
+			t.Errorf("a palette default has no keys: %+v", b.Help())
+			continue
+		}
+		if _, ok := keyMsgFor(keys[0]); !ok {
+			t.Errorf("binding %q (%s) has a first key keyMsgFor cannot rebuild", keys[0], b.Help().Desc)
+		}
+	}
+}

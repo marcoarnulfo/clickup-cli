@@ -792,8 +792,6 @@ func paletteKeys(d keyDefaults) keyMap {
 // Generate is here despite being Enter rather than a rune: it is the most-used
 // action in the program and keyMsgFor rebuilds it exactly. Confirm is not, even
 // though it shares that key — the selection is by field, not by keystroke.
-//
-//lint:ignore U1000 called by paletteDefaults, whose own caller lands in Task 5
 func (k keyMap) paletteBindings() []key.Binding {
 	return []key.Binding{
 		k.Generate, k.GroupBy, k.ChangeRange, k.Reload, k.Export, k.Rates,
@@ -806,8 +804,6 @@ func (k keyMap) paletteBindings() []key.Binding {
 
 // paletteDefaults mirrors paletteBindings over keyDefaults, so a test can check
 // every palette-eligible key without having to reach a screen that enables it.
-//
-//lint:ignore U1000 exercised by Task 5's TestEveryPaletteBindingIsReplayable, deferred from this task
 func (d keyDefaults) paletteDefaults() []key.Binding {
 	return keyMap{
 		Generate: d.Generate, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange,
