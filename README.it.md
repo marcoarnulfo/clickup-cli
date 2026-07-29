@@ -125,6 +125,11 @@ prima, così le colonne numeriche e l'importo restano leggibili. Sopra la tabell
 sparkline giornaliera mostra a colpo d'occhio l'andamento del periodo — un giorno
 senza ore registrate appare come un vuoto, non come una barra.
 
+Premi `ctrl+p` da qualunque schermata per aprire la **command palette**: un launcher
+fuzzy che galleggia sopra quello che stai guardando. Scrivi qualche lettera e premi
+`Invio` — offre i comandi della schermata corrente (gli stessi che il footer annuncia,
+con i loro tasti) più la navigazione in un passo verso qualunque altra schermata.
+
 ### Comandi nella TUI
 
 Ogni schermata mostra un footer con i tasti che accetta in quel momento, generato

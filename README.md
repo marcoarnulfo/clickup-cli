@@ -121,6 +121,11 @@ the label column gives up its space first, so the numeric and amount columns kee
 their footing. Above the table, a per-day sparkline shows the shape of the period at a
 glance — a day with no logged hours renders as a gap, not a bar.
 
+Press `ctrl+p` from any screen to open the **command palette**: a fuzzy launcher that
+floats over whatever you're looking at. Type a few letters and press `Enter` — it offers
+the current screen's own commands (the same ones the footer advertises, with their keys)
+plus one-step navigation to any other screen.
+
 ### TUI commands
 
 Every screen shows a footer with the keys it currently accepts, generated directly
