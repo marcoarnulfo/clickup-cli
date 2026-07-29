@@ -140,8 +140,27 @@ risultato := sinistra + rigaBox[i-y] + destra
 
 `ansi.Cut(s, left, right)` è di `github.com/charmbracelet/x/ansi` v0.11.6, già nel grafo
 dei moduli via lipgloss v1.1.0: promuoverlo a dipendenza diretta non scarica niente di
-nuovo. È cell-based, consapevole dei caratteri wide e non spezza le sequenze di escape —
-verificato nel module cache, non assunto.
+nuovo. È cell-based, consapevole dei caratteri wide e non spezza le sequenze di escape.
+
+Comportamento **misurato**, non dedotto dalla documentazione (sonda eseguita su
+`"\x1b[31mHELLO\x1b[0m world"`):
+
+| Chiamata | Risultato |
+|---|---|
+| `Cut(s, 0, 3)` | `"\x1b[31mHEL\x1b[0m"` — **chiude** lo stile aperto |
+| `Cut(s, 3, 11)` | `"\x1b[31mLO\x1b[0m world"` — **riemette** lo stile attivo al punto di taglio |
+| `Cut(s, 8, 3)` | `""` — `left > right` non è un panic |
+| `Cut(s, 20, 30)` | `"\x1b[31m\x1b[0m"` — **non vuoto** oltre la fine: coppia di escape a larghezza zero |
+| `Cut("\x1b[31mHELLO world", 0, 3)` | `"\x1b[31mHEL"` — su input **non terminato** NON chiude |
+
+Da cui due regole per l'implementazione:
+
+- Se `x + larghezzaBox >= larghezza(riga)`, la parte destra è `""` per costruzione, senza
+  chiamare `Cut`: evita la coppia di escape a larghezza zero in coda a ogni riga composta.
+- Dopo la parte sinistra si aggiunge `ansi.ResetStyle` (`"\x1b[m"`) **quando contiene un
+  `\x1b`**. Sull'input ben formato è ridondante; sull'input con uno stile non terminato è
+  l'unica cosa che impedisce al colore di colare dentro il box. Sotto `termenv.Ascii` non
+  ci sono escape, quindi i golden non cambiano.
 
 ### 4.2 I quattro casi limite
 
@@ -385,10 +404,20 @@ hanno già:
 | `openLog()` | `report.go` case `LogHours` + `home.go` case `LogHours` | `func (m Model) openLog() Model` |
 | `openRange()` | `home.go` case `Range` | `func (m Model) openRange() Model` |
 | `openFilters()` | `report.go` case `Filters` | `func (m Model) openFilters() (Model, tea.Cmd)` |
-| `openMembers()` | `home.go` case `Members` | `func (m Model) openMembers() (Model, tea.Cmd)` |
+| `openMembers(origin screen)` | `home.go` case `Members` | `func (m Model) openMembers(origin screen) (Model, tea.Cmd)` |
 
-Handler e azione globale chiamano lo stesso metodo. `openEntries()` e `openBudgetView()`
-esistono già e non si toccano.
+Handler e azione globale chiamano lo stesso metodo. `openBudgetView()` esiste già e non si
+tocca. Due firme meritano una riga di motivazione:
+
+- **`openMembers` prende `origin`** invece di passare `screenHome` fisso come fa oggi
+  `loadMembersCmd`. Quel parametro decide dove atterra un `retryableErrMsg`: con
+  `screenHome` fisso, un errore di caricamento membri lanciato dalla palette mentre sei su
+  Rates ti teletrasporterebbe a Home con un errore inline, attribuendo il guasto a una
+  schermata su cui non eri. Home passa `screenHome`, la palette passa `m.screen`.
+- **`openEntries()` diventa `(Model, tea.Cmd)`**, assorbendo il recupero pigro di
+  `currentUserCmd()` che oggi vive nel `case OpenEntries` di `report.go:119-125`. Senza
+  questo l'azione globale dovrebbe ricopiarlo, che è esattamente la duplicazione che
+  l'estrazione elimina.
 
 Questa estrazione è un miglioramento del codice esistente nell'area che stiamo comunque
 modificando, non un refactoring opportunistico: senza di essa la sorgente 2 non è
@@ -464,11 +493,17 @@ punteggio esatto. Le costanti si possono ritoccare senza riscrivere la suite.
 ### 8.1 Il modello
 
 ```go
+type paletteItem struct {
+    a     action
+    idx   []int // indici di rune agganciati, da fuzzy.Match — servono a evidenziare
+    score int
+}
+
 type paletteModel struct {
-    query string   // append di rune + backspace
-    items []action // filtrato e ordinato
-    idx   int      // riga selezionata dentro items
-    top   int      // prima riga visibile (finestra di scorrimento)
+    query string        // append di rune + backspace
+    items []paletteItem // filtrato e ordinato
+    idx   int           // riga selezionata dentro items
+    top   int           // prima riga visibile (finestra di scorrimento)
 }
 ```
 
@@ -568,6 +603,25 @@ cambia schermata e la palette resta disegnata sopra la nuova.
 altro binding non assegnati. In `short` va solo `↑/↓ move · enter run · esc close ·
 ctrl+c force quit`: `ctrl+p` chiude ma non si pubblicizza, perché `esc` è la via che tutte
 le altre schermate insegnano già.
+
+> **Emendamento (scritto durante il piano).** I campi `Up`/`Down` della `keyMap` della
+> palette **non** possono ricevere `d.Up`/`d.Down`: quei default valgono `up`/`k` e
+> `down`/`j`, quindi scrivere `j` o `k` nella query muoverebbe il cursore invece di
+> digitare una lettera. Servono due default nuovi in `keyDefaults`, solo frecce:
+>
+> ```go
+> PaletteUp:   key.NewBinding(key.WithKeys("up"),   key.WithHelp("↑", "move up")),
+> PaletteDown: key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "move down")),
+> ```
+>
+> assegnati ai campi `Up`/`Down` della keyMap della palette (nessun campo nuovo in
+> `keyMap`, quindi `TestAllBindingsCoversEveryField` non cambia; `keyDefaults` non ha un
+> test di parità per riflessione). `TestPaletteTypesJAndK` va scritto contro la versione
+> che usa `d.Up`/`d.Down` e verificato fallente.
+>
+> Il backspace **non** diventa un binding: è editing di testo, che nessuna delle dieci
+> schermate con un `textinput` focalizzato pubblicizza. `updateOverlay` controlla
+> `msg.Type == tea.KeyBackspace` direttamente.
 
 ---
 
