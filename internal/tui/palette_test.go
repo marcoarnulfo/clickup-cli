@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,7 +34,11 @@ func TestPaletteOpensAndClosesWithoutTouchingNav(t *testing.T) {
 	m := newTestModelOnReport()
 	before := append([]screen(nil), m.nav...)
 
-	m = openPaletteOn(m)
+	// Through m.Update, not openPaletteOn: that helper bypasses the Update
+	// switch entirely, so a test built on it can never notice ctrl+p itself
+	// failing to reach openPalette (see Update's tea.KeyMsg branch).
+	got, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = got.(Model)
 	if m.overlay != overlayPalette {
 		t.Fatal("ctrl+p did not open the palette")
 	}
@@ -44,7 +49,7 @@ func TestPaletteOpensAndClosesWithoutTouchingNav(t *testing.T) {
 		t.Errorf("nav = %v, want %v unchanged", m.nav, before)
 	}
 
-	got, _ := m.updateOverlay(keyMsg("esc"))
+	got, _ = m.updateOverlay(keyMsg("esc"))
 	m = got.(Model)
 	if m.overlay != overlayNone {
 		t.Error("esc did not close the palette")
@@ -128,6 +133,29 @@ func TestPaletteDissolvesWhenAnErrorSwapsTheScreen(t *testing.T) {
 			t.Error("the palette survived onto the error screen, where it is invisible but still eats keys")
 		}
 	})
+}
+
+// A same-screen replace is not the screen swap the invariant above is about.
+// Several async handlers call replace(<the screen they are already on>):
+// statusesMsg on screenFilters, membersMsg on screenMembers,
+// entriesReloadedMsg/entriesErrMsg on screenEntries, logDoneMsg/timerMsg on
+// screenLog. openFilters launches the status enrichment that produces
+// statusesMsg, so a user can open the palette on screenFilters while that
+// fetch is still in flight — and its return must not silently wipe the query
+// out from under them.
+func TestPaletteSurvivesReplaceOnTheSameScreen(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	m.screen = screenFilters
+	m = typeInto(openPaletteOn(m), "go")
+
+	after := m.replace(screenFilters)
+	if after.overlay != overlayPalette {
+		t.Error("a same-screen replace dissolved the palette")
+	}
+	if after.palette.query != "go" {
+		t.Errorf("a same-screen replace wiped the query: got %q, want %q", after.palette.query, "go")
+	}
 }
 
 // The box is positioned in body coordinates, but bubbletea keeps the LAST
@@ -318,24 +346,28 @@ func TestPaletteHighlightUsesTheAccentStyle(t *testing.T) {
 	}
 }
 
-// fuzzy.Match indexes the FULL label, so a truncated label must drop the
-// indices that fell off — and the ellipsis must never light up.
+// fuzzy.Match indexes the FULL label, so a truncated label must drop any
+// index landing at or past the cut — and the ellipsis must never light up.
 //
-// The query is chosen so EVERY match lands past the cut. A query matching the
-// first few runes would leave the drop branch unexercised, and the test would
-// pass against an implementation that never drops anything.
+// The query is chosen so its match lands EXACTLY on the ellipsis column, not
+// merely "somewhere past the cut": "t" is label's 20th rune (index 19), and
+// shaveToWidth(label, 20) replaces that very column with "…". That is the only
+// boundary this test can actually observe. An index further out (the original
+// version of this test used "z9", matching at columns 25 and 35) is never even
+// read: the render loop below only walks the truncated string's own 20 runes,
+// so such an index sits in the hit map but nothing ever looks it up — dropping
+// it or not produces byte-identical output, and the test would pass against a
+// highlight that drops nothing at all.
 func TestPaletteHighlightSurvivesTruncation(t *testing.T) {
 	t.Parallel()
 	th := colorTheme()
 	label := "abcdefghijklmnopqrstuvwxyz0123456789"
-	_, idx, ok := fuzzy.Match("z9", label)
+	_, idx, ok := fuzzy.Match("t", label)
 	if !ok {
-		t.Fatal(`Match("z9", label) did not match`)
+		t.Fatal(`Match("t", label) did not match`)
 	}
-	for _, i := range idx {
-		if i < 20 {
-			t.Fatalf("idx = %v, but this test needs every match beyond column 20", idx)
-		}
+	if want := []int{19}; !slices.Equal(idx, want) {
+		t.Fatalf("idx = %v, want %v — this test needs the match to land exactly on the ellipsis column shaveToWidth(label, 20) produces", idx, want)
 	}
 
 	short := shaveToWidth(label, 20)
@@ -343,9 +375,8 @@ func TestPaletteHighlightSurvivesTruncation(t *testing.T) {
 	if w := lipgloss.Width(got); w != 20 {
 		t.Errorf("highlighted label is %d cells, want 20: %q", w, got)
 	}
-	// Every match fell outside the cut, so nothing may be accented — and that
-	// includes the ellipsis shaveToWidth appended.
+	// The one match landed on the ellipsis itself, so nothing may be accented.
 	if want := th.Cell.Render(short); got != want {
-		t.Errorf("highlight kept indices past the truncation:\n got %q\nwant %q", got, want)
+		t.Errorf("highlight lit up the ellipsis:\n got %q\nwant %q", got, want)
 	}
 }
