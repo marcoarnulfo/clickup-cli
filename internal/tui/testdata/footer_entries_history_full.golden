@@ -1,3 +1,4 @@
-?      help      
-esc    back      
-ctrl+c force quit
+?      help           
+esc    back           
+ctrl+c force quit     
+ctrl+p command palette

@@ -31,6 +31,17 @@ type keyDefaults struct {
 	// textinput, an any-key confirmation, Error's own catch-all).
 	Help key.Binding
 
+	// Palette opens the command palette (#71) and, while it is open, closes it
+	// again. Unlike Help its enablement varies by screen only in that three
+	// screens switch it off entirely: see keysFor.
+	Palette key.Binding
+
+	// PaletteUp/PaletteDown are the palette's cursor keys, arrows ONLY. The
+	// generic Up/Down also accept k and j, which the palette needs as query
+	// characters — a filter you cannot type "kanban" into is not a filter.
+	PaletteUp   key.Binding
+	PaletteDown key.Binding
+
 	// Home (home.go's updateHome switch, migrated in full here since Home is
 	// the one screen this task fully covers).
 	PrevMonth   key.Binding
@@ -121,6 +132,10 @@ func defaultKeys() keyDefaults {
 		ForceQuit: key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "force quit")),
 		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 
+		Palette:     key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "command palette")),
+		PaletteUp:   key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "move up")),
+		PaletteDown: key.NewBinding(key.WithKeys("down"), key.WithHelp("↓", "move down")),
+
 		PrevMonth:   key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("◂/h", "prev month (this_month only)")),
 		NextMonth:   key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("▸/l", "next month (this_month only)")),
 		ToggleWeek:  key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "this week/month")),
@@ -185,6 +200,7 @@ type keyMap struct {
 	Back      key.Binding
 	ForceQuit key.Binding
 	Help      key.Binding
+	Palette   key.Binding
 
 	PrevMonth   key.Binding
 	NextMonth   key.Binding
@@ -254,7 +270,7 @@ func (k keyMap) FullHelp() [][]key.Binding { return k.full }
 // instead. Nothing renders FullHelp() yet — Task 4's ? overlay is what will.
 func (k keyMap) allBindings() []key.Binding {
 	return []key.Binding{
-		k.Quit, k.Back, k.ForceQuit, k.Help,
+		k.Quit, k.Back, k.ForceQuit, k.Help, k.Palette,
 		k.PrevMonth, k.NextMonth, k.ToggleWeek, k.Range, k.ToggleScope,
 		k.LogHours, k.Timer, k.Members, k.Generate,
 		k.Up, k.Down, k.Confirm, k.ToggleItem, k.SelectAll, k.NextField, k.PrevField,
@@ -265,13 +281,27 @@ func (k keyMap) allBindings() []key.Binding {
 	}
 }
 
-// keysFor returns the bindings the given Model state accepts right now. It
+// keysFor returns the bindings the given Model state accepts right now, and is
+// what both Update and the footer read.
+//
+// An open overlay owns the keyboard, so it answers before the screen does.
+// screenActions deliberately calls screenKeys instead: it derives the palette's
+// own rows from the screen underneath, and asking keysFor there would hand it
+// the palette's four keys and empty the list on the first keystroke.
+func keysFor(m Model) keyMap {
+	if m.overlay == overlayPalette {
+		return paletteKeys(defaultKeys())
+	}
+	return screenKeys(m)
+}
+
+// screenKeys returns the bindings the given Model state accepts right now. It
 // is pure: nothing is cached, so there is no second copy of the truth to
 // keep in sync. Contextual gating lives here AND in the handlers' guards —
 // once a binding is disabled key.Matches fails and the guard is
 // unreachable, so enablement is load-bearing for behavior, not just for
 // display.
-func keysFor(m Model) keyMap {
+func screenKeys(m Model) keyMap {
 	d := defaultKeys()
 	switch m.screen {
 	case screenHome:
@@ -329,6 +359,7 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 		Quit:        d.Quit,
 		ForceQuit:   d.ForceQuit,
 		Help:        d.Help,
+		Palette:     d.Palette,
 		PrevMonth:   d.PrevMonth,
 		NextMonth:   d.NextMonth,
 		ToggleWeek:  d.ToggleWeek,
@@ -356,7 +387,7 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 		{monthPair, k.ToggleWeek},
 		{k.Range, k.ToggleScope, k.Members},
 		{k.Generate, k.LogHours, k.Timer},
-		{k.Help, k.Quit},
+		{k.Help, k.Quit, k.Palette},
 	}
 	return k
 }
@@ -401,56 +432,56 @@ func logKeys(m Model, d keyDefaults) keyMap {
 	lg := m.logScreen
 	switch lg.step {
 	case logModeSelect:
-		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, PickGuided: d.PickGuided, PickByID: d.PickByID, PickTimer: d.PickTimer}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, PickGuided: d.PickGuided, PickByID: d.PickByID, PickTimer: d.PickTimer}
 		k.short = []key.Binding{k.PickGuided, k.PickByID, k.PickTimer, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{k.PickGuided, k.PickByID, k.PickTimer}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.PickGuided, k.PickByID, k.PickTimer}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logTimerPick:
-		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, PickGuided: d.PickGuided, PickByID: d.PickByID}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, PickGuided: d.PickGuided, PickByID: d.PickByID}
 		k.short = []key.Binding{k.PickGuided, k.PickByID, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{k.PickGuided, k.PickByID}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.PickGuided, k.PickByID}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logListPick, logTaskPick:
-		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, Confirm: d.Confirm}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, Confirm: d.Confirm}
 		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logIDInput:
 		// A focused textinput takes '?' as a character, so Help stays
 		// unassigned here.
-		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logForm:
 		if lg.formField == 3 { // billable toggle (keypress, not a text field)
-			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 			k.short = []key.Binding{k.Yes, k.No, k.Back, k.Help, k.ForceQuit}
-			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit}}
+			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 			return k
 		}
 		// Every other form field is a focused textinput, so Help stays
 		// unassigned here too.
-		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logTimerRunning:
-		k := keyMap{StopTimer: d.StopTimer, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k := keyMap{StopTimer: d.StopTimer, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 		k.short = []key.Binding{k.StopTimer, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{k.StopTimer}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.StopTimer}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case logDone:
-		k := keyMap{Reload: d.Reload, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k := keyMap{Reload: d.Reload, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 		k.short = []key.Binding{k.Reload, k.Confirm, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Reload, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Reload, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 	}
 	return keyMap{}
@@ -486,44 +517,44 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 
 	case entriesEdit:
 		if es.editStep == 4 {
-			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+			k := keyMap{Yes: d.Yes, No: d.No, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 			k.short = []key.Binding{k.Yes, k.No, k.Back, k.Help, k.ForceQuit}
-			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit}}
+			k.full = [][]key.Binding{{k.Yes, k.No}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 			return k
 		}
 		// Steps 0-3 forward everything but Enter/Esc to a focused textinput,
 		// so Help stays unassigned.
-		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case entriesHistory:
-		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 		k.short = []key.Binding{k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 
 	case entriesTags:
 		if es.tagNewMode {
 			// A focused textinput takes '?' as a character, so Help stays
 			// unassigned here.
-			k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+			k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 			k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
-			k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
+			k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 			return k
 		}
 		k := keyMap{
 			Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
 			NewTag: d.NewTag, Confirm: d.Confirm, Back: d.Back,
-			ForceQuit: d.ForceQuit, Help: d.Help,
+			ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette,
 		}
 		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 		k.short = []key.Binding{k.ToggleItem, k.NewTag, k.Confirm, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{
 			{pair, k.ToggleItem},
 			{k.NewTag, k.Confirm},
-			{k.Help, k.Back, k.ForceQuit},
+			{k.Help, k.Back, k.ForceQuit, k.Palette},
 		}
 		return k
 
@@ -531,7 +562,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 		k := keyMap{
 			Up: d.Up, Down: d.Down, Back: d.Back,
 			Delete: d.Delete, Edit: d.Edit, History: d.History, Tags: d.Tags,
-			ForceQuit: d.ForceQuit, Help: d.Help,
+			ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette,
 		}
 		hasEntries := len(es.entries) > 0
 		editable := hasEntries && canEdit(es.entries[es.idx], m.userID)
@@ -544,7 +575,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 		k.full = [][]key.Binding{
 			{pair},
 			{k.Edit, k.Delete, k.Tags, k.History},
-			{k.Help, k.Back, k.ForceQuit},
+			{k.Help, k.Back, k.ForceQuit, k.Palette},
 		}
 		return k
 	}
@@ -570,16 +601,16 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 		// A focused textinput takes '?' as a character, so Help stays
 		// unassigned here — this is also reached via the override draft's
 		// rate step (rt.draft.active && rt.editing).
-		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+		k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 		k.short = []key.Binding{k.Confirm, k.Back, k.ForceQuit}
-		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
 	}
 	if rt.draft.active {
-		k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+		k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
-		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
 	}
 
@@ -589,7 +620,7 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 		ListCurrency: d.ListCurrency, ListBudget: d.ListBudget,
 		NewOverride: d.NewOverride, ClearValue: d.ClearValue,
 		BrowseList: d.BrowseList, Save: d.Save, Back: d.Back,
-		ForceQuit: d.ForceQuit, Help: d.Help,
+		ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette,
 	}
 	listsWithRows := rt.sec == secLists && len(rt.rows) > 0
 	k.ListCurrency.SetEnabled(listsWithRows)
@@ -616,7 +647,7 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 	k.full = [][]key.Binding{
 		{sectionPair, movePair, k.Confirm},
 		{k.ListCurrency, k.ListBudget, k.NewOverride, k.ClearValue, k.BrowseList},
-		{k.Save, k.Help, k.Back, k.ForceQuit},
+		{k.Save, k.Help, k.Back, k.ForceQuit, k.Palette},
 	}
 	return k
 }
@@ -626,7 +657,7 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 // the active mode (rangeScreen.editing) decides which are live. Quit stays
 // off in both modes (q does not quit this screen today).
 func rangeKeys(m Model, d keyDefaults) keyMap {
-	k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit}
+	k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 	if m.rangeScreen.editing {
 		// Both fromInput and toInput are focused textinputs here, so Help
 		// stays unassigned — one keysFor branch covers both fields.
@@ -634,7 +665,7 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 		k.PrevField = d.PrevField
 		pair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "next/prev field")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}
-		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit}}
+		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
 	}
 	k.Up = d.Up
@@ -642,7 +673,7 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 	k.Help = d.Help
 	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
-	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 	return k
 }
 
@@ -653,10 +684,10 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 // there is no separate loading state to model here. Quit stays off (q does
 // not quit this screen today).
 func listBrowserKeys(d keyDefaults) keyMap {
-	k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help}
+	k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
 	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
-	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit}}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 	return k
 }
 
@@ -665,7 +696,7 @@ func listBrowserKeys(d keyDefaults) keyMap {
 // filters.go, budget.go); q DOES quit these screens today.
 func reportKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
 		Export: d.Export, Rates: d.Rates, LogHours: d.LogHours, Filters: d.Filters,
 		Budget: d.Budget, OpenEntries: d.OpenEntries,
 	}
@@ -673,22 +704,22 @@ func reportKeys(d keyDefaults) keyMap {
 	k.full = [][]key.Binding{
 		{k.GroupBy, k.Export, k.Rates, k.LogHours},
 		{k.Filters, k.Budget, k.OpenEntries},
-		{k.ChangeRange, k.Reload, k.Help, k.Back, k.Quit},
+		{k.ChangeRange, k.Reload, k.Help, k.Back, k.Quit, k.Palette},
 	}
 	return k
 }
 
 func exportKeys(d keyDefaults) keyMap {
-	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
+	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
 	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.Quit}
-	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.Quit}}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.Quit, k.Palette}}
 	return k
 }
 
 func membersKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
 		SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
 	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
@@ -696,14 +727,14 @@ func membersKeys(d keyDefaults) keyMap {
 	k.full = [][]key.Binding{
 		{pair, k.ToggleItem, k.SelectAll},
 		{k.Confirm},
-		{k.Help, k.Back, k.Quit},
+		{k.Help, k.Back, k.Quit, k.Palette},
 	}
 	return k
 }
 
 func filtersKeys(d keyDefaults) keyMap {
 	k := keyMap{
-		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
+		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
 		ToggleItem: d.ToggleItem, SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
 	// "section", not "field": on this screen tab cycles the four filter
@@ -715,17 +746,79 @@ func filtersKeys(d keyDefaults) keyMap {
 	k.full = [][]key.Binding{
 		{sectionPair, movePair, k.ToggleItem, k.SelectAll},
 		{k.Confirm},
-		{k.Help, k.Back, k.Quit},
+		{k.Help, k.Back, k.Quit, k.Palette},
 	}
 	return k
 }
 
 func budgetKeys(d keyDefaults) keyMap {
-	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Back: d.Back, Budget: d.Budget}
+	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Back: d.Back, Budget: d.Budget}
 	// The default help text ("budgets") describes b from the report, where it
 	// opens this screen. Here the same key closes it.
 	k.Budget.SetHelp("b", "close budgets")
 	k.short = []key.Binding{k.Back, k.Budget, k.Help, k.Quit}
-	k.full = [][]key.Binding{{k.Budget}, {k.Help, k.Back, k.Quit}}
+	k.full = [][]key.Binding{{k.Budget}, {k.Help, k.Back, k.Quit, k.Palette}}
 	return k
+}
+
+// paletteKeys is the binding set while the command palette is open (#71). It is
+// not a screen: m.screen still names what is underneath, and this set simply
+// takes precedence for as long as the overlay lives.
+//
+// Quit and Help stay unassigned, which is the second, independent guard on top
+// of Update's ordering: even if the overlay check were moved below them, q and
+// ? could not fire while the user is typing a query.
+func paletteKeys(d keyDefaults) keyMap {
+	k := keyMap{
+		Up: d.PaletteUp, Down: d.PaletteDown,
+		Confirm: d.Confirm, Back: d.Back,
+		Palette: d.Palette, ForceQuit: d.ForceQuit,
+	}
+	k.Confirm.SetHelp("enter", "run")
+	k.Back.SetHelp("esc", "close")
+	pair := pairHelp(k.Up, k.Down, "↑/↓", "move")
+	// ctrl+p closes as well as opens, but esc is the close every other screen
+	// already teaches, so only esc is advertised.
+	k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}
+	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit}}
+	return k
+}
+
+// paletteBindings is the subset of a screen's bindings the command palette
+// offers as commands. It is allBindings' curated twin: cursor mechanics (move,
+// confirm, toggle, switch section, go back) are not commands and would only
+// bury the ones that are.
+//
+// Generate is here despite being Enter rather than a rune: it is the most-used
+// action in the program and keyMsgFor rebuilds it exactly. Confirm is not, even
+// though it shares that key — the selection is by field, not by keystroke.
+//
+//lint:ignore U1000 called by paletteDefaults, whose own caller lands in Task 5
+func (k keyMap) paletteBindings() []key.Binding {
+	return []key.Binding{
+		k.Generate, k.GroupBy, k.ChangeRange, k.Reload, k.Export, k.Rates,
+		k.Filters, k.Budget, k.OpenEntries, k.LogHours, k.Timer, k.Members,
+		k.Range, k.ToggleScope, k.ToggleWeek, k.PrevMonth, k.NextMonth,
+		k.ListCurrency, k.ListBudget, k.NewOverride, k.ClearValue, k.BrowseList,
+		k.Save, k.Delete, k.Edit, k.History, k.Tags, k.NewTag, k.StopTimer,
+	}
+}
+
+// paletteDefaults mirrors paletteBindings over keyDefaults, so a test can check
+// every palette-eligible key without having to reach a screen that enables it.
+//
+//lint:ignore U1000 exercised by Task 5's TestEveryPaletteBindingIsReplayable, deferred from this task
+func (d keyDefaults) paletteDefaults() []key.Binding {
+	return keyMap{
+		Generate: d.Generate, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange,
+		Reload: d.Reload, Export: d.Export, Rates: d.Rates, Filters: d.Filters,
+		Budget: d.Budget, OpenEntries: d.OpenEntries, LogHours: d.LogHours,
+		Timer: d.Timer, Members: d.Members, Range: d.Range,
+		ToggleScope: d.ToggleScope, ToggleWeek: d.ToggleWeek,
+		PrevMonth: d.PrevMonth, NextMonth: d.NextMonth,
+		ListCurrency: d.ListCurrency, ListBudget: d.ListBudget,
+		NewOverride: d.NewOverride, ClearValue: d.ClearValue,
+		BrowseList: d.BrowseList, Save: d.Save, Delete: d.Delete, Edit: d.Edit,
+		History: d.History, Tags: d.Tags, NewTag: d.NewTag, StopTimer: d.StopTimer,
+	}.paletteBindings()
 }

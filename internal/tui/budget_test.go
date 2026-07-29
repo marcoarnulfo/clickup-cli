@@ -71,7 +71,7 @@ func TestBudgetBarColorsOverBudget(t *testing.T) {
 func TestBudgetKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := Model{screen: screenBudget}
-	want := []string{"?", "b", "ctrl+c", "esc", "q"}
+	want := []string{"?", "b", "ctrl+c", "ctrl+p", "esc", "q"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("budget labels = %v, want %v", got, want)
 	}

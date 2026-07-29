@@ -36,7 +36,7 @@ func TestHomeKeyLabels(t *testing.T) {
 	m := newTestModel()
 	m.screen = screenHome
 	m.scope = "me"
-	want := []string{"?", "ctrl+c", "d", "enter", "h", "l", "left", "n", "q", "right", "t", "w"}
+	want := []string{"?", "ctrl+c", "ctrl+p", "d", "enter", "h", "l", "left", "n", "q", "right", "t", "w"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("home labels (me scope, no running timer) = %v, want %v", got, want)
 	}
@@ -163,3 +163,60 @@ func TestAllBindingsCoversEveryField(t *testing.T) {
 		t.Errorf("allBindings returns %d bindings, but keyMap has %d key.Binding fields — a field is missing from allBindings", got, want)
 	}
 }
+
+// The palette must not inherit d.Up/d.Down: those are "up"/"k" and "down"/"j",
+// so typing j or k into the query would move the cursor instead of entering a
+// letter. paletteKeys uses the arrow-only PaletteUp/PaletteDown defaults.
+func TestPaletteKeysAreArrowOnly(t *testing.T) {
+	t.Parallel()
+	k := paletteKeys(defaultKeys())
+	for _, tc := range []struct {
+		name    string
+		binding key.Binding
+	}{
+		{"up", k.Up},
+		{"down", k.Down},
+	} {
+		for _, bad := range []string{"j", "k"} {
+			if slices.Contains(tc.binding.Keys(), bad) {
+				t.Errorf("palette %s binding accepts %q, which the query needs as a character", tc.name, bad)
+			}
+		}
+	}
+}
+
+// While the palette is open it owns the keyboard, so q must not quit and ? must
+// not toggle help. A zero key.Binding has nil keys, which Enabled() reports as
+// false and key.Matches never fires on.
+func TestPaletteKeysLeaveQuitAndHelpUnassigned(t *testing.T) {
+	t.Parallel()
+	k := paletteKeys(defaultKeys())
+	if k.Quit.Enabled() {
+		t.Error("the palette assigned Quit; q would close the program while typing")
+	}
+	if k.Help.Enabled() {
+		t.Error("the palette assigned Help; ? would toggle full help instead of filtering")
+	}
+}
+
+// keysFor is what the footer reads, so it must switch to the palette's bindings
+// while the overlay is open. screenKeys is what screenActions reads, and it must
+// keep answering for the screen underneath — see the spec's section 5.2b.
+func TestKeysForFollowsTheOverlayAndScreenKeysDoesNot(t *testing.T) {
+	t.Parallel()
+	m := newTestModelOnReport()
+	if !keysFor(m).GroupBy.Enabled() {
+		t.Fatal("the report screen lost its GroupBy binding; the fixture is wrong")
+	}
+	m.overlay = overlayPalette
+	if keysFor(m).GroupBy.Enabled() {
+		t.Error("keysFor still returns the report's bindings with the palette open")
+	}
+	if !screenKeys(m).GroupBy.Enabled() {
+		t.Error("screenKeys stopped answering for the screen underneath the overlay")
+	}
+}
+
+// TestEveryPaletteBindingIsReplayable is deferred to Task 5: it needs
+// keyMsgFor and keyDefaults.paletteDefaults, and Task 5 repeats this exact
+// test's code when it adds keyMsgFor.

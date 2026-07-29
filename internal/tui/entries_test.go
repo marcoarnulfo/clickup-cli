@@ -89,7 +89,7 @@ func TestEntriesListEscReturnsToReport(t *testing.T) {
 func TestEntriesListKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := entriesFixture(true)
-	want := []string{"?", "ctrl+c", "down", "e", "esc", "h", "j", "k", "t", "up", "x"}
+	want := []string{"?", "ctrl+c", "ctrl+p", "down", "e", "esc", "h", "j", "k", "t", "up", "x"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("entries list-mode labels = %v, want %v", got, want)
 	}
@@ -103,7 +103,7 @@ func TestEntriesListEmptyKeyLabels(t *testing.T) {
 	m := newTestModel()
 	m.screen = screenEntries
 	m.entriesScreen = entriesModel{}
-	want := []string{"?", "ctrl+c", "down", "esc", "j", "k", "up"}
+	want := []string{"?", "ctrl+c", "ctrl+p", "down", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("entries empty-list labels = %v, want %v", got, want)
 	}
@@ -173,7 +173,7 @@ func TestEntriesHistoryModeKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := entriesFixture(true)
 	m.entriesScreen.mode = entriesHistory
-	want := []string{"?", "ctrl+c", "esc"}
+	want := []string{"?", "ctrl+c", "ctrl+p", "esc"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("entries history-mode labels = %v, want %v", got, want)
 	}
@@ -184,7 +184,7 @@ func TestEntriesTagsKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := entriesFixture(true)
 	m.entriesScreen.mode = entriesTags
-	want := []string{" ", "?", "ctrl+c", "down", "enter", "esc", "j", "k", "n", "up"}
+	want := []string{" ", "?", "ctrl+c", "ctrl+p", "down", "enter", "esc", "j", "k", "n", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("entries tags labels = %v, want %v", got, want)
 	}
@@ -198,7 +198,7 @@ func TestEntriesTagsNewModeKeyLabels(t *testing.T) {
 	m := entriesFixture(true)
 	m.entriesScreen.mode = entriesTags
 	m.entriesScreen.tagNewMode = true
-	want := []string{"ctrl+c", "enter", "esc"}
+	want := []string{"ctrl+c", "ctrl+p", "enter", "esc"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("entries tags new-mode labels = %v, want %v", got, want)
 	}
@@ -216,11 +216,11 @@ func TestEntriesEditKeyLabelsPerStep(t *testing.T) {
 		step int
 		want []string
 	}{
-		{"duration", 0, []string{"ctrl+c", "enter", "esc"}},
-		{"date", 1, []string{"ctrl+c", "enter", "esc"}},
-		{"time", 2, []string{"ctrl+c", "enter", "esc"}},
-		{"note", 3, []string{"ctrl+c", "enter", "esc"}},
-		{"billable", 4, []string{"?", "N", "Y", "ctrl+c", "enter", "esc", "n", "y"}},
+		{"duration", 0, []string{"ctrl+c", "ctrl+p", "enter", "esc"}},
+		{"date", 1, []string{"ctrl+c", "ctrl+p", "enter", "esc"}},
+		{"time", 2, []string{"ctrl+c", "ctrl+p", "enter", "esc"}},
+		{"note", 3, []string{"ctrl+c", "ctrl+p", "enter", "esc"}},
+		{"billable", 4, []string{"?", "N", "Y", "ctrl+c", "ctrl+p", "enter", "esc", "n", "y"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

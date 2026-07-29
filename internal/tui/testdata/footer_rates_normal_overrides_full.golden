@@ -1,4 +1,5 @@
-tab/⇧tab section    n new override            s      save      
-↑/↓/j/k  move       d delete this override    ?      help      
-enter    confirm                              esc    back      
-                                              ctrl+c force quit
+tab/⇧tab section    n new override            s      save           
+↑/↓/j/k  move       d delete this override    ?      help           
+enter    confirm                              esc    back           
+                                              ctrl+c force quit     
+                                              ctrl+p command palette

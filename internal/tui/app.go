@@ -36,6 +36,19 @@ const (
 	screenEntries
 )
 
+// overlayKind is the floating layer drawn over the current screen, orthogonal
+// to m.screen: opening one does not touch m.nav and closing one is not a pop().
+// An overlay is not a place you navigated to.
+//
+// There are two values because there is one client. The third value arrives
+// with the third client, not before.
+type overlayKind int
+
+const (
+	overlayNone overlayKind = iota
+	overlayPalette
+)
+
 // Async messages.
 type (
 	entriesMsg  struct{ entries []report.TimeEntry }
@@ -100,6 +113,13 @@ type Model struct {
 	// Flipped by '?' wherever keysFor(m).Help is enabled for the current
 	// screen; nothing renders it yet — Task 5 wires the footer into View().
 	helpAll bool
+
+	// overlay is the floating layer over m.screen, and palette is its state
+	// when overlay == overlayPalette (#71). While an overlay is open it owns
+	// the keyboard: see Update's tea.KeyMsg branch.
+	overlay overlayKind
+	//lint:ignore U1000 read and written starting Task 6, which opens/closes the overlay
+	palette paletteModel
 
 	// current selection
 	year        int
