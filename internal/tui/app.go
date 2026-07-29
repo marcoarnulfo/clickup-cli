@@ -118,7 +118,6 @@ type Model struct {
 	// when overlay == overlayPalette (#71). While an overlay is open it owns
 	// the keyboard: see Update's tea.KeyMsg branch.
 	overlay overlayKind
-	//lint:ignore U1000 read and written starting Task 6, which opens/closes the overlay
 	palette paletteModel
 
 	// current selection
@@ -631,10 +630,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tickCmd()
 
 	case tea.KeyMsg:
-		if key.Matches(msg, keysFor(m).Quit) {
+		// ForceQuit first and unconditionally: with an overlay open it is the
+		// only way out that nothing else can intercept.
+		if key.Matches(msg, defaultKeys().ForceQuit) {
 			return m, tea.Quit
 		}
-		if key.Matches(msg, defaultKeys().ForceQuit) {
+		// An open overlay owns the keyboard, and this check MUST stay above
+		// Quit: below it, typing "q" into the palette's query would end the
+		// program. TestPaletteQueryAcceptsQ pins the ordering.
+		if m.overlay != overlayNone {
+			return m.updateOverlay(msg)
+		}
+		if key.Matches(msg, keysFor(m).Quit) {
 			return m, tea.Quit
 		}
 		// Checked here, beside Quit/ForceQuit, rather than inside routeKey: that
@@ -647,6 +654,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, keysFor(m).Help) {
 			m.helpAll = !m.helpAll
 			return m, nil
+		}
+		if key.Matches(msg, keysFor(m).Palette) {
+			return m.openPalette(), nil
 		}
 		return m.routeKey(msg)
 
@@ -976,6 +986,13 @@ func (m Model) View() string {
 		// Every key returns Home here, which is not a binding — the screen
 		// says so in its own sentence instead.
 		return body
+	}
+	if m.overlay == overlayPalette {
+		// Composed over the BODY, not over the finished view: the footer stays
+		// below and visible, and it advertises the palette's own keys because
+		// keysFor follows the overlay.
+		box, x, y := m.palette.layout(m.theme, m.width, m.height, strings.Count(body, "\n")+1)
+		body = composite(body, box, x, y)
 	}
 	// Screens differ on whether their body ends with a newline; trimming here
 	// is what puts the footer the same distance below every one of them.
