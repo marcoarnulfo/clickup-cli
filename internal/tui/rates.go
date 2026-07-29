@@ -107,13 +107,15 @@ type overrideRow struct {
 type ratesModel struct {
 	sec ratesSection
 
+	// sel is the selected row of each section, indexed by ratesSection. One
+	// array instead of four parallel fields means move() needs no switch at
+	// all, and a fifth section is a non-event. Its zero value is identical to
+	// four zeroed ints, so no golden changes.
+	sel [secCount]int
+
 	rows      []rateRow // lists
-	idx       int       // selection in the Lists section
 	members   []memberRow
-	memIdx    int
 	overrides []overrideRow
-	ovIdx     int
-	ruleIdx   int
 
 	editing bool
 	edit    editKind
@@ -525,6 +527,10 @@ func (rt ratesModel) startDraft() ratesModel {
 	return rt
 }
 
+// selected returns the selected row of a section. It exists so tests can name
+// a section's selection without depending on how the model stores it.
+func (rt ratesModel) selected(sec ratesSection) int { return rt.sel[sec] }
+
 // selCount is the number of selectable rows in the active section (the
 // Overrides section has one extra row: "new override").
 func (rt ratesModel) selCount() int {
@@ -542,29 +548,11 @@ func (rt ratesModel) selCount() int {
 
 // move shifts the selection of the active section by delta, clamped.
 func (rt ratesModel) move(delta int) ratesModel {
-	cur := rt.idx
-	switch rt.sec {
-	case secMembers:
-		cur = rt.memIdx
-	case secOverrides:
-		cur = rt.ovIdx
-	case secRules:
-		cur = rt.ruleIdx
-	}
-	next := cur + delta
+	next := rt.sel[rt.sec] + delta
 	if next < 0 || next > rt.selCount()-1 {
 		return rt
 	}
-	switch rt.sec {
-	case secLists:
-		rt.idx = next
-	case secMembers:
-		rt.memIdx = next
-	case secOverrides:
-		rt.ovIdx = next
-	case secRules:
-		rt.ruleIdx = next
-	}
+	rt.sel[rt.sec] = next
 	return rt
 }
 
@@ -585,13 +573,13 @@ func (rt ratesModel) startEdit() ratesModel {
 		rt.editing, rt.edit = true, editMemberRate
 		rt.input = newNumberInput("member rate (Esc to cancel)")
 	case secOverrides:
-		if rt.ovIdx >= len(rt.overrides) {
+		if rt.sel[secOverrides] >= len(rt.overrides) {
 			return rt.startDraft()
 		}
 		rt.editing, rt.edit = true, editOverrideRate
 		rt.input = newNumberInput("override rate (Esc to cancel)")
 	case secRules:
-		switch rt.ruleIdx {
+		switch rt.sel[secRules] {
 		case ruleDefaultCurrency:
 			rt.editing, rt.edit = true, editDefaultCurrency
 			rt.input = newTextInput("default currency (e.g. EUR)")
@@ -641,11 +629,11 @@ func (rt ratesModel) commit(v string) ratesModel {
 			rt.msg = badRate
 			return rt
 		}
-		rt.rates[rt.rows[rt.idx].listID] = f
+		rt.rates[rt.rows[rt.sel[secLists]].listID] = f
 		return done()
 
 	case editListCurrency:
-		id := rt.rows[rt.idx].listID
+		id := rt.rows[rt.sel[secLists]].listID
 		if v == "" {
 			delete(rt.currencies, id)
 			return done()
@@ -659,7 +647,7 @@ func (rt ratesModel) commit(v string) ratesModel {
 		return done()
 
 	case editListBudget:
-		id := rt.rows[rt.idx].listID
+		id := rt.rows[rt.sel[secLists]].listID
 		if v == "" {
 			delete(rt.budgets, id)
 			return done()
@@ -681,7 +669,7 @@ func (rt ratesModel) commit(v string) ratesModel {
 			rt.msg = badRate
 			return rt
 		}
-		rt.memberRates[rt.members[rt.memIdx].id] = f
+		rt.memberRates[rt.members[rt.sel[secMembers]].id] = f
 		return done()
 
 	case editOverrideRate:
@@ -692,10 +680,10 @@ func (rt ratesModel) commit(v string) ratesModel {
 		}
 		if rt.draft.active {
 			rt.overrides = upsertOverride(rt.overrides, overrideRow{listID: rt.draft.listID, member: rt.draft.member, rate: f})
-			rt.ovIdx = indexOfOverride(rt.overrides, rt.draft.listID, rt.draft.member)
+			rt.sel[secOverrides] = indexOfOverride(rt.overrides, rt.draft.listID, rt.draft.member)
 			rt.draft = overrideDraft{}
 		} else {
-			rt.overrides[rt.ovIdx].rate = f
+			rt.overrides[rt.sel[secOverrides]].rate = f
 		}
 		return done()
 
@@ -765,20 +753,20 @@ func (rt ratesModel) clearSelected() ratesModel {
 	switch rt.sec {
 	case secLists:
 		if len(rt.rows) > 0 {
-			delete(rt.rates, rt.rows[rt.idx].listID) // revert to the default rate
+			delete(rt.rates, rt.rows[rt.sel[secLists]].listID) // revert to the default rate
 		}
 	case secMembers:
 		if len(rt.members) > 0 {
-			delete(rt.memberRates, rt.members[rt.memIdx].id)
+			delete(rt.memberRates, rt.members[rt.sel[secMembers]].id)
 		}
 	case secOverrides:
-		if rt.ovIdx < len(rt.overrides) {
+		if rt.sel[secOverrides] < len(rt.overrides) {
 			// The selection stays valid: after the delete the freed index is
 			// either another override or the trailing "new override" row.
-			rt.overrides = slices.Delete(rt.overrides, rt.ovIdx, rt.ovIdx+1)
+			rt.overrides = slices.Delete(rt.overrides, rt.sel[secOverrides], rt.sel[secOverrides]+1)
 		}
 	case secRules:
-		switch rt.ruleIdx {
+		switch rt.sel[secRules] {
 		case ruleDefaultCurrency:
 			rt.defCur = ""
 		case ruleIncrement:
@@ -866,7 +854,7 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	start, end := m.currentRange()
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	m = m.pop()
 	return m, nil
 }

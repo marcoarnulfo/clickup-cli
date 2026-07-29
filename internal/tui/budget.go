@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
@@ -27,26 +28,40 @@ func (m Model) updateBudget(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// budgetBarWidth is the text progress bar's width in characters, not counting
-// the surrounding brackets.
+// budgetBarWidth is the gauge's width in characters.
 const budgetBarWidth = 20
 
-// renderBudgetBar renders a percent-used value as a fixed-width text bar,
-// e.g. "[############--------] 60%". The bar's fill is clamped to [0, 100]
-// (a list can run over budget, but the bar itself can't render past full);
-// the percentage in the label is shown unclamped so an over-100% burn is
-// still visible in the number.
-func renderBudgetBar(percentUsed float64) string {
-	fillPct := percentUsed
-	if fillPct < 0 {
-		fillPct = 0
+// The gauge's glyphs. Blocks rather than '#' and '-': at any font size they
+// read as a filled bar instead of as text.
+const (
+	gaugeFull  = '█'
+	gaugeEmpty = '░'
+)
+
+// budgetFillStyle is the color of the filled part of a gauge. Over budget is
+// the state this screen exists to surface, so it must not look like a healthy
+// one. It is a named function because the package goldens run under
+// termenv.Ascii, which strips the color: asserting on the style is the only
+// way to test the choice.
+func budgetFillStyle(th theme, percentUsed float64) lipgloss.Style {
+	if percentUsed > 100 {
+		return th.Err
 	}
-	if fillPct > 100 {
-		fillPct = 100
-	}
+	return th.OK
+}
+
+// renderBudgetBar renders a percent-used value as a fixed-width gauge, e.g.
+// "████████████░░░░░░░░ 60%". The fill is clamped to [0, 100] — a list can run
+// over budget, but the bar cannot render past full — while the percentage in
+// the label is shown UNCLAMPED, so an over-100% burn stays visible in the
+// number. That asymmetry is the whole point: bubbles/progress clamps the
+// number too, which is why this screen does not use it.
+func renderBudgetBar(th theme, percentUsed float64) string {
+	fillPct := min(max(percentUsed, 0), 100)
 	filled := int(fillPct / 100 * budgetBarWidth)
-	bar := strings.Repeat("#", filled) + strings.Repeat("-", budgetBarWidth-filled)
-	return fmt.Sprintf("[%s] %.0f%%", bar, percentUsed)
+	bar := budgetFillStyle(th, percentUsed).Render(strings.Repeat(string(gaugeFull), filled)) +
+		th.Help.Render(strings.Repeat(string(gaugeEmpty), budgetBarWidth-filled))
+	return fmt.Sprintf("%s %.0f%%", bar, percentUsed)
 }
 
 func (bm budgetModel) view(th theme) string {
@@ -57,7 +72,7 @@ func (bm budgetModel) view(th theme) string {
 	var rows strings.Builder
 	for _, l := range bm.lines {
 		rows.WriteString(fmt.Sprintf("%-24s %s  %.2f / %.2f %s (remaining %.2f)\n",
-			truncate(l.ListName, 24), renderBudgetBar(l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
+			truncate(l.ListName, 24), renderBudgetBar(th, l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
 	}
 	body := th.Box.Render(strings.TrimRight(rows.String(), "\n"))
 	return title + "\n\n" + body

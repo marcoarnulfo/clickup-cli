@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The report screen now draws a per-day sparkline of the selected range, with
+  idle days rendered as gaps rather than as low bars (#80).
+
+### Changed
+
+- The report is rendered as a real table that sizes itself to the terminal:
+  the numeric columns are right-aligned and the label column takes the slack,
+  instead of a fixed 32-column layout that wrapped on a narrow terminal (#66).
+- The budget burn-down bars are drawn with block glyphs and colored — green
+  under budget, red over it — while still showing the true, unclamped
+  percentage (#80).
+
 ## [1.9.0] - 2026-07-28
 
 ### Added

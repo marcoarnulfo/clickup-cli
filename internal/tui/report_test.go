@@ -54,7 +54,7 @@ func TestNextGroupByMeSkipsMember(t *testing.T) {
 func TestReportCycleGroupByTeamViaUpdate(t *testing.T) {
 	m := Model{scope: "team", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByDay}
-	m.rep = newReport(m.report, "")
+	m.rep = newReport(m.report, "", nil)
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	m = u.(Model)
 	if m.report.GroupBy != report.GroupByTag {
@@ -70,7 +70,7 @@ func TestReportCycleGroupByWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 	cfg.Billing.Rounding.Increment = "not-a-duration"
 	m := Model{cfg: cfg, scope: "me", screen: screenReport, now: time.Now}
 	m.report = report.Report{GroupBy: report.GroupByTotal}
-	m.rep = newReport(m.report, "")
+	m.rep = newReport(m.report, "", nil)
 	u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	mm := u.(Model)
 	if mm.screen != screenError {
@@ -101,7 +101,7 @@ func TestReportViewRendersPerCurrencyAmounts(t *testing.T) {
 		},
 		TotalHours: 4, BillableHours: 3, NonBillableHours: 1, BilledHours: 3,
 	}
-	out := newReport(r, "").view(testTheme(true))
+	out := newReport(r, "", nil).view(testTheme(true), 80)
 	for _, want := range []string{"200.00 EUR", "100.00 USD", "subtotal EUR", "subtotal USD", "non-billable"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q; got:\n%s", want, out)
@@ -119,12 +119,34 @@ func TestReportViewSingleCurrencyShowsOneTotal(t *testing.T) {
 		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 2, BillableHours: 2, BilledHours: 2, Amount: 100}},
 		TotalHours:        2, BillableHours: 2, BilledHours: 2, TotalAmount: 100,
 	}
-	out := newReport(r, "").view(testTheme(true))
+	out := newReport(r, "", nil).view(testTheme(true), 80)
 	if strings.Contains(out, "subtotal") {
 		t.Errorf("single-currency report should not list subtotals; got:\n%s", out)
 	}
 	if !strings.Contains(out, "100.00 EUR") {
 		t.Errorf("view missing the total amount; got:\n%s", out)
+	}
+}
+
+// TestReportViewEmptyReportShowsNoHoursAndSplit pins the empty-report shape:
+// with no buckets, reportTable is never called (the table would have nothing
+// to size against) and "No hours to show." renders instead. The billable
+// split line, previously folded inside the box and so absent for an empty
+// report, is now always rendered below it — nothing else in the suite exercises
+// the zero-bucket path, so this is the only place that would catch either
+// regressing.
+func TestReportViewEmptyReportShowsNoHoursAndSplit(t *testing.T) {
+	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
+	r := report.Report{
+		Start: start, End: start.AddDate(0, 1, 0), Scope: "me", GroupBy: report.GroupByTotal,
+		DefaultCurrency: "EUR",
+	}
+	out := newReport(r, "", nil).view(testTheme(true), 80)
+	if !strings.Contains(out, "No hours to show.") {
+		t.Errorf("empty report view missing \"No hours to show.\"; got:\n%s", out)
+	}
+	if !strings.Contains(out, "billable 0.00h · non-billable 0.00h") {
+		t.Errorf("empty report view missing the billable split line; got:\n%s", out)
 	}
 }
 
@@ -154,7 +176,7 @@ func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 		t.Fatalf("screen = %v, want screenReport (err: %v)", mm.screen, mm.err)
 	}
 	// billable: 2h @ 100 EUR/h = 200 EUR, 1h @ 90 USD/h = 90 USD.
-	out := mm.rep.view(testTheme(true))
+	out := mm.rep.view(testTheme(true), 80)
 	for _, want := range []string{
 		"2 billing lines · 3.00h · 200.00 EUR, 90.00 USD", // export.SummaryLine (Lines counts only billable units)
 		"subtotal EUR", "200.00 EUR",
@@ -275,5 +297,58 @@ func TestMemberFilterNotePartial(t *testing.T) {
 	}
 	if got := m.memberFilterNote(); got != " (2/3 members)" {
 		t.Errorf("memberFilterNote = %q, want ' (2/3 members)'", got)
+	}
+}
+
+// TestSparkViewLabelLeadsWithTrailingZeroDays pins the fix for the label
+// detaching from the chart: the series ends in three idle days (zero-fills,
+// rendered as spaces — see sparkline.go), the shape of the default view (the
+// current month, viewed partway through) that goldenDaily() never exercised
+// because its own series ends non-zero. Before this fix, the label was
+// appended after the chart and the trailing spaces were never trimmed, so it
+// drifted as many columns as there were trailing idle days — visibly so in
+// the shipped docs/demo.gif. With the label leading and the trailing spaces
+// trimmed, it now sits immediately before the first cell every time.
+func TestSparkViewLabelLeadsWithTrailingZeroDays(t *testing.T) {
+	t.Parallel()
+	rm := newReport(report.Report{Buckets: []report.Bucket{{Label: "x"}}}, "",
+		[]float64{3.5, 0, 1.25, 4, 0, 0, 0})
+	if got, want := rm.sparkView(testTheme(true), 0), "hours/day ▇ ▃█"; got != want {
+		t.Errorf("sparkView = %q, want %q", got, want)
+	}
+}
+
+// TestSparkViewAllZeroSeriesHasNoTrailingWhitespace covers a series with
+// buckets but zero hours on every day of the range: sparkline itself renders
+// as all spaces (no ink anywhere), and the old fix only trimmed the chart, so
+// the label's own trailing separator space ("hours/day ") was left dangling
+// with nothing after it — the same defect the trim exists to prevent, just
+// moved one segment left. The line still renders (a chart with no ink is
+// itself the information, same as one idle day among several rendering as a
+// blank cell rather than vanishing); it must simply carry no trailing space.
+func TestSparkViewAllZeroSeriesHasNoTrailingWhitespace(t *testing.T) {
+	t.Parallel()
+	rm := newReport(report.Report{Buckets: []report.Bucket{{Label: "x"}}}, "",
+		[]float64{0, 0, 0, 0, 0, 0, 0})
+	got := rm.sparkView(testTheme(true), 0)
+	if got != strings.TrimRight(got, " ") {
+		t.Errorf("sparkView = %q, has trailing whitespace", got)
+	}
+	if got != "hours/day" {
+		t.Errorf("sparkView = %q, want the label alone with no separator space", got)
+	}
+}
+
+// TestTruncateEmptyStringAlwaysEmpty covers the deliberately empty Amount
+// cell in the multi-currency TOTAL row (see reportRows): with the n <= 1
+// guard alone, truncate("", n) for n <= 1 returned "…" — an ellipsis standing
+// in for nothing, rendered whenever that cell's column shrinks to 1 or less.
+// An empty input has nothing to mark as cut, whatever n is.
+func TestTruncateEmptyStringAlwaysEmpty(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{0, 1, 5} {
+		if got := truncate("", n); got != "" {
+			t.Errorf("truncate(%q, %d) = %q, want %q", "", n, got, "")
+		}
 	}
 }

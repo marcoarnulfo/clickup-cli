@@ -686,7 +686,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
 		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 		// Report is reached three ways (Home enter, Report's own reload, and
 		// the logDone reload) and all three arrive here: re-rooting rather
 		// than replacing makes every arrival converge on nav == [Home], which
@@ -922,7 +922,7 @@ func (m Model) screenBody() string {
 	case screenLoading:
 		return m.theme.Title.Render("Loading hours…")
 	case screenReport:
-		return m.rep.view(m.theme)
+		return m.rep.view(m.theme, m.width)
 	case screenExport:
 		return m.export.view(m.theme)
 	case screenRates:

@@ -21,8 +21,8 @@ func TestBudgetViewRendersProgressBar(t *testing.T) {
 			t.Errorf("budget view missing %q; got:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(out, "#") || !strings.Contains(out, "-") {
-		t.Error("expected a text progress bar built from '#' and '-'")
+	if !strings.ContainsRune(out, gaugeFull) || !strings.ContainsRune(out, gaugeEmpty) {
+		t.Errorf("expected a bar built from %q and %q; got:\n%s", gaugeFull, gaugeEmpty, out)
 	}
 }
 
@@ -33,16 +33,34 @@ func TestBudgetViewEmptyShowsMessage(t *testing.T) {
 	}
 }
 
-// A list that is over its budget must still be visible in the number even
-// though the bar itself caps its fill at 100%.
+// A list over its budget must still be visible in the number even though the
+// bar itself caps its fill at 100%. This is exactly what bubbles/progress
+// cannot do — it clamps the percentage to 100 before formatting it — and it is
+// why this screen keeps its own bar.
 func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
-	out := renderBudgetBar(150)
+	t.Parallel()
+	out := renderBudgetBar(testTheme(true), 150)
 	if !strings.Contains(out, "150%") {
 		t.Errorf("renderBudgetBar(150) = %q, want the unclamped 150%% in the label", out)
 	}
-	full := strings.Repeat("#", budgetBarWidth)
-	if !strings.Contains(out, full) {
+	if full := strings.Repeat(string(gaugeFull), budgetBarWidth); !strings.Contains(out, full) {
 		t.Errorf("renderBudgetBar(150) = %q, want a fully filled bar", out)
+	}
+}
+
+// Over budget is the state the view exists to surface, so it must not look the
+// same as a healthy one. The goldens run under termenv.Ascii, which strips the
+// color entirely, so this asserts on the style rather than the output.
+func TestBudgetBarColorsOverBudget(t *testing.T) {
+	t.Parallel()
+	th := paletteTheme(true) // real colors, so foregrounds are comparable
+	under := budgetFillStyle(th, 60)
+	over := budgetFillStyle(th, 130)
+	if under.GetForeground() != th.OK.GetForeground() {
+		t.Error("a bar under budget is not drawn in the OK color")
+	}
+	if over.GetForeground() != th.Err.GetForeground() {
+		t.Error("a bar over budget is not drawn in the Err color")
 	}
 }
 

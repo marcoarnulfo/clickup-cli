@@ -87,6 +87,23 @@ func goldenReport() report.Report {
 	}
 }
 
+// goldenDaily is a fixed per-day series with two idle days, so the golden
+// pins both a bar and a gap.
+func goldenDaily() []float64 {
+	return []float64{3.5, 0, 1.25, 4, 0, 2, 6}
+}
+
+// goldenDailyPartialMonth is a 31-day series with 10 days of data followed by
+// 21 zero-hours days — the shape of the default view (the current month,
+// viewed partway through) that goldenDaily() never depicts, since its own
+// 7-value series ends non-zero. This is the exact shape that let the
+// "hours/day" label drift 21 columns from the chart before it was moved to a
+// prefix (visible in the shipped docs/demo.gif).
+func goldenDailyPartialMonth() []float64 {
+	days := []float64{3.5, 0, 1.25, 4, 0, 2, 6, 1, 5, 2.5} // 10 days worked
+	return append(days, make([]float64, 21)...)            // the rest of July, not yet worked
+}
+
 // goldenEntries is the fixed entry set the browser, filters and rates screens
 // render from.
 func goldenEntries() []report.TimeEntry {
@@ -117,7 +134,54 @@ func TestGoldenHomeWithNotices(t *testing.T) {
 
 func TestGoldenReport(t *testing.T) {
 	t.Parallel()
-	golden(t, "report", newReport(goldenReport(), "").view(testTheme(true)))
+	// One bucket gets a label long enough that the three widths actually
+	// diverge. goldenReport's own labels are 8 columns, so without this all
+	// three goldens would be byte-identical and would pin nothing about width.
+	// At 60 the label is cut to 24 columns, at 80 to 44, and at 120 it fits
+	// whole — which is also the case that proves the column does not stretch
+	// past its content.
+	r := goldenReport()
+	r.Buckets[0].Label = "Website — landing page redesign and checkout hardening"
+
+	for _, tc := range []struct {
+		name  string
+		width int
+	}{{"report_narrow", 60}, {"report", 80}, {"report_wide", 120}} {
+		golden(t, tc.name, newReport(r, "", goldenDaily()).view(testTheme(true), tc.width))
+	}
+}
+
+// A multi-currency report renders a TOTAL row with an empty Amount cell plus
+// one subtotal row per currency — the widest shape the total block takes.
+func TestGoldenReportMultiCurrency(t *testing.T) {
+	t.Parallel()
+	r := goldenReport()
+	r.Buckets = append(r.Buckets, report.Bucket{
+		Label: "Mobile", Key: "l3", Hours: 4, BillableHours: 4, BilledHours: 4,
+		Amounts: []report.CurrencyAmount{{Currency: "USD", Amount: 200}},
+	})
+	r.CurrencySubtotals = []report.CurrencySubtotal{
+		{Currency: "EUR", Hours: 15.5, BillableHours: 12.5, BilledHours: 12.5, Amount: 625},
+		{Currency: "USD", Hours: 4, BillableHours: 4, BilledHours: 4, Amount: 200},
+	}
+	// goldenReport's own BillableHours (12.5, from Website only) must grow by
+	// Mobile's 4 billable hours too, or the split line below the table
+	// contradicts the TOTAL row above it (a 19.5h total next to a 12.5h
+	// billable + 3h non-billable split, which only adds up to 15.5h).
+	// NonBillableHours is unchanged: Mobile is fully billable, so the 3h from
+	// Internal is still the whole non-billable side.
+	r.TotalHours, r.BillableHours, r.BilledHours = 19.5, 16.5, 16.5
+	golden(t, "report_multicurrency", newReport(r, "", goldenDaily()).view(testTheme(true), 80))
+}
+
+// The default view: the current month, viewed partway through, so the daily
+// series ends in a run of zero-hours days. goldenDaily() never depicted this
+// shape (its own series ends non-zero) — it is exactly the shape that let the
+// sparkline's "hours/day" label drift away from the chart before the label
+// became a prefix.
+func TestGoldenReportPartialMonth(t *testing.T) {
+	t.Parallel()
+	golden(t, "report_partial_month", newReport(goldenReport(), "", goldenDailyPartialMonth()).view(testTheme(true), 80))
 }
 
 func TestGoldenExport(t *testing.T) {

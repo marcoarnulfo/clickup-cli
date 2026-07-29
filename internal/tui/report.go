@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/duration"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -14,11 +15,14 @@ import (
 )
 
 type reportModel struct {
-	r    report.Report
-	note string
+	r     report.Report
+	note  string
+	daily []float64 // one entry per day of the range; see report.DailyHours
 }
 
-func newReport(r report.Report, note string) reportModel { return reportModel{r: r, note: note} }
+func newReport(r report.Report, note string, daily []float64) reportModel {
+	return reportModel{r: r, note: note, daily: daily}
+}
 
 // nextGroupBy cycles total -> task -> list -> day -> tag -> [member] -> total.
 // The member grouping is only offered for the team scope.
@@ -56,6 +60,14 @@ func (m Model) memberFilterNote() string {
 	return fmt.Sprintf(" (%d/%d members)", k, n)
 }
 
+// dailySeries is the per-day hours of the visible entries over the current
+// range. It lives on the Model because reportModel has no entries — the report
+// is a rendering of an already-aggregated value.
+func (m Model) dailySeries() []float64 {
+	start, end := m.currentRange()
+	return report.DailyHours(m.visibleEntries(), start, end, m.loc)
+}
+
 func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := keysFor(m)
 	switch {
@@ -70,7 +82,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if p, ok := m.pricingOrErr(); ok {
 			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 			m.report.Scope = m.scope
-			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 		}
 	case key.Matches(msg, k.ChangeRange):
 		m = m.pop()
@@ -192,21 +204,8 @@ func (m *Model) applyReport() bool {
 	start, end := m.currentRange()
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote())
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	return true
-}
-
-// formatAmounts renders a bucket's per-currency amounts on one line, e.g.
-// "150.00 EUR + 90.00 USD". An empty slice renders as a zero in fallback.
-func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
-	if len(amounts) == 0 {
-		return fmt.Sprintf("%.2f %s", 0.0, fallback)
-	}
-	parts := make([]string, 0, len(amounts))
-	for _, a := range amounts {
-		parts = append(parts, fmt.Sprintf("%.2f %s", a.Amount, a.Currency))
-	}
-	return strings.Join(parts, " + ")
 }
 
 // hoursOf renders hours the same way export.SummaryLine does, via
@@ -215,7 +214,7 @@ func hoursOf(h float64) string {
 	return duration.FormatHours(time.Duration(h * float64(time.Hour)))
 }
 
-func (rm reportModel) view(th theme) string {
+func (rm reportModel) view(th theme, width int) string {
 	r := rm.r
 	// Timezone is surfaced here (#83): with no configured `timezone` it reads
 	// "Local" (time.Local.String()), not a portable IANA name — accepted, see
@@ -225,42 +224,76 @@ func (rm reportModel) view(th theme) string {
 		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
 	summary := th.Accent.Render(export.SummaryLine(r))
 
-	header := th.Header.Render(
-		fmt.Sprintf("%-32s %8s %8s %s", "Item", "Hours", "Billed", "Amount"))
-	rows := header + "\n"
-	for _, b := range r.Buckets {
-		rows += fmt.Sprintf("%-32s %8.2f %8.2f %s\n",
-			truncate(b.Label, 32), b.Hours, b.BilledHours, formatAmounts(b.Amounts, r.DefaultCurrency))
-	}
-
-	// Totals: one line when the report is single-currency, otherwise a TOTAL
-	// hours line plus one authoritative subtotal line per currency (no FX).
-	// Per-bucket Amounts are indicative only (PerDay rounding can drift a few
-	// cents from these subtotals with a finer grouping) — CurrencySubtotals
-	// below is the authoritative total, never re-derived from the bucket rows.
-	var total string
-	if len(r.CurrencySubtotals) <= 1 {
-		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
-			"TOTAL", r.TotalHours, r.BilledHours, r.TotalAmount, r.DefaultCurrency))
-	} else {
-		total = th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f", "TOTAL", r.TotalHours, r.BilledHours))
-		for _, s := range r.CurrencySubtotals {
-			total += "\n" + th.OK.Render(fmt.Sprintf("%-32s %8.2f %8.2f %.2f %s",
-				"  subtotal "+s.Currency, s.Hours, s.BilledHours, s.Amount, s.Currency))
-		}
-	}
-	total += "\n" + th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s", hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
-
-	body := th.Box.Render(rows + total)
+	var body string
 	if len(r.Buckets) == 0 {
 		body = th.Box.Render("No hours to show.")
+	} else {
+		body = reportTable(th, r, width)
 	}
-	return title + "\n\n" + summary + "\n\n" + body
+	// The billable split is a note, not a row of data: inside the table it
+	// would take the zebra stripe and be split across columns.
+	split := th.Help.Render(fmt.Sprintf("  billable %s · non-billable %s",
+		hoursOf(r.BillableHours), hoursOf(r.NonBillableHours)))
+	out := title + "\n\n" + summary + "\n\n"
+	if line := rm.sparkView(th, width); line != "" {
+		out += line + "\n\n"
+	}
+	return out + body + "\n" + split
+}
+
+// sparkLabel prefixes the sparkline. It leads rather than trails so the chart
+// always reads left-to-right from a fixed origin: DailyHours zero-fills the
+// whole range and a zero renders as a space (see sparkline.go), so a label
+// appended after the chart drifts as many columns as there are idle days at
+// the end of the range — visibly so for the current month, viewed partway
+// through, which is most of the trailing days. Its width plus a margin is
+// what sparkView reserves for the chart.
+const sparkLabel = "hours/day "
+
+// sparkView renders the per-day sparkline, or "" when there is nothing worth
+// drawing: a range of one day is a single cell, and a report with no buckets
+// already says so in its body.
+func (rm reportModel) sparkView(th theme, width int) string {
+	if len(rm.daily) < 2 || len(rm.r.Buckets) == 0 {
+		return ""
+	}
+	cells := 31 // the longest month, used until the terminal reports its width
+	if width > 0 {
+		cells = max(1, width-lipgloss.Width(sparkLabel)-2)
+	}
+	// Trailing idle days render as trailing spaces (see sparkline.go); with
+	// the label leading rather than trailing, those spaces would otherwise
+	// dangle at the end of the line for no reader to see. The trim runs on
+	// the label and chart ASSEMBLED, not on the chart alone: when every day
+	// in the range is idle, sparkline itself is all spaces, and trimming only
+	// the chart would leave the label's OWN trailing separator space dangling
+	// instead ("hours/day" followed by one space and then nothing — the exact
+	// defect this trim exists to prevent, just moved one segment to the
+	// left). A chart with no ink still renders (see the doc comment above:
+	// only "no buckets" and "fewer than two days" skip the line entirely) —
+	// zero hours on every day of the range is itself the information, the
+	// same way one idle day among several already renders as a blank cell
+	// rather than vanishing.
+	raw := strings.TrimRight(sparkLabel+sparkline(rm.daily, cells), " ")
+	cut := min(len(sparkLabel), len(raw))
+	label, chart := raw[:cut], raw[cut:]
+	return th.Help.Render(label) + th.Accent.Render(chart)
 }
 
 // truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
-// in task names with accents or emoji.
+// in task names with accents or emoji. An empty s always yields "", whatever
+// n is: there is nothing to truncate, so there is nothing to mark as cut.
+// Otherwise n <= 1 always yields "…": r[:n-1] would otherwise index
+// negatively (a panic) for n <= 0, and the whole package now relies on that
+// guard rather than on each call site keeping n >= some floor itself (see
+// report_table.go's shaveToWidth for why that matters).
 func truncate(s string, n int) string {
+	if s == "" {
+		return ""
+	}
+	if n <= 1 {
+		return "…"
+	}
 	r := []rune(s)
 	if len(r) <= n {
 		return s

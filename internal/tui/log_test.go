@@ -48,7 +48,7 @@ func newTestModelOnReport() Model {
 		panic(err) // fixed test config, never expected to fail
 	}
 	m.report = report.Build(m.entries, report.GroupByTotal, p, start, end, nil)
-	m.rep = newReport(m.report, "")
+	m.rep = newReport(m.report, "", nil)
 	return m
 }
 

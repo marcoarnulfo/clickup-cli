@@ -119,6 +119,12 @@ cambiare raggruppamento, riesportare o tornare alla home. Se il token risulta
 invalido o revocato durante l'uso, la TUI ripropone automaticamente il wizard
 di setup.
 
+Il report stesso viene disegnato come una tabella dimensionata sul tuo terminale:
+quando la finestra si restringe, è la colonna delle etichette a cedere spazio per
+prima, così le colonne numeriche e l'importo restano leggibili. Sopra la tabella, una
+sparkline giornaliera mostra a colpo d'occhio l'andamento del periodo — un giorno
+senza ore registrate appare come un vuoto, non come una barra.
+
 ### Comandi nella TUI
 
 Ogni schermata mostra un footer con i tasti che accetta in quel momento, generato

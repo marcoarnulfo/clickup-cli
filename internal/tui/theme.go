@@ -4,13 +4,14 @@ import "github.com/charmbracelet/lipgloss"
 
 // palette holds the semantic colors the whole TUI is built from. It is the
 // only place a color literal belongs: styles derive from these, and a future
-// user-supplied theme (#82) will override these five values, not the styles.
+// user-supplied theme (#82) will override these six values, not the styles.
 type palette struct {
 	Primary lipgloss.AdaptiveColor // titles and headings
 	Accent  lipgloss.AdaptiveColor // selection, highlighted values
 	Muted   lipgloss.AdaptiveColor // help lines and secondary text
 	Danger  lipgloss.AdaptiveColor // errors
 	Success lipgloss.AdaptiveColor // confirmations
+	Subtle  lipgloss.AdaptiveColor // zebra row background
 }
 
 // theme is the styled surface the views render through. It travels as an
@@ -28,6 +29,9 @@ type theme struct {
 	Accent lipgloss.Style
 	Box    lipgloss.Style
 	Header lipgloss.Style // bold, uncolored: the report's column header row
+	Cell   lipgloss.Style // a plain report-table cell: no color, just the renderer
+	Border lipgloss.Style // the report table's frame
+	Zebra  lipgloss.Style // alternate report-table row
 }
 
 // newTheme builds the styles for a palette on a specific renderer. Production
@@ -49,6 +53,9 @@ func newTheme(r *lipgloss.Renderer, p palette) theme {
 		Accent: r.NewStyle().Foreground(p.Accent),
 		Box:    r.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1),
 		Header: r.NewStyle().Bold(true),
+		Cell:   r.NewStyle(),
+		Border: r.NewStyle().Foreground(p.Muted),
+		Zebra:  r.NewStyle().Background(p.Subtle),
 	}
 }
 
@@ -64,6 +71,12 @@ func newTheme(r *lipgloss.Renderer, p palette) theme {
 //
 // Muted (240, #585858) is left alone: it already clears 7:1 on white. Adaptive
 // means legible on both backgrounds, not different on both.
+//
+// Subtle is a background, so it is judged by a different rule than the five
+// foregrounds above: 236 (#303030) on dark and 254 (#E4E4E4) on light are
+// chosen so the DEFAULT FOREGROUND still clears contrast when painted on top
+// of them, not so they contrast with the terminal's own background. A zebra
+// stripe that swallows its own text is worse than no stripe at all.
 func defaultPalette() palette {
 	return palette{
 		Primary: lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
@@ -71,5 +84,6 @@ func defaultPalette() palette {
 		Muted:   lipgloss.AdaptiveColor{Light: "240", Dark: "240"},
 		Danger:  lipgloss.AdaptiveColor{Light: "124", Dark: "196"},
 		Success: lipgloss.AdaptiveColor{Light: "28", Dark: "42"},
+		Subtle:  lipgloss.AdaptiveColor{Light: "254", Dark: "236"},
 	}
 }
