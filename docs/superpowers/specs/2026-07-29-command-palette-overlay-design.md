@@ -102,11 +102,16 @@ NUOVO  internal/tui/palette_test.go
 
 MOD    internal/tui/app.go                overlayKind + campi sul Model; ordine dei tasti in Update;
                                           View() compone; estrazione delle openX()
-MOD    internal/tui/keys.go               keyDefaults.Palette; keyMap.Palette; paletteKeys();
-                                          keyMap.paletteBindings(); keysFor si sdoppia in
-                                          keysFor (overlay-aware) + screenKeys (§5.2b)
+MOD    internal/tui/nav.go                goTo/replace/pop/resetTo dissolvono l'overlay (§5.2c)
+MOD    internal/tui/keys.go               keyDefaults.Palette/PaletteUp/PaletteDown; keyMap.Palette;
+                                          paletteKeys(); keyMap.paletteBindings(); keysFor si
+                                          sdoppia in keysFor (overlay-aware) + screenKeys (§5.2b)
 MOD    internal/tui/home.go               chiama le openX() estratte
 MOD    internal/tui/report.go             chiama le openX() estratte
+MOD    internal/tui/entries.go            openEntries() cambia firma (§6.3)
+MOD    keys_test.go, report_test.go, export_test.go, members_test.go, filters_test.go,
+       range_test.go, budget_test.go, log_test.go, rates_test.go, entries_test.go,
+       listbrowser_test.go                "ctrl+p" nelle liste want dei test di etichette (§5.3)
 MOD    internal/tui/testdata/*.golden     footer *_full rigenerati; golden nuovi della palette
 MOD    go.mod                             github.com/charmbracelet/x/ansi: indirect -> direct
 MOD    README.md, README.it.md, CHANGELOG.md, docs/demo.tape, docs/demo.gif
@@ -153,14 +158,29 @@ Comportamento **misurato**, non dedotto dalla documentazione (sonda eseguita su
 | `Cut(s, 20, 30)` | `"\x1b[31m\x1b[0m"` — **non vuoto** oltre la fine: coppia di escape a larghezza zero |
 | `Cut("\x1b[31mHELLO world", 0, 3)` | `"\x1b[31mHEL"` — su input **non terminato** NON chiude |
 
-Da cui due regole per l'implementazione:
+Da cui tre regole per l'implementazione:
 
 - Se `x + larghezzaBox >= larghezza(riga)`, la parte destra è `""` per costruzione, senza
-  chiamare `Cut`: evita la coppia di escape a larghezza zero in coda a ogni riga composta.
+  chiamare `Cut`. Con `right = larghezza(riga)` la chiamata ritornerebbe comunque `""`
+  (`truncate.go:31-33`: `right <= left → ""`), quindi la regola non ripara un guasto: fa
+  vedere nel codice che quel caso è previsto, invece di lasciarlo dipendere da un dettaglio
+  interno della libreria.
 - Dopo la parte sinistra si aggiunge `ansi.ResetStyle` (`"\x1b[m"`) **quando contiene un
   `\x1b`**. Sull'input ben formato è ridondante; sull'input con uno stile non terminato è
   l'unica cosa che impedisce al colore di colare dentro il box. Sotto `termenv.Ascii` non
   ci sono escape, quindi i golden non cambiano.
+- **Un glifo wide a cavallo di un bordo va scartato, non tenuto intero.** `Cut` tratta i
+  due lati in modo asimmetrico: a sinistra **scarta** il cluster che scavalca il limite
+  (la parte sinistra può rendere `x-1` colonne), a destra lo **tiene intero**
+  (`truncate.go:208-216`), quindi la parte destra può partire una colonna troppo presto e
+  la riga composta esce larga una colonna in più. A sinistra il padding a `x` già lo
+  copre, purché sia calcolato sulla larghezza **misurata** del risultato di `Cut` e non
+  solo «se la riga è più corta di `x`». A destra bisogna ritagliare una colonna più in là
+  e restituire la colonna persa come spazio: mezzo glifo non è disegnabile, e allineare
+  vale più che conservare un carattere sul bordo di un box che lo copre a metà.
+
+  Questo è il caso che i test ASCII non vedono — la stessa cecità che #135 documenta. La
+  §9.2 vuole una fixture con un carattere wide su entrambi i bordi.
 
 ### 4.2 I quattro casi limite
 
@@ -234,10 +254,6 @@ case tea.KeyMsg:
     return m.routeKey(msg)
 ```
 
-Il passo 2 **deve** stare sopra il passo 3: altrimenti scrivere `q` nella query chiude il
-programma. `TestPaletteQueryAcceptsQ` va scritto contro l'ordine sbagliato e verificato
-fallente prima della correzione.
-
 `ForceQuit` sale in cima (oggi è dopo `Quit`). I due tasti non si sovrappongono (`ctrl+c`
 contro `q`), quindi lo scambio non cambia niente sul comportamento attuale, ma rende
 `ctrl+c` l'unica via d'uscita incondizionata anche con un overlay aperto.
@@ -246,6 +262,44 @@ contro `q`), quindi lo scambio non cambia niente sul comportamento attuale, ma r
 (binding zero → `keys == nil` → `Enabled() == false` → `key.Matches` non scatta mai;
 verificato in `bubbles/key@v1.0.0/key.go:106`). Se un giorno qualcuno riordina i controlli,
 la palette non diventa comunque un modo per uscire per sbaglio.
+
+**Che cosa rende load-bearing l'ordine, esattamente.** La prima stesura di questa sezione
+diceva «altrimenti scrivere `q` chiude il programma» e ordinava di verificare
+`TestPaletteQueryAcceptsQ` fallente contro l'ordine invertito. **Era falso**, e falso nel
+modo peggiore: con il passo 2 sotto il passo 3, il passo 3 legge `keysFor(m)`, che con
+l'overlay aperto è `paletteKeys`, dove `Quit` non è assegnato — quindi `q` finisce nella
+query comunque. La seconda garanzia neutralizzava proprio il RED che la sezione
+prescriveva. È la trappola n.1 della §11 applicata alla spec stessa.
+
+Il tasto su cui l'ordine è davvero load-bearing è `ctrl+p`: `paletteKeys` **assegna**
+`Palette` (serve per chiudere), quindi con il passo 2 sotto il passo 5 un `ctrl+p` a
+palette aperta chiamerebbe `openPalette()` una seconda volta, azzerando la query invece di
+chiudere. Il test che discrimina è `TestPaletteCtrlPClosesRatherThanReopening`.
+
+`TestPaletteQueryAcceptsQ` resta, ma come test di regressione, non come RED: la spec dice
+qui che non fallisce contro il solo riordino, così nessuno lo usa per «dimostrare»
+l'ordine.
+
+### 5.2c L'overlay si dissolve a ogni navigazione
+
+Un overlay appartiene alla schermata su cui è stato alzato. Se quella schermata viene
+sostituita **sotto** di lui, l'overlay non ha più un posto a cui appartenere:
+
+- `errMsg` con 401 fa `resetTo(screenSetup)` (`app.go:634-641`). Senza dissoluzione, la
+  palette resterebbe disegnata e operativa **sopra il wizard di setup**, che la §5.3
+  esclude esplicitamente.
+- `retryableErrMsg` con origine non-Home fa `replace(screenError)`. `View()` ritorna prima
+  per quella schermata, quindi la palette diventa **invisibile** — ma il passo 2 continua a
+  mandarle ogni tasto. La schermata dice «press a key to return home» e mente, finché
+  l'utente non indovina `esc`.
+
+Entrambi sono raggiungibili: la palette si apre su `screenFilters` o `screenMembers` mentre
+un fetch è in volo, e la risposta arriva dopo.
+
+La regola sta in **un posto solo**, `nav.go`: `goTo`, `replace`, `pop` e `resetTo` azzerano
+`m.overlay` e `m.palette`. Non serve ricordarsene in undici handler, e le azioni della
+palette non sono un'eccezione da gestire — eseguono già dopo `closePalette()`, quindi
+trovano l'overlay chiuso e l'azzeramento è un no-op.
 
 ### 5.2b `keysFor` si sdoppia — altrimenti la palette si svuota appena scrivi
 
@@ -278,14 +332,31 @@ contro la versione che chiama `keysFor` e verificato fallente.
 
 Ovunque **tranne**:
 
-| Schermata | Perché no |
+| Schermata / modo | Perché no |
 |---|---|
 | `screenSetup` | il wizard va finito: senza token configurato quasi nessuna azione è eseguibile |
 | `screenLoading` | una navigazione mentre l'`entriesMsg` è in volo verrebbe annullata quando atterra (il suo handler fa `resetTo(Home).goTo(Report)` incondizionatamente) |
 | `screenError` | qualunque tasto torna a Home: `ctrl+p` non può reclamarne uno |
+| `entriesConfirmDelete` | il footer di quel modo promette «any key cancel» (`anyKeyHelp`, `keys.go:481-484`). Un `ctrl+p` che apre la palette lascerebbe la conferma di cancellazione pendente sotto e smentirebbe il footer nella stessa riga. `Help` è già non assegnato lì per la stessa ragione: `Palette` la segue |
 
 Su tutte le altre `Palette` è assegnato nel `keyMap` e compare **solo in `full`**, mai in
 `short`: i golden `footer_*_short` restano invariati, i `footer_*_full` si rigenerano.
+
+**Ricaduta sui test di parità, da non scoprire a metà implementazione.** `keyMap` guadagna
+un campo `key.Binding`, quindi `TestAllBindingsCoversEveryField` (`keys_test.go:152`, che
+conta i campi per riflessione) obbliga ad aggiungere `k.Palette` ad `allBindings()`. Da lì
+`enabledLabels` (`keys_test.go:16-26`) inizia a raccogliere anche `"ctrl+p"`, e siccome
+ordina alfabeticamente e confronta con `slices.Equal`, **ogni** lista `want` dei test di
+etichette per schermata va aggiornata inserendo `"ctrl+p"` subito dopo `"ctrl+c"`. Sono
+una ventina di casi in undici file: `keys_test.go`, `report_test.go`, `export_test.go`,
+`members_test.go`, `filters_test.go`, `range_test.go`, `budget_test.go`, `log_test.go`,
+`rates_test.go`, `entries_test.go`, `listbrowser_test.go`.
+
+Il costo va guardato in faccia perché c'è una scorciatoia che lo evita e che sarebbe
+sbagliata: controllare `defaultKeys().Palette` globalmente in `Update`, come fa
+`ForceQuit`. Costa zero test, e in cambio `ctrl+p` sparisce da ogni footer — una palette
+che nessuno può scoprire — **e** le quattro esclusioni qui sopra smettono di essere
+espresse dall'enablement e devono essere riscritte a mano da qualche altra parte.
 
 `ctrl+p` non entra in conflitto con le schermate che hanno un `textinput` focalizzato: non
 è un carattere stampabile, e `bubbles/textinput` lo lega a `PrevSuggestion`, che è inerte
@@ -343,16 +414,33 @@ L'ultima passa da un convertitore minuscolo e deliberatamente parziale:
 // ok is false for any key shape the palette does not replay, so an action
 // that cannot be executed faithfully is dropped rather than mis-fired.
 func keyMsgFor(s string) (tea.KeyMsg, bool) {
-    if s == "enter" { return tea.KeyMsg{Type: tea.KeyEnter}, true }
+    switch s {
+    case "enter": return tea.KeyMsg{Type: tea.KeyEnter}, true
+    case "left":  return tea.KeyMsg{Type: tea.KeyLeft}, true
+    case "right": return tea.KeyMsg{Type: tea.KeyRight}, true
+    }
     if r := []rune(s); len(r) == 1 { return tea.KeyMsg{Type: tea.KeyRunes, Runes: r}, true }
     return tea.KeyMsg{}, false
 }
 ```
 
-`key.Matches` confronta `msg.String()` con le stringhe di `b.Keys()`, e per queste due
-forme il round-trip è esatto (`{KeyRunes, ['g']}.String() == "g"`,
-`{KeyEnter}.String() == "enter"`); per `"tab"`, `"up"` o `"shift+tab"` non lo sarebbe, ed è
-per questo che l'elenco è chiuso.
+`key.Matches` confronta `msg.String()` con le stringhe di `b.Keys()`, e per queste quattro
+forme il round-trip è esatto: `{KeyRunes, ['g']}.String() == "g"`,
+`{KeyEnter}.String() == "enter"`, e `keyNames[KeyLeft] == "left"` /
+`keyNames[KeyRight] == "right"` (`bubbletea@v1.3.10/key.go:301,303`).
+
+`"left"` e `"right"` sono lì perché **servono**: `PrevMonth` e `NextMonth` hanno
+`key.WithKeys("left", "h")` e `key.WithKeys("right", "l")` (`keys.go:124-125`), quindi il
+loro primo tasto non è una rune. Sono anche gli unici due binding della lista «Dentro» in
+questo caso — controllati uno per uno. Senza questo ramo,
+`TestEveryPaletteBindingIsReplayable` fallirebbe su Home, dove entrambi sono abilitati, e
+le due voci sparirebbero in silenzio dalla palette.
+
+Una precisazione perché la motivazione non venga letta più forte di quello che è:
+`{KeyRunes, Runes: []rune("tab")}.String()` vale `"tab"`, quindi il round-trip via
+`key.Matches` funzionerebbe anche lì. Quello che si romperebbe è ogni handler che guarda
+`msg.Type` invece di `key.Matches`. L'elenco resta chiuso per questo, non perché il
+confronto fallisca.
 
 `TestEveryPaletteBindingIsReplayable` cammina la tabella schermata×modo che
 `footer_golden_test.go` già possiede e verifica che `keyMsgFor` ritorni `ok` per **ogni**
@@ -377,8 +465,13 @@ Solo `"Go to X"`, più Quit. La riga è netta e vale come regola:
 | `Go to export` | `screenExport` | `len(m.entries) > 0` |
 | `Go to range` | `screenRange` | sempre |
 | `Go to members` | `screenMembers` | `m.scope == "team"` |
-| `Log hours` | `screenLog` | sempre |
+| `Go to log hours` | `screenLog` | sempre |
 | `Quit` | — | sempre |
+
+`Go to log hours`, non `Log hours`: su Home e su Report la sorgente 1 produce già
+un'azione con etichetta `Log hours`, e due righe **identiche** nella stessa lista non sono
+la ridondanza leggibile che la §6.4 accetta — sono un bug che sembra un bug. Il prefisso
+`Go to` è quello che tutte le altre righe di navigazione portano già.
 
 `len(m.entries) > 0` è il predicato giusto per report/budgets/filters/entries/export
 perché le entries si caricano solo attraverso `entriesMsg`, il cui handler costruisce
@@ -482,9 +575,14 @@ penalizzata al punto da perdere contro un match peggiore ma più a sinistra.
 Ogni candidato consuma **tutta** la query, quindi non serve un contributo per rune: sarebbe
 costante fra i candidati e non ordinerebbe niente.
 
-I test bloccano gli **ordinamenti osservabili** (`"exp"` mette `Export report` sopra
-`Go to export`; `"rt"` su `"report table"` restituisce `[0, 7]`), più un caso minuscolo con
+I test bloccano gli **ordinamenti osservabili** (`"exp"` mette `Export` sopra `Go to
+export`; `"rt"` su `"report table"` restituisce `[0, 7]`), più un caso minuscolo con
 punteggio esatto. Le costanti si possono ritoccare senza riscrivere la suite.
+
+`Export`, non `Export report`: la sorgente 1 produce `capitalize(b.Help().Desc)`, e il desc
+di `Export` è `"export"` (`keys.go:148`). Una prima stesura di questa sezione citava
+un'etichetta che nessuna delle due sorgenti genera. La conclusione regge con i valori veri
+(`Export` 28 punti contro `Go to export` 22), ma il test va scritto sull'etichetta reale.
 
 ---
 
@@ -513,6 +611,13 @@ match fuzzy non sono niente, e non tenere una copia significa non poterla far in
 
 `idx` e `top` tornano a 0 a ogni cambio di query.
 
+Il ricalcolo è legato ai tasti, non ai messaggi: se un `runningTimerMsg` azzera il timer
+mentre la palette è aperta, la riga `Stop timer` resta visibile fino al tasto successivo.
+**Accettato.** L'esecuzione è comunque sicura — il replay ripassa da `key.Matches` con
+l'enablement aggiornato, quindi una riga stantia è un no-op, non un'azione sbagliata — e
+ricalcolare a ogni msg asincrono significherebbe far muovere la lista sotto le dita di chi
+sta scegliendo.
+
 Lo scorrimento è quello classico e tiene il cursore sempre visibile:
 `if idx < top { top = idx }`, `if idx >= top+righe { top = idx - righe + 1 }`. È
 letteralmente la cosa che manca alla schermata Filters ed è una casella aperta di #28: qui
@@ -534,7 +639,24 @@ const (
 - `x = max(0, (m.width - boxW) / 2)`; con `m.width == 0` (nessun `WindowSizeMsg` ancora
   arrivato) vale `x = 0`.
 - `y = paletteTopY`, così la riga di titolo della schermata sottostante e la riga vuota
-  sotto di essa restano leggibili.
+  sotto di essa restano leggibili — **ma corretto verso il basso quando il corpo è più
+  alto del terminale**. Il renderer standard di bubbletea, quando la view supera l'altezza,
+  tiene le **ultime** `m.height` righe (`bubbletea@v1.3.10/standard_renderer.go:186-188`).
+  `y` è una coordinata del corpo, non del terminale: su un report raggruppato per task con
+  cinquanta bucket, un box a `y = 2` finisce **sopra il bordo visibile** e l'utente scrive
+  in una palette che non vede — proprio sulla schermata dove la palette serve di più.
+
+  Quindi `layout` riceve anche il numero di righe del corpo e sposta il box esattamente di
+  quanto il corpo verrà scorso via:
+
+  ```go
+  y := paletteTopY
+  if height > 0 {
+      if overflow := bodyLines + 2 - height; overflow > 0 { // +2 = riga vuota + footer
+          y += overflow
+      }
+  }
+  ```
 - `righe = paletteMaxRows`; se `m.height > 0`,
   `righe = max(3, min(paletteMaxRows, m.height - paletteChrome - paletteTopY - 2))`.
   I due termini sottratti sono la riga vuota e il footer che `View()` aggiunge sempre; il
@@ -598,6 +720,12 @@ spazi, e `"log h"` non troverebbe niente.
 L'ordine su `enter` conta: l'overlay va chiuso **prima** di eseguire, altrimenti l'azione
 cambia schermata e la palette resta disegnata sopra la nuova.
 
+`openPalette` azzera anche `m.helpAll`. Il footer full occupa più righe di quello breve, e
+la formula d'altezza della §8.2 sottrae **due** righe (riga vuota + footer) presumendone
+una sola: aprire la palette con l'aiuto esteso già aperto sballerebbe il conto. Chiudere
+l'aiuto esteso è anche la cosa giusta a prescindere — sono due modi di rispondere alla
+stessa domanda, e non serve mostrarli insieme.
+
 `paletteKeys(d)` assegna `Back` (esc), `Confirm` (enter), `Up`, `Down`, `ForceQuit` e
 `Palette` — quest'ultimo perché `ctrl+p` chiude come esc — e lascia `Quit`, `Help` e ogni
 altro binding non assegnati. In `short` va solo `↑/↓ move · enter run · esc close ·
@@ -641,6 +769,11 @@ che lo ignora, con la trascrizione allegata al report dell'implementer. Più: sp
 `x == 0`; box più largo del corpo; larghezza di ogni riga composta pari a
 `max(larghezzaCorpo, x+larghezzaBox)`.
 
+Il test di larghezza vuole **due** fixture: una ASCII e una con un glifo wide (CJK) messo
+a cavallo di entrambi i bordi del box. Con la sola fixture ASCII quel test passa contro il
+bug del taglio straddle della §4.1 — che è precisamente il modo in cui, nella tranche C, un
+test di larghezza è passato sopra un overflow da 78 colonne in un terminale da 60.
+
 ### 9.3 `actions.go`
 
 Le azioni di schermata coincidono con i binding abilitati di `paletteBindings()` su ogni
@@ -651,16 +784,23 @@ multibyte.
 
 ### 9.4 `palette.go` e integrazione
 
-`ctrl+p` apre e non tocca `m.nav`; `esc` chiude e non fa `pop()`; **scrivere `q` non chiude
-il programma** (scritto contro l'ordine sbagliato dei controlli e verificato fallente);
-`TestPaletteKeepsScreenActionsWhileTyping` (§5.2b, scritto contro la versione che chiama
-`keysFor` e verificato fallente); `?` diventa un carattere della query e non ribalta
-`m.helpAll`; **lo spazio entra nella query** (`tea.KeySpace`, §8.4); backspace su query
-vuota è un no-op; `↑`/`↓` clampano; la finestra di scorrimento tiene il cursore visibile
-con più azioni che righe; `TestPaletteHighlightSurvivesTruncation` (§8.3); `enter` su lista
-vuota è un no-op; `enter` su un'azione di schermata produce lo stesso `Model` della
-pressione diretta del tasto; `enter` su un'azione globale apre la schermata giusta;
-`ctrl+p` non apre su Setup, Loading ed Error.
+`ctrl+p` apre e non tocca `m.nav`; `esc` chiude e non fa `pop()`; scrivere `q` non chiude
+il programma (test di regressione, **non** un RED — vedi §5.2);
+`TestPaletteCtrlPClosesRatherThanReopening` (§5.2, questo sì scritto contro l'ordine
+sbagliato e verificato fallente); `TestPaletteKeepsScreenActionsWhileTyping` (§5.2b,
+scritto contro la versione che chiama `keysFor` e verificato fallente); `?` diventa un
+carattere della query e non ribalta `m.helpAll`; **lo spazio entra nella query**
+(`tea.KeySpace`, §8.4); `j` e `k` sono lettere, non movimenti (emendamento §8.4);
+backspace su query vuota è un no-op; `↑`/`↓` clampano; la finestra di scorrimento tiene il
+cursore visibile con più azioni che righe; `TestPaletteHighlightSurvivesTruncation` (§8.3,
+con una query che aggancia rune **oltre** il taglio, altrimenti il ramo non viene
+esercitato); l'evidenziazione usa davvero `th.Accent` (renderer con profilo a colori, non
+`testTheme`, che fissa Ascii); `enter` su lista vuota è un no-op; `enter` su un'azione di
+schermata produce lo stesso `Model` della pressione diretta del tasto; `enter` su
+un'azione globale apre la schermata giusta; `ctrl+p` non apre su Setup, Loading, Error né
+su `entriesConfirmDelete`; **un 401 che rilancia il wizard dissolve la palette** e
+**un `retryableErrMsg` che atterra su `screenError` la dissolve** (§5.2c); il box scende
+quando il corpo è più alto del terminale (§8.2).
 
 Golden nuovi: `palette_report` (palette sopra il Report a larghezza fissa),
 `palette_filtered` (con query), `palette_no_match`, `palette_narrow`.
@@ -680,8 +820,9 @@ passano già dai rami demo dei rispettivi `openX()`. Un test in demo mode lo ver
 
 - **`?` come pannello flottante** — decisione definitiva, §2.3, nessuna issue aperta.
 - **Switcher mese/lista/membro di #71** — issue nuova nella milestone v1.12.
-- **I cinque siti di troncamento preesistenti di #135** — restano a #135. Questa tranche ne
-  introduce uno nuovo e lo fa giusto; non ripara i vecchi.
+- **I siti di troncamento preesistenti di #135** — quindici, su `budget.go`,
+  `rates_view.go`, `entries.go` e `log.go` — restano a #135. Questa tranche ne introduce
+  uno nuovo e lo fa giusto; non ripara i vecchi.
 - **Un secondo tipo di overlay.** `overlayKind` è un iota con due valori perché ne esiste
   un cliente. Il terzo valore lo aggiunge chi porta il terzo cliente.
 - **Ricerca nel testo del report, azioni componibili, cronologia dei comandi.** Nessuna

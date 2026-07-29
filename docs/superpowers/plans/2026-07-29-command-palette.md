@@ -66,6 +66,7 @@ plan and the spec disagree, stop and ask — do not pick one.
 | `internal/tui/palette.go` (new) | `paletteModel`, its update loop, its geometry and its rendering. |
 | `internal/tui/keys.go` | The `Palette`/`PaletteUp`/`PaletteDown` defaults, `paletteKeys`, `paletteBindings`, and the `keysFor`/`screenKeys` split. |
 | `internal/tui/app.go` | `overlayKind`, the two `Model` fields, the `Update` key ordering, `View()` composition. |
+| `internal/tui/nav.go` | Every navigation function dissolves an open overlay. |
 
 `openListBrowser` (`app.go:533`), `openEntries` (`entries.go:133`) and `openBudgetView`
 (`report.go:135`) already exist in this shape and **stay where they are**. Moving them into
@@ -166,7 +167,9 @@ func TestMatchRanks(t *testing.T) {
 		better string
 		worse  string
 	}{
-		{"a screen action beats the navigation row", "exp", "Export report", "Go to export"},
+		// "Export", not "Export report": screen actions are labelled
+		// capitalize(binding.Help().Desc), and Export's description is "export".
+		{"a screen action beats the navigation row", "exp", "Export", "Go to export"},
 		{"a prefix beats a match buried inside", "rep", "Report", "Go to prep"},
 		{"consecutive beats scattered", "ab", "ab c", "a x b"},
 	} {
@@ -473,6 +476,31 @@ func TestCompositeKeepsEveryLineWidth(t *testing.T) {
 	}
 }
 
+// The same property with wide glyphs, which is where it actually breaks.
+// ansi.Cut treats the two edges differently: on the left it DROPS a cluster
+// that straddles the limit, on the right it KEEPS it whole — so the right-hand
+// segment starts one column early and the line comes out a cell too wide.
+//
+// An ASCII-only width test passes straight over this. That is exactly how a
+// width test in the previous tranche passed over a 78-column table rendered
+// into a 60-column terminal.
+func TestCompositeHandlesWideGlyphsOnBothEdges(t *testing.T) {
+	t.Parallel()
+	// 20 double-width glyphs: 40 cells, one glyph per two columns, so a box at
+	// an odd x straddles a glyph at both edges.
+	body := strings.Repeat("漢", 20)
+	if w := lipgloss.Width(body); w != 40 {
+		t.Fatalf("the fixture is %d cells, want 40; this test assumes double-width glyphs", w)
+	}
+	got := composite(body, "AAAAAA", 5, 0)
+	if w := lipgloss.Width(got); w != 40 {
+		t.Errorf("composited line is %d cells, want 40: %q", w, got)
+	}
+	if !strings.Contains(got, "AAAAAA") {
+		t.Errorf("the box was mangled: %q", got)
+	}
+}
+
 // The one failure mode a golden can never see. TestMain pins the DEFAULT
 // renderer to termenv.Ascii, so golden output carries no escapes at all; this
 // builds its own renderer with a real profile and asserts on the bytes.
@@ -543,10 +571,12 @@ import (
 // cells and never splits an escape sequence, which is what makes this safe to
 // run over output lipgloss has already styled.
 //
-// Two shapes need help. A body line shorter than x gains spaces, or the box
+// Three shapes need help. A body line shorter than x gains spaces, or the box
 // slides left on that line alone. A body shorter than y+height gains blank
 // lines, or the box is clipped at the bottom — the Home screen's body is three
-// lines and the palette is ten.
+// lines and the palette is ten. And a wide glyph straddling either edge gets
+// dropped rather than kept, because half a glyph cannot be drawn and staying
+// aligned matters more than one character under the box's border.
 func composite(body, box string, x, y int) string {
 	if box == "" {
 		return body
@@ -586,6 +616,14 @@ func composite(body, box string, x, y int) string {
 		right := ""
 		if x+boxW < rowW {
 			right = ansi.Cut(row, x+boxW, rowW)
+			// A wide glyph straddling the box's right edge is KEPT WHOLE by Cut
+			// (the left edge drops it instead), which would start this segment a
+			// column early and push the line one cell too wide. Half a glyph
+			// cannot be drawn, so drop it and hand its column back as a space.
+			// At most one cluster can straddle, so one correction is enough.
+			if lipgloss.Width(left)+lipgloss.Width(bl)+lipgloss.Width(right) > rowW {
+				right = " " + ansi.Cut(row, x+boxW+1, rowW)
+			}
 		}
 
 		lines[y+i] = left + bl + right
@@ -618,6 +656,12 @@ your report.
    (panic on the out-of-range index is an acceptable failure here — say so in the report).
 3. Delete the `if strings.ContainsRune(left, '\x1b')` block.
    Run: `go test ./internal/tui/ -run TestCompositeDoesNotLeakStyleIntoTheBox -v` → must FAIL.
+4. Delete the `if lipgloss.Width(left)+...>rowW` straddle correction.
+   Run: `go test ./internal/tui/ -run TestCompositeHandlesWideGlyphsOnBothEdges -v` → must
+   FAIL, reporting 41 cells instead of 40. Then also run
+   `go test ./internal/tui/ -run TestCompositeKeepsEveryLineWidth -v` and confirm it still
+   PASSES with the bug present — that contrast is the point: the ASCII test cannot see
+   this, which is why the wide fixture exists.
 
 Restore the implementation and re-run `go test ./internal/tui/ -run TestComposite`.
 
@@ -677,6 +721,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
 // openBase is a Model on the report screen with entries and a built report —
@@ -724,12 +769,18 @@ func TestOpenMethodsBuildTheirScreen(t *testing.T) {
 	})
 	t.Run("range", func(t *testing.T) {
 		t.Parallel()
-		m := openBase().openRange()
+		// PresetLast7d, not the default: newRange sets only rm.idx, and
+		// this_month is rangePresets[0], so newRange(PresetThisMonth) IS the
+		// zero rangeModel (range.go:37-45). A zero-value assertion would fail
+		// against a perfectly correct openRange.
+		m := openBase()
+		m.preset = report.PresetLast7d
+		m = m.openRange()
 		if m.screen != screenRange {
 			t.Errorf("screen = %v, want screenRange", m.screen)
 		}
-		if reflect.DeepEqual(m.rangeScreen, rangeModel{}) {
-			t.Error("openRange left the range sub-model at its zero value")
+		if m.rangeScreen.idx == 0 {
+			t.Error("openRange did not seed the cursor from m.preset")
 		}
 	})
 	t.Run("entries", func(t *testing.T) {
@@ -962,16 +1013,8 @@ text, not by line number — earlier edits in this task shift them):
 ```
 
 `openFilters` and `openEntries` return `(Model, tea.Cmd)` while the enclosing function
-returns `(tea.Model, tea.Cmd)`; Go does not convert a multi-value return, so write them out:
-
-```go
-	case key.Matches(msg, k.Filters):
-		mm, cmd := m.openFilters()
-		return mm, cmd
-	case key.Matches(msg, k.OpenEntries):
-		mm, cmd := m.openEntries()
-		return mm, cmd
-```
+returns `(tea.Model, tea.Cmd)`. Both forms compile — Go assigns each result individually
+and `Model` satisfies `tea.Model` — so `return m.openFilters()` is fine and shorter. Use it.
 
 In `internal/tui/home.go`, inside `updateHome`, replace three cases:
 
@@ -1033,6 +1076,10 @@ git commit -m "refactor(tui): extract the screen-opening methods the palette wil
   `paletteKeys`, `paletteBindings`, the `keysFor`/`screenKeys` split)
 - Modify: `internal/tui/keys_test.go` (extend the existing parity tests)
 - Modify: `internal/tui/testdata/footer_*_full.golden` (regenerated)
+- Modify — **the label-parity tests in eleven files**, see Step 6:
+  `keys_test.go`, `report_test.go`, `export_test.go`, `members_test.go`, `filters_test.go`,
+  `range_test.go`, `budget_test.go`, `log_test.go`, `rates_test.go`, `entries_test.go`,
+  `listbrowser_test.go`
 
 **Interfaces:**
 - Consumes: nothing from Tasks 1-3.
@@ -1164,9 +1211,10 @@ func TestEveryPaletteBindingIsReplayable(t *testing.T) {
 }
 ```
 
-`paletteDefaults()` and `keyMsgFor` are named here but built in Task 5 — this task's run of
-these tests stops at the two that compile. Add the first three tests now and the fourth in
-Task 5; note in your report which you deferred.
+`paletteDefaults()` and `keyMsgFor` are named in the fourth test but `keyMsgFor` is built in
+Task 5. Add the **first three** tests now — they compile against this task's work — and
+leave `TestEveryPaletteBindingIsReplayable` to Task 5, which repeats its code. Note in your
+report that you deferred it.
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
@@ -1238,12 +1286,18 @@ existing branches:
   an `entriesMsg` is in flight is undone when it lands).
 - `screenError`: the inline `keyMap` literal never assigns `Palette` (any key returns Home).
 
+One more exclusion, inside `entriesKeys`: the `entriesConfirmDelete` branch must **not**
+assign `Palette`. That mode's footer promises "any key cancel" (`anyKeyHelp`,
+`keys.go:481-484`), and a `ctrl+p` that opened the palette would leave the pending delete
+confirmation underneath while the footer said otherwise. `Help` is already unassigned there
+for the same reason; `Palette` follows it.
+
 For **every other** per-screen constructor (`homeKeys`, `reportKeys`, `exportKeys`,
 `ratesKeys`, `logKeys`, `membersKeys`, `rangeKeys`, `filtersKeys`, `listBrowserKeys`,
-`budgetKeys`, `entriesKeys`), assign `Palette: d.Palette` in every `keyMap` literal it
-returns, and append `k.Palette` to the **last group of `full` only**. Do **not** put it in
-`short`: the `footer_*_short` goldens and `TestShortFootersFitEightyColumns` must stay
-untouched.
+`budgetKeys`, and `entriesKeys`'s other branches), assign `Palette: d.Palette` in every
+`keyMap` literal it returns, and append `k.Palette` to the **last group of `full` only**.
+Do **not** put it in `short`: the `footer_*_short` goldens and
+`TestShortFootersFitEightyColumns` must stay untouched.
 
 Add `paletteKeys` at the end of the file:
 
@@ -1307,19 +1361,44 @@ func (d keyDefaults) paletteDefaults() []key.Binding {
 }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Update the label-parity tests in eleven files**
+
+Adding `k.Palette` to `allBindings()` changes what `enabledLabels` collects
+(`keys_test.go:16-26`): every screen where `Palette` is assigned now contributes
+`"ctrl+p"`. Those tests compare with `slices.Equal` against exact `want` slices, so **about
+twenty of them go red at once**. This is expected, mechanical, and yours to fix in this
+task — not a surprise for the gate to discover.
+
+`enabledLabels` sorts alphabetically, so `"ctrl+p"` always lands **immediately after
+`"ctrl+c"`**. Insert it there in every `want` list belonging to a screen or mode that now
+assigns `Palette`.
+
+Run: `go test ./internal/tui/ 2>&1 | head -80`
+Work through the failures. They live in: `keys_test.go` (`TestHomeKeyLabels`),
+`report_test.go`, `export_test.go`, `members_test.go`, `filters_test.go`, `range_test.go`
+(two cases), `budget_test.go`, `log_test.go` (a table over every log step),
+`rates_test.go` (five cases), `entries_test.go` (seven cases), `listbrowser_test.go`.
+
+**Do not** add `"ctrl+p"` to the `want` list for setup, loading, error, or the
+`entriesConfirmDelete` case. If one of those goes red, `Palette` reached a screen it must
+not be on — fix `keys.go`, not the test.
+
+- [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `go test ./internal/tui/ -run 'TestPaletteKeys|TestKeysForFollows|TestAllBindings' -v`
 Expected: PASS.
 
-- [ ] **Step 7: Verify the arrow-only test catches the bug it exists for**
+Run: `go test ./internal/tui/`
+Expected: PASS — every label-parity test included.
+
+- [ ] **Step 8: Verify the arrow-only test catches the bug it exists for**
 
 Temporarily change `paletteKeys` to `Up: d.Up, Down: d.Down`.
 Run: `go test ./internal/tui/ -run TestPaletteKeysAreArrowOnly -v`
 Expected: **FAIL**, naming both `j` and `k`. Paste the output into your report, then
 restore `d.PaletteUp`/`d.PaletteDown`.
 
-- [ ] **Step 8: Regenerate the full-help footer goldens**
+- [ ] **Step 9: Regenerate the full-help footer goldens**
 
 Run: `go test ./internal/tui -update`
 Then: `git diff --stat internal/tui/testdata/`
@@ -1332,7 +1411,7 @@ changed, `Palette` reached a screen it must not be on.
 Run: `go test ./internal/tui/ -run 'TestGoldenFooters|TestShortFootersFitEightyColumns'`
 Expected: PASS.
 
-- [ ] **Step 9: Gate and commit**
+- [ ] **Step 10: Gate and commit**
 
 ```bash
 gofmt -l .
@@ -1340,7 +1419,11 @@ go vet ./...
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 go build ./...
 go test ./... -race
-git add internal/tui/keys.go internal/tui/keys_test.go internal/tui/app.go internal/tui/palette.go internal/tui/testdata
+git add internal/tui/keys.go internal/tui/app.go internal/tui/palette.go internal/tui/testdata
+git add internal/tui/keys_test.go internal/tui/report_test.go internal/tui/export_test.go \
+        internal/tui/members_test.go internal/tui/filters_test.go internal/tui/range_test.go \
+        internal/tui/budget_test.go internal/tui/log_test.go internal/tui/rates_test.go \
+        internal/tui/entries_test.go internal/tui/listbrowser_test.go
 git commit -m "feat(tui): add the palette keymap and split keysFor from screenKeys (#71)"
 ```
 
@@ -1403,6 +1486,11 @@ func TestKeyMsgFor(t *testing.T) {
 	}{
 		{"g", true, "g"},
 		{"enter", true, "enter"},
+		// PrevMonth and NextMonth are "left"/"h" and "right"/"l", so their
+		// first key is not a rune. Without these two the palette would silently
+		// drop both month-navigation actions on Home.
+		{"left", true, "left"},
+		{"right", true, "right"},
 		{"tab", false, ""},
 		{"shift+tab", false, ""},
 		{"up", false, ""},
@@ -1524,8 +1612,9 @@ func TestPaletteActionsPutScreenActionsFirst(t *testing.T) {
 	if firstGlobal <= 0 {
 		t.Fatalf("expected screen actions before the first navigation row; got %v", got)
 	}
+	// Every global row is a "Go to …" except Quit, which is appended last.
 	for _, l := range got[firstGlobal:] {
-		if !strings.HasPrefix(l, "Go to ") && l != "Log hours" && l != "Quit" {
+		if !strings.HasPrefix(l, "Go to ") && l != "Quit" {
 			t.Errorf("screen action %q appears after the navigation block: %v", l, got)
 		}
 	}
@@ -1732,7 +1821,11 @@ func globalActions(m Model) []action {
 			mm, cmd := m.openMembers(m.screen)
 			return mm, cmd
 		}},
-		{"Log hours", screenLog, true, func(m Model) (tea.Model, tea.Cmd) {
+		// "Go to log hours", not "Log hours": on Home and Report the screen
+		// keymap already yields an action labelled exactly "Log hours", and two
+		// identical rows in one list read as a bug rather than as the legible
+		// do-it-here / take-me-there pair the other duplicates form.
+		{"Go to log hours", screenLog, true, func(m Model) (tea.Model, tea.Cmd) {
 			return m.openLog(), nil
 		}},
 	}
@@ -1753,14 +1846,23 @@ func globalActions(m Model) []action {
 
 // keyMsgFor rebuilds the tea.KeyMsg a binding's first key would produce.
 //
-// The set is closed on purpose: key.Matches compares msg.String() against the
-// binding's key strings, and only these two shapes round-trip exactly. "tab",
-// "up" and "shift+tab" would not, which is why the palette does not offer the
-// bindings that use them. ok is false for anything else, so an action that
-// cannot be executed faithfully is dropped rather than mis-fired.
+// The set is closed on purpose. key.Matches compares msg.String() against the
+// binding's key strings, and these four round-trip exactly. A KeyRunes message
+// carrying "tab" would round-trip too, but every handler that reads msg.Type
+// rather than key.Matches would then see the wrong thing — so the palette
+// leaves those bindings out instead of forging their messages. ok is false for
+// anything else, so an action that cannot be executed faithfully is dropped
+// rather than mis-fired.
 func keyMsgFor(s string) (tea.KeyMsg, bool) {
-	if s == "enter" {
+	switch s {
+	case "enter":
 		return tea.KeyMsg{Type: tea.KeyEnter}, true
+	// PrevMonth and NextMonth lead with "left" and "right" (keys.go:124-125),
+	// and they are the only two palette bindings whose first key is not a rune.
+	case "left":
+		return tea.KeyMsg{Type: tea.KeyLeft}, true
+	case "right":
+		return tea.KeyMsg{Type: tea.KeyRight}, true
 	}
 	if r := []rune(s); len(r) == 1 {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: r}, true
@@ -1829,6 +1931,7 @@ git commit -m "feat(tui): derive the palette's actions from the keymap and the o
 - Modify: `internal/tui/palette.go` (replace the Task 4 placeholder with the real model)
 - Create: `internal/tui/palette_test.go`
 - Modify: `internal/tui/app.go` (the `tea.KeyMsg` branch of `Update`, and `View()`)
+- Modify: `internal/tui/nav.go` (every navigation dissolves an open overlay)
 - Create: `internal/tui/testdata/palette_report.golden`, `palette_filtered.golden`,
   `palette_no_match.golden`, `palette_narrow.golden`
 
@@ -1837,7 +1940,7 @@ git commit -m "feat(tui): derive the palette's actions from the keymap and the o
   `paletteKeys`, `overlayPalette` (Task 4).
 - Produces: `func (m Model) openPalette() Model`,
   `func (m Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd)`,
-  `func (p paletteModel) layout(th theme, width, height int) (box string, x, y int)`.
+  `func (p paletteModel) layout(th theme, width, height, bodyLines int) (box string, x, y int)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1847,11 +1950,17 @@ Create `internal/tui/palette_test.go`:
 package tui
 
 import (
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
+	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/fuzzy"
 )
 
 func openPaletteOn(m Model) Model { return m.openPalette() }
@@ -1894,8 +2003,10 @@ func TestPaletteOpensAndClosesWithoutTouchingNav(t *testing.T) {
 	}
 }
 
-// The overlay owns the keyboard. If Update checked Quit before the overlay,
-// typing "q" would end the program mid-query.
+// A regression test, NOT a red-green one. Moving the overlay check below the
+// Quit check does not break it: with the palette open, keysFor answers with
+// paletteKeys, where Quit is unassigned, so q reaches the query either way.
+// The ordering's real teeth are in TestPaletteCtrlPClosesRatherThanReopening.
 func TestPaletteQueryAcceptsQ(t *testing.T) {
 	t.Parallel()
 	m := openPaletteOn(newTestModelOnReport())
@@ -1918,6 +2029,73 @@ func TestPaletteQueryAcceptsQuestionMark(t *testing.T) {
 	}
 	if q := got.(Model).palette.query; q != "?" {
 		t.Errorf("query = %q, want %q", q, "?")
+	}
+}
+
+// THIS is what makes Update's ordering load-bearing. paletteKeys assigns
+// Palette (ctrl+p has to close), so with the overlay check below the Palette
+// check, a ctrl+p would call openPalette a second time and wipe the query
+// instead of closing.
+func TestPaletteCtrlPClosesRatherThanReopening(t *testing.T) {
+	t.Parallel()
+	m := typeInto(openPaletteOn(newTestModelOnReport()), "exp")
+	got, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	after := got.(Model)
+	if after.overlay != overlayNone {
+		t.Errorf("ctrl+p left the overlay open with query %q; it reopened instead of closing", after.palette.query)
+	}
+}
+
+// An overlay belongs to the screen it was raised over. A 401 relaunches the
+// setup wizard, and a palette that survived would be drawn over — and would own
+// the keyboard on — the one screen ctrl+p is not allowed on at all.
+func TestPaletteDissolvesWhenAnErrorSwapsTheScreen(t *testing.T) {
+	t.Parallel()
+	t.Run("401 relaunches setup", func(t *testing.T) {
+		t.Parallel()
+		m := openPaletteOn(newTestModelOnReport())
+		got, _ := m.Update(errMsg{err: clickup.ErrUnauthorized})
+		after := got.(Model)
+		if after.screen != screenSetup {
+			t.Fatalf("screen = %v, want screenSetup", after.screen)
+		}
+		if after.overlay != overlayNone {
+			t.Error("the palette survived onto the setup wizard")
+		}
+	})
+	t.Run("a retryable error lands on the error screen", func(t *testing.T) {
+		t.Parallel()
+		m := openPaletteOn(newTestModelOnReport())
+		got, _ := m.Update(retryableErrMsg{origin: screenRates, err: errors.New("boom")})
+		after := got.(Model)
+		if after.screen != screenError {
+			t.Fatalf("screen = %v, want screenError", after.screen)
+		}
+		// View returns early for screenError, so a surviving palette would be
+		// invisible AND would swallow the "press a key to return home" keypress.
+		if after.overlay != overlayNone {
+			t.Error("the palette survived onto the error screen, where it is invisible but still eats keys")
+		}
+	})
+}
+
+// The box is positioned in body coordinates, but bubbletea keeps the LAST
+// height lines of an overflowing view. Without the correction the box scrolls
+// off the top of a long report.
+func TestPaletteBoxStaysVisibleUnderALongBody(t *testing.T) {
+	t.Parallel()
+	p := openPaletteOn(newTestModelOnReport()).palette
+	_, _, shortY := p.layout(testTheme(true), 90, 30, 10)
+	if shortY != paletteTopY {
+		t.Errorf("y = %d on a body that fits, want %d", shortY, paletteTopY)
+	}
+	_, _, longY := p.layout(testTheme(true), 90, 30, 60)
+	if longY <= shortY {
+		t.Errorf("y = %d on a 60-line body in a 30-row terminal, want more than %d — the box would be scrolled away", longY, shortY)
+	}
+	// The box must land inside the window bubbletea will actually show.
+	if longY < 60+2-30 {
+		t.Errorf("y = %d is still above the visible window, which starts at body line %d", longY, 60+2-30)
 	}
 }
 
@@ -2045,7 +2223,7 @@ func TestPaletteBoxIsExactlyItsWidth(t *testing.T) {
 	t.Parallel()
 	m := openPaletteOn(newTestModelOnReport())
 	m.width, m.height = 100, 30
-	box, x, y := m.palette.layout(testTheme(true), m.width, m.height)
+	box, x, y := m.palette.layout(testTheme(true), m.width, m.height, 12)
 	if y != paletteTopY {
 		t.Errorf("y = %d, want %d", y, paletteTopY)
 	}
@@ -2061,36 +2239,65 @@ func TestPaletteBoxIsExactlyItsWidth(t *testing.T) {
 	}
 }
 
-// Match returns indices into the FULL label; a truncated label must drop the
-// ones that fell off, and the ellipsis must never light up.
+// colorTheme builds a theme on a renderer with a real color profile. testTheme
+// pins termenv.Ascii, which strips every escape, so a style assertion made
+// through it cannot fail no matter what highlight does.
+func colorTheme() theme {
+	r := lipgloss.NewRenderer(io.Discard)
+	r.SetColorProfile(termenv.ANSI)
+	r.SetHasDarkBackground(true)
+	return newTheme(r, defaultPalette())
+}
+
+func TestPaletteHighlightUsesTheAccentStyle(t *testing.T) {
+	t.Parallel()
+	th := colorTheme()
+	if probe := th.Accent.Render("x"); !strings.Contains(probe, "\x1b[") {
+		t.Fatalf("the accent style renders no escape (%q); this test would pass vacuously", probe)
+	}
+	got := highlight(th, "export", []int{0, 1, 2})
+	if w := lipgloss.Width(got); w != 6 {
+		t.Errorf("highlight changed the label's width: %d cells, %q", w, got)
+	}
+	if !strings.HasPrefix(got, th.Accent.Render("exp")) {
+		t.Errorf("the matched prefix is not rendered in the accent style: %q", got)
+	}
+	if !strings.HasSuffix(got, th.Cell.Render("ort")) {
+		t.Errorf("the unmatched tail picked up the accent style: %q", got)
+	}
+}
+
+// fuzzy.Match indexes the FULL label, so a truncated label must drop the
+// indices that fell off — and the ellipsis must never light up.
+//
+// The query is chosen so EVERY match lands past the cut. A query matching the
+// first few runes would leave the drop branch unexercised, and the test would
+// pass against an implementation that never drops anything.
 func TestPaletteHighlightSurvivesTruncation(t *testing.T) {
 	t.Parallel()
-	th := testTheme(true)
-	long := strings.Repeat("ab", 40)
-	_, idx, ok := fuzzyMatchForTest(long)
+	th := colorTheme()
+	label := "abcdefghijklmnopqrstuvwxyz0123456789"
+	_, idx, ok := fuzzy.Match("z9", label)
 	if !ok {
-		t.Fatal("the fixture query did not match")
+		t.Fatal(`Match("z9", label) did not match`)
 	}
-	got := highlight(th, shaveToWidth(long, 20), idx)
+	for _, i := range idx {
+		if i < 20 {
+			t.Fatalf("idx = %v, but this test needs every match beyond column 20", idx)
+		}
+	}
+
+	short := shaveToWidth(label, 20)
+	got := highlight(th, short, idx)
 	if w := lipgloss.Width(got); w != 20 {
 		t.Errorf("highlighted label is %d cells, want 20: %q", w, got)
 	}
-}
-
-// Under termenv.Ascii the goldens cannot see this, so assert on the style.
-func TestPaletteHighlightUsesTheAccentStyle(t *testing.T) {
-	t.Parallel()
-	th := testTheme(true)
-	if th.Accent.GetForeground() == th.Cell.GetForeground() {
-		t.Fatal("the theme's Accent and Cell share a foreground; this test cannot discriminate")
+	// Every match fell outside the cut, so nothing may be accented — and that
+	// includes the ellipsis shaveToWidth appended.
+	if want := th.Cell.Render(short); got != want {
+		t.Errorf("highlight kept indices past the truncation:\n got %q\nwant %q", got, want)
 	}
 }
-```
-
-`fuzzyMatchForTest` is a two-line helper you write in the test file:
-
-```go
-func fuzzyMatchForTest(target string) (int, []int, bool) { return fuzzy.Match("aaaa", target) }
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2107,7 +2314,7 @@ Replace the placeholder file entirely:
 package tui
 
 import (
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -2153,8 +2360,14 @@ type paletteModel struct {
 
 // openPalette raises the overlay. It does not touch m.nav: an overlay is not a
 // place you navigated to, so closing it is not a pop().
+//
+// helpAll is cleared because the expanded footer is several lines tall, and
+// paletteRows subtracts a fixed two rows for the blank line and the footer.
+// Dismissing it is also right on its own terms: the palette and full help
+// answer the same question, and showing both at once answers it twice.
 func (m Model) openPalette() Model {
 	m.overlay = overlayPalette
+	m.helpAll = false
 	m.palette = paletteModel{}
 	return m.refreshPalette()
 }
@@ -2178,7 +2391,7 @@ func (m Model) refreshPalette() Model {
 	}
 	// Stable, so an empty query (every score 0) keeps paletteActions' order:
 	// screen commands above the navigation rows.
-	sort.SliceStable(items, func(i, j int) bool { return items[i].score > items[j].score })
+	slices.SortStableFunc(items, func(a, b paletteItem) int { return b.score - a.score })
 	m.palette.items = items
 	m.palette.idx = 0
 	m.palette.top = 0
@@ -2271,13 +2484,27 @@ func paletteBoxWidth(width int) int {
 }
 
 // layout renders the box and returns the cell its top-left corner goes in.
-func (p paletteModel) layout(th theme, width, height int) (string, int, int) {
+//
+// bodyLines is how many lines the screen underneath occupies, and it is not
+// decoration. y is a coordinate in the BODY, but bubbletea's standard renderer
+// keeps only the LAST height lines when a view overflows
+// (standard_renderer.go:186-188). On a report grouped by task with fifty
+// buckets, a box pinned at y=2 scrolls off the top and the user types into a
+// palette they cannot see — on exactly the screen where it is most useful. So
+// the box moves down by however much the body will be scrolled up.
+func (p paletteModel) layout(th theme, width, height, bodyLines int) (string, int, int) {
 	boxW := paletteBoxWidth(width)
 	x := 0
 	if width > boxW {
 		x = (width - boxW) / 2
 	}
-	return p.box(th, boxW, paletteRows(height)), x, paletteTopY
+	y := paletteTopY
+	if height > 0 {
+		if overflow := bodyLines + 2 - height; overflow > 0 { // +2: blank line + footer
+			y += overflow
+		}
+	}
+	return p.box(th, boxW, paletteRows(height)), x, y
 }
 
 // box builds the frame a line at a time rather than through th.Box.
@@ -2386,7 +2613,39 @@ func highlight(th theme, label string, idx []int) string {
 }
 ```
 
-- [ ] **Step 4: Wire the palette into `Update` and `View`**
+- [ ] **Step 4: Make every navigation dissolve the overlay**
+
+An overlay belongs to the screen it was raised over. Async handlers swap that screen out
+from under it — `errMsg` on a 401 does `resetTo(screenSetup)` (`app.go:634-641`), and
+`retryableErrMsg` from a non-Home origin does `replace(screenError)` — and both are
+reachable, because the palette can be opened on `screenFilters` or `screenMembers` while a
+fetch is still in flight.
+
+Rather than remembering this in eleven handlers, put it in the four functions that change
+the screen. In `internal/tui/nav.go`, add to `goTo`, `replace`, `pop` and `resetTo`, before
+each `return`:
+
+```go
+	m.overlay = overlayNone
+	m.palette = paletteModel{}
+```
+
+and give the file this note at the top of its doc comment block:
+
+```go
+// Every function here dissolves an open overlay. An overlay belongs to the
+// screen it was raised over, so whatever swaps that screen out — a key handler,
+// an async error, a 401 relaunching the setup wizard — takes the overlay with
+// it. The palette's own actions are not an exception: they run after
+// closePalette(), so the clearing here is a no-op for them.
+```
+
+Note the two failure modes this prevents, because neither is obvious: over `screenSetup`
+the palette stays visible AND keeps the keyboard on a screen `ctrl+p` is not allowed on at
+all; over `screenError` it becomes invisible (`View` returns early there) while still
+swallowing every keypress, so "press a key to return home" silently does nothing.
+
+- [ ] **Step 5: Wire the palette into `Update` and `View`**
 
 In `internal/tui/app.go`, replace the whole `case tea.KeyMsg:` block with:
 
@@ -2437,7 +2696,7 @@ func (m Model) View() string {
 		// Composed over the BODY, not over the finished view: the footer stays
 		// below and visible, and it advertises the palette's own keys because
 		// keysFor follows the overlay.
-		box, x, y := m.palette.layout(m.theme, m.width, m.height)
+		box, x, y := m.palette.layout(m.theme, m.width, m.height, strings.Count(body, "\n")+1)
 		body = composite(body, box, x, y)
 	}
 	// Screens differ on whether their body ends with a newline; trimming here
@@ -2446,7 +2705,7 @@ func (m Model) View() string {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `go test ./internal/tui/ -run TestPalette -v`
 Expected: PASS.
@@ -2454,18 +2713,28 @@ Expected: PASS.
 Run: `go test ./... -race`
 Expected: PASS.
 
-- [ ] **Step 6: Verify three tests fail against the bugs they exist for**
+- [ ] **Step 7: Verify five tests fail against the bugs they exist for**
 
-Break, run, capture, restore. Paste all three transcripts into your report.
+Break, run, capture, restore. Paste all five transcripts into your report.
 
-1. In `Update`, move the `if m.overlay != overlayNone` check **below** the `Quit` check.
-   Run: `go test ./internal/tui/ -run TestPaletteQueryAcceptsQ -v` → must FAIL.
+1. In `Update`, move the `if m.overlay != overlayNone` check **below** the `Palette` check.
+   Run: `go test ./internal/tui/ -run TestPaletteCtrlPClosesRatherThanReopening -v` → must
+   FAIL, showing the query still set. Then also run
+   `go test ./internal/tui/ -run TestPaletteQueryAcceptsQ -v` and confirm it still
+   **PASSES** with the bug present — `paletteKeys` leaves `Quit` unassigned, so q is safe
+   whatever the order. That contrast is why the ctrl+p test exists.
 2. In `paletteKeys`, use `Up: d.Up, Down: d.Down`.
    Run: `go test ./internal/tui/ -run TestPaletteTypesJAndK -v` → must FAIL.
 3. In `updateOverlay`, drop `|| msg.Type == tea.KeySpace` from the final condition.
    Run: `go test ./internal/tui/ -run TestPaletteQueryAcceptsSpace -v` → must FAIL.
+4. Remove the two clearing lines from `resetTo` and `replace` in `nav.go`.
+   Run: `go test ./internal/tui/ -run TestPaletteDissolvesWhenAnErrorSwapsTheScreen -v` →
+   must FAIL on both subtests.
+5. In `layout`, delete the `if overflow := ...` block.
+   Run: `go test ./internal/tui/ -run TestPaletteBoxStaysVisibleUnderALongBody -v` → must
+   FAIL.
 
-- [ ] **Step 7: Add the goldens**
+- [ ] **Step 8: Add the goldens**
 
 Append to `internal/tui/golden_test.go`:
 
@@ -2525,7 +2794,7 @@ Run: `git diff --stat internal/tui/testdata/`
 Expected: only the four new files. **If any pre-existing golden changed, stop and report
 it** — nothing in this task should alter another screen.
 
-- [ ] **Step 8: Gate and commit**
+- [ ] **Step 9: Gate and commit**
 
 ```bash
 gofmt -l .
@@ -2533,7 +2802,7 @@ go vet ./...
 go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 go build ./...
 go test ./... -race
-git add internal/tui/palette.go internal/tui/palette_test.go internal/tui/app.go internal/tui/golden_test.go internal/tui/testdata
+git add internal/tui/palette.go internal/tui/palette_test.go internal/tui/app.go internal/tui/nav.go internal/tui/golden_test.go internal/tui/testdata
 git commit -m "feat(tui): add the ctrl+p command palette as a floating overlay (#71)"
 ```
 
@@ -2727,3 +2996,36 @@ empty in Task 4 and replaced in Task 6 — Task 4 Step 1 says so.
 
 **Known ordering hazard.** Task 4 leaves `ctrl+p` advertised in the footer but inert until
 Task 6. Called out in Task 4's preamble so a reviewer does not file it.
+
+---
+
+## What an adversarial review changed (2026-07-29)
+
+Two independent reviews of the spec and of this plan ran before execution. Both refused it
+as first written. What they caught, and where it landed:
+
+| Finding | Fix |
+|---|---|
+| `PrevMonth`/`NextMonth` lead with `"left"`/`"right"`, so `TestEveryPaletteBindingIsReplayable` could never pass — and dropping them would silently lose both month actions on Home | `keyMsgFor` gained `"left"` and `"right"`; the round-trip is exact (`bubbletea key.go:301,303`). Task 5 |
+| The range subtest asserted a non-zero `rangeModel`, but `newRange(PresetThisMonth)` **is** the zero value — it would have failed against correct code | The subtest uses `PresetLast7d` and asserts on `idx`. Task 3 Step 1 |
+| Adding `Palette` to `keyMap` reddens ~20 label-parity tests in 11 files the plan never named | A whole step, with the file list and the exact insertion point (`enabledLabels` sorts, so `"ctrl+p"` follows `"ctrl+c"`). Task 4 Step 6 |
+| `TestPaletteQueryAcceptsQ` was prescribed as a red-green test but **cannot** fail against the stated break — `paletteKeys` leaves `Quit` unassigned. The plan's own second guard neutralised its own RED | Demoted to a regression test, with the reason written down; `TestPaletteCtrlPClosesRatherThanReopening` is the one with teeth. Task 6 |
+| `TestPaletteHighlightUsesTheAccentStyle` never called `highlight` — it compared two theme fields and would pass whatever the code did | Rewritten on a real color-profile renderer, asserting on the escapes. Task 6 Step 1 |
+| `TestPaletteHighlightSurvivesTruncation` used a query whose matches all landed inside the cut, so the drop branch was never exercised | Query changed so every match falls past the cut. Task 6 Step 1 |
+| Nothing dissolved the overlay when an async error swapped the screen: the palette survived onto the setup wizard, and onto `screenError` where it was invisible but still ate every keypress | `goTo`/`replace`/`pop`/`resetTo` clear it. Task 6 Step 4 |
+| `ansi.Cut` keeps a straddling wide glyph on the right edge and drops it on the left, so a composited line came out a cell too wide — and the ASCII width test passed straight over it | Straddle correction plus a CJK fixture, with the break step asking for the contrast between the two tests. Task 2 |
+| `y` is a body coordinate, but bubbletea keeps the **last** `height` lines of an overflowing view — the box scrolled off the top of a long report | `layout` takes `bodyLines` and moves the box down by the overflow. Task 6 Step 3 |
+| `"Log hours"` appeared twice with an identical label on Home and Report | The global row is `"Go to log hours"`. Task 5 |
+| `ctrl+p` on `entriesConfirmDelete` contradicted that mode's "any key cancel" footer | `Palette` unassigned in that branch. Task 4 Step 5 |
+| Opening the palette with `helpAll` set made the footer multi-line, breaking `paletteRows`' fixed −2 | `openPalette` clears `helpAll`. Task 6 Step 3 |
+| The label `"Export report"` does not exist — screen labels are `capitalize(Help().Desc)`, so it is `"Export"` | Fixed in Task 1's ranking test and in the spec |
+| "Go does not convert a multi-value return" — false | Removed; the shorter form is used. Task 3 Step 5 |
+| `sort.SliceStable` where the project prefers `slices` | `slices.SortStableFunc`. Task 6 Step 3 |
+| A missing `fuzzy` import, a miscount of "the two that compile" | Fixed |
+
+What the reviews confirmed and I have not re-derived: every struct field and constructor
+name the plan uses exists with that name; `report.go:92-125` and `home.go:54-87` are copied
+faithfully into `open.go`; `openEntries`' only caller is `report.go:120`; all five measured
+`ansi.Cut` behaviours reproduce; every fuzzy score in Task 1 recomputes by hand;
+`newTestModelOnReport` yields 18 actions, comfortably past `paletteMaxRows`; the box
+arithmetic holds at both 52 and 24 columns with no negative `strings.Repeat`.
