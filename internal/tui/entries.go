@@ -128,12 +128,20 @@ func enterEditForm(es entriesModel, now time.Time, loc *time.Location) entriesMo
 	return es
 }
 
-// openEntries builds the browser from the filter-applied entries. (The lazy
-// userID retry, when m.userID == 0, is dispatched by the caller in updateReport.)
-func (m Model) openEntries() Model {
+// openEntries opens the time-entry browser over the currently visible entries.
+//
+// It also issues the lazy currentUserCmd retry when the authenticated user is
+// still unknown: ownership gating (which entries can be edited or deleted)
+// stays off until that lands, and this is the only screen that needs it. That
+// retry used to live in updateReport's OpenEntries case; it moved here so the
+// command palette's "Go to entries" cannot forget it.
+func (m Model) openEntries() (Model, tea.Cmd) {
 	m.entriesScreen = entriesModel{entries: sortEntriesByStartDesc(m.visibleEntries())}
 	m = m.goTo(screenEntries)
-	return m
+	if m.userID == 0 {
+		return m, m.currentUserCmd()
+	}
+	return m, nil
 }
 
 func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

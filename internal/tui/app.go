@@ -499,8 +499,9 @@ func pruneFilterSet(sel, present map[string]bool) map[string]bool {
 }
 
 // loadMembersCmd fetches the workspace members in the background and returns
-// membersMsg or retryableErrMsg{origin, err}. It's Home-only today, so origin
-// is always screenHome at the call site.
+// membersMsg or retryableErrMsg{origin, err}. origin is the screen to return
+// a failure to — Home for the key binding, the caller's own screen when the
+// command palette opens it.
 func loadMembersCmd(c *clickup.Client, teamID string, origin screen) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
