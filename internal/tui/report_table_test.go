@@ -297,6 +297,7 @@ func TestReportRowsKeepsBucketsUnderOtherGroupings(t *testing.T) {
 // 48 columns (chrome 10 + Item floor 12 + 10 + 10 + Amount header 6), so
 // asserting there would fail against correct code.
 func TestReportTableNeverExceedsWidthWithLongLabelAndWideNumbers(t *testing.T) {
+	t.Parallel()
 	th := testTheme(true)
 	const longLabel = "Website redesign and content migration backlog"
 	rep := reportWithHours(longLabel, 1234567.5)
@@ -310,8 +311,12 @@ func TestReportTableNeverExceedsWidthWithLongLabelAndWideNumbers(t *testing.T) {
 
 // The other direction: short labels leave Item capped by its own content, but
 // wide numbers still push the table past a narrow terminal. 44 is the width
-// where the current code renders 47 (overflowing by 3) and the fix renders 43.
+// where the current code renders 47 (overflowing by 3) and the fix renders 44
+// (fitting exactly: Item stays at its content cap of 7 and Amount is trimmed
+// by the budget down to 7). 43 is the floor the fix falls back to below this
+// width, not what it renders at 44 itself.
 func TestReportTableNeverExceedsWidthWithShortLabelAndWideNumbers(t *testing.T) {
+	t.Parallel()
 	th := testTheme(true)
 	rep := reportWithHours("Website", 1234567.5)
 	if got := lipgloss.Width(strings.Split(reportTable(th, rep, 44), "\n")[0]); got > 44 {
@@ -331,8 +336,9 @@ func reportWithHours(label string, hours float64) report.Report {
 	}
 }
 
-// Measuring the data only would make the budget assume 10 where the renderer
-// uses 11, and the table would overflow by 1 — the same bug in a smaller size.
+// Measuring the data only would make the budget assume 8 (4+4, from "1.00"
+// twice) where the renderer uses 11 (5+6, from the "Hours"/"Billed" headers),
+// and the table would overflow by 3 — the same bug in a smaller size.
 func TestReportNumWidthsIncludeTheHeaders(t *testing.T) {
 	t.Parallel()
 	rows := [][]string{{"Website", "1.00", "1.00", "5.00 EUR"}}
