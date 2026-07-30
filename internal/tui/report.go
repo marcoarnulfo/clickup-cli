@@ -178,11 +178,9 @@ func (m *Model) rebuildReport(groupBy string) bool {
 	return true
 }
 
-// applyReport rebuilds m.report from the visible entries over the loaded
-// range (m.activeRange, #28), keeping the active grouping. It returns false
-// when the config's pricing rules failed to parse, in which case
-// pricingOrErr has already routed the model to screenError and the caller
-// must not overwrite that.
+// applyReport calls rebuildReport with the active grouping (m.report.GroupBy,
+// defaulting to GroupByTotal when unset) — see rebuildReport's doc comment
+// for the false-return cases.
 func (m *Model) applyReport() bool {
 	g := m.report.GroupBy
 	if g == "" {
