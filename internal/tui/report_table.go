@@ -155,23 +155,37 @@ func reportItemWidth(rows [][]string, width int) int {
 // own rows at the bottom of the same table, at full precision — but amountW
 // is one column width shared by every row, subtotals included, so a subtotal
 // cell truncates exactly like a bucket cell once its natural width no longer
-// fits. That only happens below about 52 columns (a 3-currency subtotal like
-// "1234567.00 EUR" needs 14 of its own); at 60 columns and above — the width
-// this file's own tests treat as the table's design range
-// (TestReportTableNeverExceedsWidth starts there) — every subtotal fits
-// whole. Below roughly 48 columns the Item column has already hit its
-// reportMinItemWidth floor and the whole table is in the degraded regime that
-// floor exists to accept; a truncated subtotal in that band is one more
-// symptom of the same accepted trade-off, not a new one.
+// fits.
+//
+// Where that line falls is not a fixed column count. Rendering whole needs
+// budget — the terminal's width minus chrome, Item and the COMBINED width of
+// Hours and Billed (reportNumWidths) — to reach at least the subtotal cell's
+// own natural width (computed below), and none of those three quantities is
+// reserved at a flat size: all are measured from the rows. Widen any of
+// them by a column — more digits in Hours or Billed, or a longer currency
+// code in the subtotal itself — and the terminal width the subtotal needs to
+// render whole grows by exactly that much; narrow them and it shrinks by the
+// same amount. There is no single number to name here that would stay true
+// as those widths change. TestReportTableNeverExceedsWidthWithLongLabelAndWideNumbers
+// pins one concrete case, with the numbers it needs measured and asserted in
+// the test itself. Once Item has hit its reportMinItemWidth floor the whole
+// table is already in the degraded regime that floor exists to accept; a
+// truncated subtotal in that regime is one more symptom of the same accepted
+// trade-off, not a new one.
 //
 // width <= 0 is the first render, before the terminal has sent its
 // WindowSizeMsg: nothing is sized against it yet, so Amount stays at its
 // natural width, same as Item. Otherwise this never stretches Amount past
-// what the content needs, only ever shrinks it — down to 1, never lower: 1 is
-// the floor because truncateWidth(s, 1) still cuts to a real, one-column
-// value, while truncateWidth(s, 0) collapses to "" and would leave Amount
-// with no column at all. That floor is enforced by max(1, ...) below, not by
-// any guard inside truncateWidth itself.
+// what the content needs, only ever shrinks it — down to 1, never lower. The
+// floor is not about keeping the COLUMN alive: Headers(reportHeaders...)
+// passes "Amount" whole, and lipgloss/table sizes a column from every cell it
+// is given, the header included, so even at floor 0 the column still renders
+// at the header's own width (verified: floor 1 renders that same width, never
+// 1 column). What floor 0 actually does is worse: truncateWidth(s, 0)
+// collapses every DATA cell to "", so the row shows nothing where a value
+// belongs — not even the "…" that would signal a cut. Floor 1 keeps that
+// signal, since truncateWidth(s, 1) still renders a one-column ellipsis,
+// which is why max(1, ...) below is the floor and not max(0, ...).
 func reportAmountWidth(rows [][]string, width, itemW int) int {
 	natural := lipgloss.Width(reportHeaders[3])
 	for _, row := range rows {

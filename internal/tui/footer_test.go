@@ -145,11 +145,12 @@ func TestFooterNeverExceedsWidth(t *testing.T) {
 // one thing the injected-renderer discipline exists to prevent, and this file's
 // own opening comment says so about help.New().
 //
-// This is invisible to the suite by construction: TestMain pins the default
-// renderer to termenv.Ascii, so a style built on it renders identically to one
-// built on the injected renderer, and no golden or assertion can tell them
-// apart. Do not add a test that claims otherwise — pin the truncation instead,
-// and keep the grep in the checklist.
+// This is invisible to the suite by construction, but not because TestMain
+// pins termenv.Ascii: clampWidth's own doc comment has the measured reason —
+// the style it renders through carries no color, so the output is identical
+// on any color profile, the injected renderer's included. Do not add a test
+// that claims otherwise — pin the truncation instead, and keep the grep in
+// the checklist.
 func TestClampWidthNeverExceedsTheTerminal(t *testing.T) {
 	t.Parallel()
 	th := testTheme(true)

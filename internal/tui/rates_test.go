@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -526,6 +527,39 @@ func TestRatesRejectsInvalidCurrencyInline(t *testing.T) {
 	m = press(t, m, "enter")
 	if m.ratesScreen.msg == "" || m.ratesScreen.defCur != "" {
 		t.Fatalf("an invalid default currency must be rejected inline; msg=%q defCur=%q", m.ratesScreen.msg, m.ratesScreen.defCur)
+	}
+}
+
+// validCurrency gates the in-app editor (TestRatesRejectsInvalidCurrencyInline
+// above), but a config file loaded from disk never runs through it: nothing
+// in config.Load or config.Valid checks Billing.Currencies/DefaultCurrency/
+// Currency against ISO 4217. A hand-edited or externally-synced config.yml
+// can carry any string, and effectiveCurrency renders it as-is.
+//
+// listsView's Cur column used to pad that string with fmt's "%-5s", which
+// counts runes, not display columns. A currency whose only rune is wide (one
+// rune, two display columns, as with several CJK currency symbols) then
+// consumed 6 display columns instead of 5, shifting Budget and Source one
+// column to the right on that row alone. cell(cur, 5) pads by display
+// columns, so the row keeps the same width as any other list's row
+// regardless of what the currency string is made of.
+func TestRatesListsViewKeepsRowWidthWithWideRuneCurrency(t *testing.T) {
+	t.Parallel()
+	cfg := config.Config{Rate: 30, Currency: "EUR"}
+	rt := newRates(billingEntries(), cfg)
+	// One rune, two display columns — reachable only via a config file, never
+	// via the in-app editor, which validCurrency would reject.
+	rt.currencies["1"] = "円"
+	got := rt.listsView(testTheme(true))
+	lines := strings.Split(got, "\n")
+
+	// lines[0] is the header; lines[1] is "Website" (listID "1", the
+	// wide-rune currency); lines[2] is "Internal" (listID "2", falling back
+	// to the ordinary ASCII "EUR").
+	wideRow, asciiRow := lines[1], lines[2]
+	if w, want := lipgloss.Width(wideRow), lipgloss.Width(asciiRow); w != want {
+		t.Errorf("row with a wide-rune currency is %d columns wide, want %d (same as the ASCII-currency row):\n%q\n%q",
+			w, want, wideRow, asciiRow)
 	}
 }
 

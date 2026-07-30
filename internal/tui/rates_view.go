@@ -39,10 +39,17 @@ func billingRow(th theme, sel bool, line string) string {
 }
 
 func (rt ratesModel) listsView(th theme) string {
-	// Header labels are ASCII literals and the Cur column below is an ISO
-	// currency code, both places where runes and columns coincide by
-	// construction, so the %-Ns verbs stay aligned with cell(...,24), which
-	// pads the List column of the data rows to that same exact width.
+	// "List", "Rate", "Cur", "Budget" and "Source" are ASCII literals, where
+	// runes and columns coincide by construction, so the %-Ns verbs in the
+	// header stay aligned with the data rows' cell(...,N) columns below.
+	//
+	// The Cur column is the one data column here that is NOT a %-Ns verb: the
+	// currency comes from effectiveCurrency, which traces back to the user's
+	// own config (currencies/default_currency/currency in config.go) with no
+	// ISO check enforced — Valid() never looks at it. A wide-rune currency
+	// (e.g. "円") would misalign every column after it under %-5s, which pads
+	// by counting runes; cell(cur, 5) pads by display columns instead, the
+	// same fix this whole file's non-ASCII columns already use.
 	b := th.Help.Render(fmt.Sprintf("  %-24s %10s %-5s %10s  %s", "List", "Rate", "Cur", "Budget", "Source")) + "\n"
 	if len(rt.rows) == 0 {
 		return b + th.Help.Render("  No lists in the current report — press 'b' to browse the workspace.") + "\n"
@@ -53,8 +60,8 @@ func (rt ratesModel) listsView(th theme) string {
 			rate, tag = v, "list rate"
 		}
 		bud, hasBud := rt.budgets[r.listID]
-		line := fmt.Sprintf("%s %10.2f %-5s %10s  %s",
-			cell(r.name, 24), rate, rt.effectiveCurrency(r.listID), moneyOrDash(bud, hasBud), tag)
+		line := fmt.Sprintf("%s %10.2f %s %10s  %s",
+			cell(r.name, 24), rate, cell(rt.effectiveCurrency(r.listID), 5), moneyOrDash(bud, hasBud), tag)
 		b += billingRow(th, i == rt.sel[secLists], line)
 	}
 	sel := rt.rows[rt.sel[secLists]]
