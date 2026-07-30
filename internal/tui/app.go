@@ -1001,7 +1001,7 @@ func (m Model) screenBody() string {
 	case screenRange:
 		return m.rangeScreen.view(m.theme)
 	case screenFilters:
-		return m.filtersScreen.view(m.theme)
+		return m.filtersScreen.view(m.theme, filtersRows(m.height))
 	case screenListBrowser:
 		return m.browserScreen.view(m.theme)
 	case screenBudget:

@@ -136,17 +136,28 @@ func (m Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// scrollPalette moves the visible window so idx is always inside it. This is the
-// scrolling the Filters screen still lacks (#28); the palette gets it right from
-// the start.
+// scrollPalette moves the visible window so idx is always inside it, on the
+// shared idiom in scrollWindow.
 func scrollPalette(p paletteModel, rows int) paletteModel {
-	if p.idx < p.top {
-		p.top = p.idx
-	}
-	if p.idx >= p.top+rows {
-		p.top = p.idx - rows + 1
-	}
+	p.top = scrollWindow(p.idx, p.top, rows)
 	return p
+}
+
+// scrollWindow moves a visible window of `rows` rows so idx stays inside it, and
+// returns the new top. Shared by the palette and the Filters screen (#28): the
+// palette had this from the start, and Filters now uses the same idiom instead
+// of a second one.
+func scrollWindow(idx, top, rows int) int {
+	if rows <= 0 {
+		return 0
+	}
+	if idx < top {
+		return idx
+	}
+	if idx >= top+rows {
+		return idx - rows + 1
+	}
+	return top
 }
 
 // paletteRows is how many action rows fit. The subtraction accounts for the box

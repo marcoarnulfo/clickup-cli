@@ -249,7 +249,15 @@ func TestGoldenRange(t *testing.T) {
 
 func TestGoldenFilters(t *testing.T) {
 	t.Parallel()
-	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view(testTheme(true)))
+	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view(testTheme(true), 24))
+}
+
+// TestGoldenFiltersScrolled pins the windowed view a short terminal actually
+// renders: 40 lists is far more than fits in 12 rows, so the golden should cut
+// off partway through the Lists section with the cursor still inside it (#28).
+func TestGoldenFiltersScrolled(t *testing.T) {
+	t.Parallel()
+	golden(t, "filters_scrolled", newFilters(filtersFixture(40), nil, nil, nil, nil).view(testTheme(true), 12))
 }
 
 func TestGoldenSetup(t *testing.T) {

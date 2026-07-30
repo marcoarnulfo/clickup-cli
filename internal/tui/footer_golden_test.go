@@ -73,8 +73,8 @@ func TestGoldenFooters(t *testing.T) {
 		// task's own template — produces the identical keyMap).
 		{"report", newTestModelOnReport},
 
-		// screenFilters (filters_test.go:176 TestFiltersKeyLabels).
-		{"filters", filtersFixture},
+		// screenFilters (filters_test.go:194 TestFiltersKeyLabels).
+		{"filters", filtersScreenFixture},
 
 		// screenMembers (members_test.go:89 TestMembersKeyLabels).
 		{"members", membersFixture},
