@@ -232,7 +232,9 @@ sessione. I filtri si compongono con la selezione membri e con il periodo attivo
 restringono solo ciò che è già stato caricato. Quando il periodo cambia, le selezioni
 dei filtri si adattano automaticamente alle nuove voci: ogni valore selezionato che
 non compare più viene scartato, così il report non resta mai bloccato vuoto per un
-filtro ormai obsoleto. Comandi disponibili:
+filtro ormai obsoleto. La schermata scorre verticalmente quando ci sono molte liste,
+tag o status, così puoi navigare a qualsiasi valore anche su terminali stretti.
+Comandi disponibili:
 
 - `Tab` / `Shift+Tab`: cambia sezione
 - `↑` / `↓` (anche `k` / `j`): naviga all'interno della sezione
