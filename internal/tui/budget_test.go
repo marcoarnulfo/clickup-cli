@@ -183,6 +183,38 @@ func TestBudgetViewAlignsFiguresAcrossRows(t *testing.T) {
 	}
 }
 
+// TestBudgetViewLeavesPercentLabelsNaturalAtZeroWidth protects the other half
+// of the #144 fallback: view's doc comment claims width <= 0 is budgetLayout's
+// own fallback branch, which never measures pctW, so the percentage label
+// should stay at its natural width there instead of quietly starting to align
+// once nothing else in the layout does either. TestBudgetViewAlignsFiguresAcrossRows
+// covers the sized side (equal columns); this is the zero-width side, where the
+// columns must differ instead.
+//
+// Same fixture as that test, same reasoning for why: the two rows' percentages
+// are three and four digits long ("62%" vs "104%"), so a natural label shifts
+// the "/" one column between rows while a padded one would not.
+func TestBudgetViewLeavesPercentLabelsNaturalAtZeroWidth(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	bm := newBudget([]report.BudgetLine{
+		{ListName: "Website", Billed: 625, Budget: 1000, Currency: "EUR", Remaining: 375, PercentUsed: 62.5},
+		{ListName: "Mobile app", Billed: 940, Budget: 900, Currency: "EUR", Remaining: -40, PercentUsed: 940.0 / 900 * 100},
+	})
+	var cols []int
+	for _, line := range strings.Split(bm.view(th, 0), "\n") {
+		if i := strings.Index(line, "/"); i >= 0 {
+			cols = append(cols, lipgloss.Width(line[:i]))
+		}
+	}
+	if len(cols) != 2 {
+		t.Fatalf("expected two budget rows, found %d figure columns", len(cols))
+	}
+	if cols[0] == cols[1] {
+		t.Errorf("figures start at the same column (%d) at width 0; want the percentage label unpadded, one column apart between the 62%% and 104%% rows", cols[0])
+	}
+}
+
 // A percentage narrower than the measured maximum is right-aligned into it, so
 // every column after it holds. pctW <= 0 keeps the natural width, which is what
 // the callers that are not testing alignment pass.

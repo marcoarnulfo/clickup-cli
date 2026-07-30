@@ -31,7 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer fits the terminal width instead of wrapping to a second line, with an
   ellipsis marking where it was cut (#143).
 - Budget burn-down view now right-justifies the percentage labels, so the
-  figures they precede start at the same column across rows instead of ragged (#144).
+  figures they precede start at the same column across rows instead of a
+  ragged column (#144).
 - Removed the duplicate "Total" data row that appeared directly above the TOTAL row
   when the report is grouped as a single total (#137).
 - Budget burn-down view now sizes its list-name column to the available width

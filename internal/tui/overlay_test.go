@@ -120,12 +120,18 @@ func TestCompositeDoesNotLeakStyleIntoTheBox(t *testing.T) {
 //
 // Measured from goldenPaletteModel at width 40 (screenBody + palette.layout,
 // the real render path, not a hand-built fixture): the box sits at x=2 with
-// boxW=36, so its footprint ends at column 38. Row 7, the table's top border,
-// is the widest row the box actually covers (39 cells, against 38 for every
-// other covered row) and is one cell wider than that footprint, so column 38
-// survives — the same "╮" that closes the table's own border. At 50, 60, 80,
-// and 120 columns the box's footprint reaches at least that 39th column, so
-// nothing is left exposed there; only 40 shows this column at all.
+// boxW=36, so its footprint ends at column 38. Row 7 is the table's top
+// border, 39 cells wide — one cell wider than that footprint, so column 38
+// survives as the table's own "╮". It is not alone: the six rows below it
+// (8-13 — the header, the separator, the two data rows, TOTAL, and the
+// bottom border) are the rest of the table and are 39 cells wide too, each
+// exposing that same column with its own border glyph. No row this box
+// covers is 38 cells. So what stays visible beside the box is not a single
+// stray cell but the whole strip of the table's right border; row 7's "╮" is
+// just that strip's top corner, and this test pins it as a stand-in for the
+// rest. At 50, 60, 80, and 120 columns the box's footprint reaches at least
+// that 39th column, so nothing is left exposed there; only 40 shows this
+// column at all.
 //
 // Why it is there rather than cropped: overlay.go:11-13 documents that cells
 // of body outside the box's rectangle survive verbatim, "that layering is the
