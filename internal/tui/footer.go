@@ -58,16 +58,15 @@ func clampWidth(th theme, s string, width int) string {
 	if width <= 1 || lipgloss.Width(s) <= width {
 		return s
 	}
-	// ansi.Truncate cuts ANSI-aware without a renderer: MaxWidth would do the
-	// same cut, but only by building a style on lipgloss's DEFAULT renderer —
-	// the one this file's opening comment refuses help.New() over. The ellipsis
-	// is added separately, styled from the theme, so the cut is visible rather
-	// than looking like a footer that simply ends.
-	//
-	// Both methods produce identical bytes for this input: the style carries no
-	// color, so termenv.Style.Styled returns the string unchanged regardless of
-	// color profile. This is why the change is invisible to tests — the guard
-	// is the grep that this style is never built, not the suite.
+	// ansi.Truncate cuts ANSI-aware without a renderer. MaxWidth produces the
+	// same truncation point for single-line input without tabs — which is all
+	// this file passes (help.View + the separators " · " / "    "). On tab-
+	// containing input the two diverge: Render expands tabs to four spaces before
+	// truncating, while ansi.Truncate does not. The style carries no color, so
+	// the output is identical regardless of color profile. This is why the change
+	// is invisible to tests — the guard is the grep that this style is never
+	// built, not the suite. The ellipsis is added separately, styled from the
+	// theme, so the cut is visible rather than looking like a footer that ends.
 	return ansi.Truncate(s, width-1, "") + th.Help.Render("…")
 }
 
