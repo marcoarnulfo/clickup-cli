@@ -13,8 +13,11 @@ import (
 // Item column first: the numeric columns are the reason to have a grid, so
 // Item gives up its space before they do. Amount is the one exception, and
 // only as a last resort — see reportAmountWidth for why that is safe.
+//
+// Hours and Billed are not in this block: reportNumWidths measures them from
+// the rows instead of reserving a flat width, so a wider value can never push
+// the table past the terminal edge the way a fixed reservation did (#138).
 const (
-	reportNumWidth     = 8  // reserved for each of Hours and Billed
 	reportMinItemWidth = 12 // below this the labels stop being labels
 	reportNatItemWidth = 32 // the fixed width the report had before #66
 	// reportTableChrome is the border and padding the table spends on itself:
@@ -94,19 +97,35 @@ func formatAmounts(amounts []report.CurrencyAmount, fallback string) string {
 	return strings.Join(parts, " + ")
 }
 
-// reportItemWidth splits width between the fixed numeric columns and the Item
+// reportNumWidths measures the Hours and Billed columns from the rows, HEADERS
+// INCLUDED. The headers are not decoration in this arithmetic: lipgloss/table
+// sizes a column from every row it is given, the header row among them, so a
+// "Billed" header holds 6 columns even when every value is 5. reportNumWidth
+// used to reserve a flat 8 for each and nothing enforced it — a wider value
+// simply pushed the table past the terminal edge by 2 x (width - 8) (#138).
+func reportNumWidths(rows [][]string) (hours, billed int) {
+	hours = lipgloss.Width(reportHeaders[1])
+	billed = lipgloss.Width(reportHeaders[2])
+	for _, row := range rows {
+		hours = max(hours, lipgloss.Width(row[1]))
+		billed = max(billed, lipgloss.Width(row[2]))
+	}
+	return hours, billed
+}
+
+// reportItemWidth splits width between the numeric columns and the Item
 // column. It never stretches Item past the longest label (empty space is not a
 // feature) and never shrinks it below reportMinItemWidth — unless the labels
 // themselves are shorter than that floor.
 //
-// Reserving reportNumWidth for Hours and Billed is a worst case: real values
-// are shorter, so the table often renders narrower than the terminal. Narrower
-// is fine; wider is the bug this arithmetic exists to prevent — but this
-// function alone cannot promise it: it assumes Amount keeps its natural,
-// untruncated width, and a multi-currency bucket's Amount can blow well past
-// whatever is left once Item is already at its floor. reportAmountWidth is the
-// other half of that promise: it is what actually claws space back from
-// Amount, as a last resort, once Item has none left to give.
+// Hours and Billed are measured by reportNumWidths, not reserved at a worst
+// case, so the table renders exactly as wide as its content needs. This
+// function alone cannot promise the whole table fits, though: it assumes
+// Amount keeps its natural, untruncated width, and a multi-currency bucket's
+// Amount can blow well past whatever is left once Item is already at its
+// floor. reportAmountWidth is the other half of that promise: it is what
+// actually claws space back from Amount, as a last resort, once Item has none
+// left to give.
 func reportItemWidth(rows [][]string, width int) int {
 	maxLabel := lipgloss.Width(reportHeaders[0])
 	amount := lipgloss.Width(reportHeaders[3])
@@ -117,8 +136,9 @@ func reportItemWidth(rows [][]string, width int) int {
 	if width <= 0 {
 		return min(maxLabel, reportNatItemWidth)
 	}
+	hours, billed := reportNumWidths(rows)
 	floor := min(reportMinItemWidth, maxLabel)
-	item := width - reportTableChrome - 2*reportNumWidth - amount
+	item := width - reportTableChrome - hours - billed - amount
 	return max(floor, min(maxLabel, item))
 }
 
@@ -160,7 +180,8 @@ func reportAmountWidth(rows [][]string, width, itemW int) int {
 	if width <= 0 {
 		return natural
 	}
-	budget := width - reportTableChrome - 2*reportNumWidth - itemW
+	hours, billed := reportNumWidths(rows)
+	budget := width - reportTableChrome - hours - billed - itemW
 	return max(1, min(natural, budget))
 }
 

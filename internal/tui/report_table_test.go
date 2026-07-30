@@ -286,6 +286,63 @@ func TestReportRowsKeepsBucketsUnderOtherGroupings(t *testing.T) {
 	}
 }
 
+// reportNumWidth reserved 8 columns for each of Hours and Billed but nothing
+// enforced it: a wider value pushed the table past the terminal edge by exactly
+// 2 x (width - 8). The overflow needs BOTH factors — a long label (so Item is
+// budget-bound rather than capped by its own content) and numbers wider than 8.
+// A test missing either one passes against the bug: measured, a long label with
+// ordinary hours renders 55 columns at width 60.
+//
+// 40 and 44 are deliberately absent: the fix cannot fit this table in fewer than
+// 48 columns (chrome 10 + Item floor 12 + 10 + 10 + Amount header 6), so
+// asserting there would fail against correct code.
+func TestReportTableNeverExceedsWidthWithLongLabelAndWideNumbers(t *testing.T) {
+	th := testTheme(true)
+	const longLabel = "Website redesign and content migration backlog"
+	rep := reportWithHours(longLabel, 1234567.5)
+	for _, width := range []int{60, 80, 100} {
+		got := lipgloss.Width(strings.Split(reportTable(th, rep, width), "\n")[0])
+		if got > width {
+			t.Errorf("width %d: table rendered %d columns", width, got)
+		}
+	}
+}
+
+// The other direction: short labels leave Item capped by its own content, but
+// wide numbers still push the table past a narrow terminal. 44 is the width
+// where the current code renders 47 (overflowing by 3) and the fix renders 43.
+func TestReportTableNeverExceedsWidthWithShortLabelAndWideNumbers(t *testing.T) {
+	th := testTheme(true)
+	rep := reportWithHours("Website", 1234567.5)
+	if got := lipgloss.Width(strings.Split(reportTable(th, rep, 44), "\n")[0]); got > 44 {
+		t.Errorf("table rendered %d columns in a 44-column terminal", got)
+	}
+}
+
+// reportWithHours builds a one-bucket report whose Hours and Billed carry the
+// given value, so a test can dial the numeric width independently of the label.
+func reportWithHours(label string, hours float64) report.Report {
+	return report.Report{
+		GroupBy: report.GroupByList, DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: label, Hours: hours, BilledHours: hours,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: hours, BilledHours: hours, Amount: 625}},
+		TotalHours:        hours, BilledHours: hours, TotalAmount: 625,
+	}
+}
+
+// Measuring the data only would make the budget assume 10 where the renderer
+// uses 11, and the table would overflow by 1 — the same bug in a smaller size.
+func TestReportNumWidthsIncludeTheHeaders(t *testing.T) {
+	t.Parallel()
+	rows := [][]string{{"Website", "1.00", "1.00", "5.00 EUR"}}
+	hours, billed := reportNumWidths(rows)
+	if hours != lipgloss.Width(reportHeaders[1]) || billed != lipgloss.Width(reportHeaders[2]) {
+		t.Errorf("reportNumWidths = (%d, %d), want the header widths (%d, %d)",
+			hours, billed, lipgloss.Width(reportHeaders[1]), lipgloss.Width(reportHeaders[2]))
+	}
+}
+
 // TestReportStyleFunc is the ONLY check on the grid's colors. The package
 // goldens run under termenv.Ascii, which strips backgrounds and bold, so a
 // broken zebra or an uncolored TOTAL would leave every golden byte-identical.
