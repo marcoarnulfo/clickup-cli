@@ -387,3 +387,34 @@ func TestReportViewHeaderSurvivesZeroWidth(t *testing.T) {
 		t.Error("the header vanished at width 0")
 	}
 }
+
+// TestReportViewHeaderMarginProtectsTruncationOrder ensures truncation happens
+// before th.Title.Render, not after. When truncation occurs after rendering,
+// ansi.Truncate cuts across the multi-line rendered string (text + MarginBottom),
+// corrupting the margin line with ellipsis or wrong spacing. This test verifies
+// that line 1 (the margin) is all spaces and matches line 0's width — the only
+// outcome when text is truncated before rendering. If truncation is inverted,
+// the margin line will be shorter than line 0, and the test fails.
+func TestReportViewHeaderMarginProtectsTruncationOrder(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	rm := newReport(goldenReport(), " (2/5 members)", []float64{1, 0, 3, 2, 8})
+	for _, width := range []int{40, 60, 80} {
+		lines := strings.Split(rm.view(th, width), "\n")
+		if len(lines) < 2 {
+			t.Fatalf("width %d: view has fewer than 2 lines", width)
+		}
+		line0, line1 := lines[0], lines[1]
+		w0, w1 := lipgloss.Width(line0), lipgloss.Width(line1)
+
+		// Line 1 must be all spaces (margin produced by th.Title.MarginBottom).
+		if line1 != strings.Repeat(" ", w1) {
+			t.Errorf("width %d: line 1 is not all spaces: %q", width, line1)
+		}
+
+		// Line 1 must match line 0's width (how MarginBottom works).
+		if w1 != w0 {
+			t.Errorf("width %d: margin line width %d != text line width %d", width, w1, w0)
+		}
+	}
+}
