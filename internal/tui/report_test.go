@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
@@ -349,5 +350,40 @@ func TestTruncateEmptyStringAlwaysEmpty(t *testing.T) {
 		if got := truncateWidth("", cols); got != "" {
 			t.Errorf("truncateWidth(%q, %d) = %q, want %q", "", cols, got, "")
 		}
+	}
+}
+
+// The report table became width-aware in #66 and the budget screen in #136, but
+// the header line above them never did: measured, it renders 68 columns on both
+// a 40- and a 60-column terminal (the member note is what pushes it past the 54
+// it measures without one). Line 1 is the title's own MarginBottom padding and
+// overflows with it, which is why the text is truncated BEFORE th.Title.Render
+// rather than after — truncating the rendered string would leave that line long.
+//
+// Measured: every other line of this view already fits at width 40 (summary 37,
+// billable note 38, table 39, sparkline 15), so this test can assert on the
+// whole view without depending on anything the spec left out of scope.
+func TestReportViewHeaderFitsTheTerminal(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	rm := newReport(goldenReport(), " (2/5 members)", []float64{1, 0, 3, 2, 8})
+	for _, width := range []int{40, 60, 80} {
+		for i, line := range strings.Split(rm.view(th, width), "\n") {
+			if w := lipgloss.Width(line); w > width {
+				t.Errorf("width %d: line %d rendered %d columns: %q", width, i, w, line)
+			}
+		}
+	}
+}
+
+// Before the first WindowSizeMsg the width is 0 and nothing is sized against
+// it: the header keeps its full text, because truncateWidth(s, 0) returns ""
+// and would blank it.
+func TestReportViewHeaderSurvivesZeroWidth(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	rm := newReport(goldenReport(), "", nil)
+	if !strings.Contains(rm.view(th, 0), "Report ") {
+		t.Error("the header vanished at width 0")
 	}
 }

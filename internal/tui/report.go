@@ -201,8 +201,17 @@ func (rm reportModel) view(th theme, width int) string {
 	// "Local" (time.Local.String()), not a portable IANA name — accepted, see
 	// the task's binding amendments. Users wanting a stable zone name across
 	// machines should set `timezone` in the config.
-	title := th.Title.Render(fmt.Sprintf("Report %s — scope %s%s — grouped by %s — tz %s",
-		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone))
+	// Clamped before Render, not after: th.Title carries MarginBottom(1), which
+	// emits a second line as wide as the content, so truncating the rendered
+	// string would shorten the text and leave that padding line overlong.
+	// width <= 0 is the first render, before the terminal has sent its size —
+	// truncateWidth(s, 0) returns "" and would blank the header.
+	head := fmt.Sprintf("Report %s — scope %s%s — grouped by %s — tz %s",
+		report.PeriodLabel(r.Start, r.End), r.Scope, rm.note, r.GroupBy, r.Timezone)
+	if width > 0 {
+		head = truncateWidth(head, width)
+	}
+	title := th.Title.Render(head)
 	summary := th.Accent.Render(export.SummaryLine(r))
 
 	var body string
