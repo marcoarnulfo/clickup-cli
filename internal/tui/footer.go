@@ -64,9 +64,10 @@ func clampWidth(th theme, s string, width int) string {
 	// is added separately, styled from the theme, so the cut is visible rather
 	// than looking like a footer that simply ends.
 	//
-	// This is invisible to the tests by construction: TestMain pins the default
-	// renderer to termenv.Ascii, so both spellings render identically and no
-	// golden can tell them apart. The guard is the grep, not the suite.
+	// Both methods produce identical bytes for this input: the style carries no
+	// color, so termenv.Style.Styled returns the string unchanged regardless of
+	// color profile. This is why the change is invisible to tests — the guard
+	// is the grep that this style is never built, not the suite.
 	return ansi.Truncate(s, width-1, "") + th.Help.Render("…")
 }
 

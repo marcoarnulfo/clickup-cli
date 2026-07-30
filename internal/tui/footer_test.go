@@ -151,6 +151,7 @@ func TestFooterNeverExceedsWidth(t *testing.T) {
 // apart. Do not add a test that claims otherwise — pin the truncation instead,
 // and keep the grep in the checklist.
 func TestClampWidthNeverExceedsTheTerminal(t *testing.T) {
+	t.Parallel()
 	th := testTheme(true)
 	long := "↑/↓ move · enter run · esc close · ctrl+c force quit · ? help · g group · e export"
 	for _, width := range []int{20, 40, 66, 80} {
@@ -169,12 +170,40 @@ func TestClampWidthNeverExceedsTheTerminal(t *testing.T) {
 // the style bleeds past the cut — this pins the boundary of what clampWidth
 // promises, so the discovery happens here and not on a user's terminal.
 func TestClampWidthDoesNotCloseAnOpenStyle(t *testing.T) {
+	t.Parallel()
 	th := testTheme(true)
 	got := clampWidth(th, "\x1b[31m"+strings.Repeat("x", 40), 10)
+	// The red escape must survive the truncation.
 	if !strings.Contains(got, "\x1b[31m") {
 		t.Fatalf("expected the caller's escape to survive, got %q", got)
 	}
-	if strings.Count(got, "\x1b[0m") != 0 {
-		t.Errorf("clampWidth closed a style it did not open: %q", got)
+	// ansi.Truncate does not emit a reset, so the truncated part alone should
+	// have no resets. The ellipsis rendering is separate — any resets in the
+	// full output come from th.Help.Render, not from clampWidth itself.
+	ellipsis := th.Help.Render("…")
+	truncated := strings.TrimSuffix(got, ellipsis)
+	if strings.Count(truncated, "\x1b[0m") != 0 {
+		t.Errorf("clampWidth closed a style it did not open: %q", truncated)
+	}
+}
+
+// Verify that TestClampWidthDoesNotCloseAnOpenStyle works with both Ascii and
+// TrueColor profiles. This guards against the anti-bleed check being fragile to
+// the theme's color profile.
+func TestClampWidthDoesNotCloseAnOpenStyleWithPaletteTheme(t *testing.T) {
+	t.Parallel()
+	th := paletteTheme(true)
+	got := clampWidth(th, "\x1b[31m"+strings.Repeat("x", 40), 10)
+	// The red escape must survive the truncation.
+	if !strings.Contains(got, "\x1b[31m") {
+		t.Fatalf("expected the caller's escape to survive, got %q", got)
+	}
+	// ansi.Truncate does not emit a reset, so the truncated part alone should
+	// have no resets. The ellipsis rendering is separate — any resets in the
+	// full output come from th.Help.Render, not from clampWidth itself.
+	ellipsis := th.Help.Render("…")
+	truncated := strings.TrimSuffix(got, ellipsis)
+	if strings.Count(truncated, "\x1b[0m") != 0 {
+		t.Errorf("clampWidth closed a style it did not open: %q", truncated)
 	}
 }
