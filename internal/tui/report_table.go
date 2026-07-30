@@ -35,13 +35,20 @@ var reportHeaders = []string{"Item", "Hours", "Billed", "Amount"}
 // and is never re-derived from the bucket rows.
 func reportRows(r report.Report) ([][]string, int) {
 	rows := make([][]string, 0, len(r.Buckets)+len(r.CurrencySubtotals)+1)
-	for _, b := range r.Buckets {
-		rows = append(rows, []string{
-			b.Label,
-			fmt.Sprintf("%.2f", b.Hours),
-			fmt.Sprintf("%.2f", b.BilledHours),
-			formatAmounts(b.Amounts, r.DefaultCurrency),
-		})
+	// Under GroupByTotal the single bucket IS the totals row: it collects every
+	// entry, so its hours, billed hours and Amounts equal the totals and the
+	// currency subtotals exactly — not approximately, so there is not even the
+	// PerDay rounding caveat that applies at finer groupings. Emitting both put
+	// "Total" directly above "TOTAL", differing only in case and color (#137).
+	if !(r.GroupBy == report.GroupByTotal && len(r.Buckets) == 1) {
+		for _, b := range r.Buckets {
+			rows = append(rows, []string{
+				b.Label,
+				fmt.Sprintf("%.2f", b.Hours),
+				fmt.Sprintf("%.2f", b.BilledHours),
+				formatAmounts(b.Amounts, r.DefaultCurrency),
+			})
+		}
 	}
 	firstTotal := len(rows)
 

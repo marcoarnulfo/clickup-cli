@@ -180,6 +180,77 @@ func TestReportRowsMultiCurrencyTotals(t *testing.T) {
 	}
 }
 
+// Under GroupByTotal — the grouping the report loads with — the single bucket IS
+// the totals row: same hours, same billed, and the same amounts, because one
+// bucket collects every entry. The table used to show "Total" directly above
+// "TOTAL", differing only in case and color (#137).
+func TestReportRowsSuppressesTheBucketUnderTotalGrouping(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 15.5, BilledHours: 12.5,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 15.5, BilledHours: 12.5, Amount: 625}},
+		TotalHours:        15.5, BilledHours: 12.5, TotalAmount: 625,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1 (the TOTAL row alone): %v", len(rows), rows)
+	}
+	if firstTotal != 0 {
+		t.Errorf("firstTotal = %d, want 0 (the TOTAL row is the first row)", firstTotal)
+	}
+	if rows[0][0] != "TOTAL" {
+		t.Errorf("rows[0][0] = %q, want %q", rows[0][0], "TOTAL")
+	}
+}
+
+// Multi-currency keeps its shape: TOTAL with an empty Amount, then one subtotal
+// row per currency. The suppressed bucket carried "A + B", which is the same
+// information those subtotal rows carry.
+func TestReportRowsSuppressesTheBucketUnderTotalGroupingMultiCurrency(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 18, BilledHours: 17,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 337.5}, {Currency: "USD", Amount: 512.5}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{
+			{Currency: "EUR", Hours: 7.75, BilledHours: 6.75, Amount: 337.5},
+			{Currency: "USD", Hours: 10.25, BilledHours: 10.25, Amount: 512.5},
+		},
+		TotalHours: 18, BilledHours: 17,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (TOTAL + two subtotals): %v", len(rows), rows)
+	}
+	if firstTotal != 0 {
+		t.Errorf("firstTotal = %d, want 0", firstTotal)
+	}
+	if rows[0][3] != "" {
+		t.Errorf("TOTAL Amount = %q, want empty (the subtotals carry the figures)", rows[0][3])
+	}
+}
+
+// Every other grouping keeps its bucket rows: the suppression is about the
+// degenerate one-bucket case of GroupByTotal, not about totals in general.
+func TestReportRowsKeepsBucketsUnderOtherGroupings(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:           report.GroupByList,
+		DefaultCurrency:   "EUR",
+		Buckets:           []report.Bucket{{Label: "Website", Hours: 12.5, BilledHours: 12.5}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 12.5, BilledHours: 12.5, Amount: 625}},
+		TotalHours:        12.5, BilledHours: 12.5, TotalAmount: 625,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 2 || firstTotal != 1 {
+		t.Fatalf("got %d rows firstTotal=%d, want 2 rows firstTotal=1: %v", len(rows), firstTotal, rows)
+	}
+}
+
 // TestReportStyleFunc is the ONLY check on the grid's colors. The package
 // goldens run under termenv.Ascii, which strips backgrounds and bold, so a
 // broken zebra or an uncolored TOTAL would leave every golden byte-identical.
