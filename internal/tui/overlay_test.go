@@ -112,6 +112,55 @@ func TestCompositeDoesNotLeakStyleIntoTheBox(t *testing.T) {
 	}
 }
 
+// TestCompositeDoesNotClipTheReportTableBesideANarrowPalette pins, rather than
+// fixes, a choice: at a 40-column terminal the palette box does not span the
+// full width, and the one column of body it leaves exposed on its right is
+// legitimate content — the report table's own right border — not an
+// artifact to crop.
+//
+// Measured from goldenPaletteModel at width 40 (screenBody + palette.layout,
+// the real render path, not a hand-built fixture): the box sits at x=2 with
+// boxW=36, so its footprint ends at column 38. Row 7, the table's top border,
+// is the widest row the box actually covers (39 cells, against 38 for every
+// other covered row) and is one cell wider than that footprint, so column 38
+// survives — the same "╮" that closes the table's own border. At 50, 60, 80,
+// and 120 columns the box's footprint reaches at least that 39th column, so
+// nothing is left exposed there; only 40 shows this column at all.
+//
+// Why it is there rather than cropped: overlay.go:11-13 documents that cells
+// of body outside the box's rectangle survive verbatim, "that layering is the
+// whole point of #59" — the same contract that already leaves the body
+// visible to the LEFT of the box on this very screen. An overlay that instead
+// cropped the body to the box's rectangle would fail this test, and would
+// also fail three tests that already pin the splice this relies on:
+// TestCompositeSplicesTheBoxIntoTheBody (the box lands inside the body rather
+// than replacing it), TestCompositeKeepsEveryLineWidth (a crop changes line
+// widths, which that test forbids), and
+// TestCompositeHandlesWideGlyphsOnBothEdges (same property against wide
+// glyphs).
+func TestCompositeDoesNotClipTheReportTableBesideANarrowPalette(t *testing.T) {
+	t.Parallel()
+	m := goldenPaletteModel()
+	m.width = 40
+	body := m.screenBody()
+	box, x, y := m.palette.layout(m.theme, m.width, m.height, strings.Count(body, "\n")+1)
+	got := composite(body, box, x, y)
+
+	boxW := 0
+	for _, l := range strings.Split(box, "\n") {
+		boxW = max(boxW, lipgloss.Width(l))
+	}
+
+	row := strings.Split(got, "\n")[7] // the table's top border, ╭───...───╮
+	exposed := ansi.Cut(row, x+boxW, lipgloss.Width(row))
+	if w := lipgloss.Width(exposed); w != 1 {
+		t.Fatalf("column exposed beside the box is %d cells wide, want 1: %q", w, exposed)
+	}
+	if exposed != "╮" {
+		t.Errorf("exposed cell = %q, want the table's own top-right corner %q", exposed, "╮")
+	}
+}
+
 // Past the end of a line the right-hand segment is skipped by construction
 // (composite's x+boxW < rowW guard), not cut and discovered empty: without
 // that guard the straddle correction would still run against Cut's own empty
