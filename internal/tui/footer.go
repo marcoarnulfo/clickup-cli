@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // footerView renders one screen's advertised bindings as the bottom help line,
@@ -57,9 +58,16 @@ func clampWidth(th theme, s string, width int) string {
 	if width <= 1 || lipgloss.Width(s) <= width {
 		return s
 	}
-	// MaxWidth truncates ANSI-aware; the ellipsis is added separately so the
-	// cut is visible rather than looking like a footer that simply ends.
-	return lipgloss.NewStyle().MaxWidth(width-1).Render(s) + th.Help.Render("…")
+	// ansi.Truncate cuts ANSI-aware without a renderer: MaxWidth would do the
+	// same cut, but only by building a style on lipgloss's DEFAULT renderer —
+	// the one this file's opening comment refuses help.New() over. The ellipsis
+	// is added separately, styled from the theme, so the cut is visible rather
+	// than looking like a footer that simply ends.
+	//
+	// This is invisible to the tests by construction: TestMain pins the default
+	// renderer to termenv.Ascii, so both spellings render identically and no
+	// golden can tell them apart. The guard is the grep, not the suite.
+	return ansi.Truncate(s, width-1, "") + th.Help.Render("…")
 }
 
 // pairHelp returns a display-only binding that advertises two related bindings

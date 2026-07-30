@@ -140,3 +140,41 @@ func TestFooterNeverExceedsWidth(t *testing.T) {
 		})
 	}
 }
+
+// clampWidth must not build a style on lipgloss's default renderer: that is the
+// one thing the injected-renderer discipline exists to prevent, and this file's
+// own opening comment says so about help.New().
+//
+// This is invisible to the suite by construction: TestMain pins the default
+// renderer to termenv.Ascii, so a style built on it renders identically to one
+// built on the injected renderer, and no golden or assertion can tell them
+// apart. Do not add a test that claims otherwise — pin the truncation instead,
+// and keep the grep in the checklist.
+func TestClampWidthNeverExceedsTheTerminal(t *testing.T) {
+	th := testTheme(true)
+	long := "↑/↓ move · enter run · esc close · ctrl+c force quit · ? help · g group · e export"
+	for _, width := range []int{20, 40, 66, 80} {
+		got := clampWidth(th, long, width)
+		if w := lipgloss.Width(got); w > width {
+			t.Errorf("clampWidth(width=%d) rendered %d columns", width, w)
+		}
+		if !strings.HasSuffix(got, "…") {
+			t.Errorf("clampWidth(width=%d) = %q, want a visible ellipsis", width, got)
+		}
+	}
+}
+
+// The footer's input comes from help.View, which closes its own styles. If a
+// caller ever passes an unterminated one, ansi.Truncate will NOT close it and
+// the style bleeds past the cut — this pins the boundary of what clampWidth
+// promises, so the discovery happens here and not on a user's terminal.
+func TestClampWidthDoesNotCloseAnOpenStyle(t *testing.T) {
+	th := testTheme(true)
+	got := clampWidth(th, "\x1b[31m"+strings.Repeat("x", 40), 10)
+	if !strings.Contains(got, "\x1b[31m") {
+		t.Fatalf("expected the caller's escape to survive, got %q", got)
+	}
+	if strings.Count(got, "\x1b[0m") != 0 {
+		t.Errorf("clampWidth closed a style it did not open: %q", got)
+	}
+}
