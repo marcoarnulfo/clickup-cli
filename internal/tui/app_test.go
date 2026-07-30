@@ -431,7 +431,11 @@ func TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild(t *testing.T) {
 	entries := []report.TimeEntry{
 		{ID: "1", ListID: "l", ListName: "L", Start: boundary, Duration: time.Hour, Billable: true},
 	}
-	updated, _ := m.Update(entriesMsg{entries: entries})
+	// start/end mirror what loadEntriesCmd/reloadEntriesCmd resolve in the real
+	// flow (currentRange() in m.loc, which New() already set from cfg.Timezone
+	// above) and carry them in the message (#28), same as production.
+	start, end := m.currentRange()
+	updated, _ := m.Update(entriesMsg{entries: entries, start: start, end: end})
 	mm := updated.(Model)
 
 	if mm.screen != screenReport {

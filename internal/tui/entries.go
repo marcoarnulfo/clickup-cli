@@ -21,8 +21,9 @@ import (
 // the fresh entries plus a status line to show inline, without leaving
 // screenEntries.
 type entriesReloadedMsg struct {
-	entries []report.TimeEntry
-	status  string
+	entries    []report.TimeEntry
+	status     string
+	start, end time.Time
 }
 
 // entriesErrMsg is a browser-action error that keeps the user in the entries
@@ -427,13 +428,14 @@ func (m Model) deleteEntryCmd(id string) tea.Cmd {
 // updateEntryCmd updates entry id (real API) or relies on the demo override
 // already recorded on the Model (see submitEntriesEdit, which sets
 // m.demoOverrides before this cmd is built) and reloads the browser either
-// way. moved/status are computed against the CURRENT range (m.currentRange,
+// way. moved/status are computed against the LOADED range (m.activeRange,
 // [start,end) in m.loc) before the goroutine, since the closure captures mm
-// by value: an edit that moves the entry outside the visible range still
-// succeeds, just with a status line saying so instead of silently vanishing.
+// by value: an edit that moves the entry outside the range the entries ON
+// SCREEN were loaded for still succeeds, just with a status line saying so
+// instead of silently vanishing.
 func (m Model) updateEntryCmd(id string, start time.Time, dur time.Duration, note string, billable bool) tea.Cmd {
 	mm := m
-	s, e := m.currentRange()
+	s, e := m.activeRange()
 	moved := start.Before(s) || !start.Before(e)
 	status := "Entry saved."
 	if moved {
@@ -564,7 +566,7 @@ func reloadForBrowser(m Model, status string) tea.Msg {
 	start, end := m.currentRange()
 	assignees := m.reloadAssignees()
 	if m.demo {
-		return entriesReloadedMsg{entries: m.demoEntriesSnapshot(start, end, assignees), status: status}
+		return entriesReloadedMsg{entries: m.demoEntriesSnapshot(start, end, assignees), status: status, start: start, end: end}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -572,7 +574,7 @@ func reloadForBrowser(m Model, status string) tea.Msg {
 	if err != nil {
 		return entriesErr(err)
 	}
-	return entriesReloadedMsg{entries: entries, status: status}
+	return entriesReloadedMsg{entries: entries, status: status, start: start, end: end}
 }
 
 func (m Model) entriesView(th theme) string {

@@ -60,11 +60,11 @@ func (m Model) memberFilterNote() string {
 	return fmt.Sprintf(" (%d/%d members)", k, n)
 }
 
-// dailySeries is the per-day hours of the visible entries over the current
+// dailySeries is the per-day hours of the visible entries over the loaded
 // range. It lives on the Model because reportModel has no entries — the report
 // is a rendering of an already-aggregated value.
 func (m Model) dailySeries() []float64 {
-	start, end := m.currentRange()
+	start, end := m.activeRange()
 	return report.DailyHours(m.visibleEntries(), start, end, m.loc)
 }
 
@@ -78,7 +78,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if _, ok := m.locOrErr(); !ok {
 			return m, nil
 		}
-		start, end := m.currentRange()
+		start, end := m.activeRange()
 		if p, ok := m.pricingOrErr(); ok {
 			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 			m.report.Scope = m.scope
@@ -124,7 +124,7 @@ func (m *Model) openBudgetView() bool {
 	if !ok {
 		return false
 	}
-	start, end := m.currentRange()
+	start, end := m.activeRange()
 	perList := report.Build(m.visibleEntries(), report.GroupByList, p, start, end, m.loc)
 	billed := billedByListFromBuckets(perList.Buckets, p)
 	budgets := service.BudgetsFromConfig(m.cfg)
@@ -165,10 +165,11 @@ func listNamesFromBuckets(buckets []report.Bucket) map[string]string {
 	return out
 }
 
-// applyReport rebuilds m.report from the visible entries over the current
-// range, keeping the active grouping. It returns false when the config's
-// pricing rules failed to parse, in which case pricingOrErr has already
-// routed the model to screenError and the caller must not overwrite that.
+// applyReport rebuilds m.report from the visible entries over the loaded
+// range (m.activeRange, #28), keeping the active grouping. It returns false
+// when the config's pricing rules failed to parse, in which case
+// pricingOrErr has already routed the model to screenError and the caller
+// must not overwrite that.
 func (m *Model) applyReport() bool {
 	g := m.report.GroupBy
 	if g == "" {
@@ -181,7 +182,7 @@ func (m *Model) applyReport() bool {
 	if !ok {
 		return false
 	}
-	start, end := m.currentRange()
+	start, end := m.activeRange()
 	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())

@@ -177,7 +177,7 @@ func (m Model) demoEntriesSnapshot(start, end time.Time, assignees []int) []repo
 // clipped to [start, end).
 func (m Model) demoEntriesCmd(start, end time.Time, assignees []int) tea.Cmd {
 	snap := m.demoEntriesSnapshot(start, end, assignees)
-	return func() tea.Msg { return entriesMsg{entries: snap} }
+	return func() tea.Msg { return entriesMsg{entries: snap, start: start, end: end} }
 }
 
 // demoHistoryChanges is a small fixed change history for demo mode (Task 8),
