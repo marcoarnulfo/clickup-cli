@@ -40,7 +40,7 @@ func TestBudgetViewEmptyShowsMessage(t *testing.T) {
 // why this screen keeps its own bar.
 func TestRenderBudgetBarClampsFillNotPercent(t *testing.T) {
 	t.Parallel()
-	out := renderBudgetBar(testTheme(true), 150)
+	out := renderBudgetBar(testTheme(true), 150, 0)
 	if !strings.Contains(out, "150%") {
 		t.Errorf("renderBudgetBar(150) = %q, want the unclamped 150%% in the label", out)
 	}
@@ -147,6 +147,63 @@ func TestBudgetViewHoldsItsWidthWithWideRunes(t *testing.T) {
 		if w := lipgloss.Width(line); w > 80 {
 			t.Errorf("line rendered %d columns: %q", w, line)
 		}
+	}
+}
+
+// budgetLayout measures the widest percentage label across the real rows and
+// uses it to size the name column, but the rendering never padded to it: a row
+// at 62% started its figures one column left of a row at 104% (#144).
+//
+// The fixture is picked, not arbitrary. Both Billed values are six characters
+// wide while the two percentage labels are three and four, so the column of the
+// "/" isolates the percentage padding and nothing else. With Billed values of
+// different widths the "/" would diverge anyway, and this test would be
+// asserting that the FIGURES line up — which the spec deliberately does not do.
+//
+// Measured before the fix: the "/" sits at column 65 on the 62% row and 66 on
+// the 104% row.
+func TestBudgetViewAlignsFiguresAcrossRows(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	bm := newBudget([]report.BudgetLine{
+		{ListName: "Website", Billed: 625, Budget: 1000, Currency: "EUR", Remaining: 375, PercentUsed: 62.5},
+		{ListName: "Mobile app", Billed: 940, Budget: 900, Currency: "EUR", Remaining: -40, PercentUsed: 940.0 / 900 * 100},
+	})
+	var cols []int
+	for _, line := range strings.Split(bm.view(th, 100), "\n") {
+		if i := strings.Index(line, "/"); i >= 0 {
+			cols = append(cols, lipgloss.Width(line[:i]))
+		}
+	}
+	if len(cols) != 2 {
+		t.Fatalf("expected two budget rows, found %d figure columns", len(cols))
+	}
+	if cols[0] != cols[1] {
+		t.Errorf("figures start at column %d on one row and %d on the other", cols[0], cols[1])
+	}
+}
+
+// A percentage narrower than the measured maximum is right-aligned into it, so
+// every column after it holds. pctW <= 0 keeps the natural width, which is what
+// the callers that are not testing alignment pass.
+//
+// The natural case is checked by WIDTH, not by suffix: renderBudgetBar always
+// emits one space between the bar and the label, so "ends in \" 62%\"" is true
+// of every conforming implementation and would assert nothing.
+func TestRenderBudgetBarRightAlignsThePercentage(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	wide := renderBudgetBar(th, 104, 4)
+	narrow := renderBudgetBar(th, 62.5, 4)
+	if lipgloss.Width(wide) != lipgloss.Width(narrow) {
+		t.Errorf("bars are %d and %d columns wide, want equal", lipgloss.Width(wide), lipgloss.Width(narrow))
+	}
+	if !strings.HasSuffix(narrow, "  62%") {
+		t.Errorf("narrow = %q, want the label right-aligned into 4 columns", narrow)
+	}
+	natural := renderBudgetBar(th, 62.5, 0)
+	if got, want := lipgloss.Width(natural), budgetBarWidth+1+3; got != want {
+		t.Errorf("natural width = %d, want %d (bar + separator + \"62%%\", no padding)", got, want)
 	}
 }
 

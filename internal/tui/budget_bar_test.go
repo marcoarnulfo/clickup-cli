@@ -54,7 +54,7 @@ var budgetBarFixtures = []struct {
 func TestBudgetBarLabelAgreesWithTheFill(t *testing.T) {
 	th := testTheme(true)
 	for _, tc := range budgetBarFixtures {
-		bar := renderBudgetBar(th, tc.pct)
+		bar := renderBudgetBar(th, tc.pct, 0)
 		full := strings.Count(bar, string(gaugeFull))
 		if full != tc.wantFull {
 			t.Errorf("pct=%.1f: %d full blocks, want %d (%q)", tc.pct, full, tc.wantFull, bar)

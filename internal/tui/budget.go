@@ -57,7 +57,12 @@ func budgetFillStyle(th theme, percentUsed float64) lipgloss.Style {
 // the label is shown UNCLAMPED, so an over-100% burn stays visible in the
 // number. That asymmetry is the whole point: bubbles/progress clamps the
 // number too, which is why this screen does not use it.
-func renderBudgetBar(th theme, percentUsed float64) string {
+//
+// pctW is the width the caller measured for the widest percentage label across
+// all rows; the label is right-aligned into it so every row's figures start at
+// the same column (#144). pctW <= 0 means natural width — the callers that are
+// not testing alignment pass 0, and so does the pre-WindowSizeMsg path below.
+func renderBudgetBar(th theme, percentUsed float64, pctW int) string {
 	fillPct := min(max(percentUsed, 0), 100)
 	filled := int(fillPct / 100 * budgetBarWidth)
 	bar := budgetFillStyle(th, percentUsed).Render(strings.Repeat(string(gaugeFull), filled)) +
@@ -68,7 +73,11 @@ func renderBudgetBar(th theme, percentUsed float64) string {
 	// a full bar from 97.5%, and a full bar means the budget is spent. Above 100
 	// the label stays unclamped: that asymmetry is the whole point of this
 	// function (see the doc comment).
-	return fmt.Sprintf("%s %.0f%%", bar, math.Floor(percentUsed))
+	label := fmt.Sprintf("%.0f%%", math.Floor(percentUsed))
+	if pad := pctW - lipgloss.Width(label); pad > 0 {
+		label = strings.Repeat(" ", pad) + label
+	}
+	return fmt.Sprintf("%s %s", bar, label)
 }
 
 const (
@@ -94,6 +103,19 @@ func budgetFigures(l report.BudgetLine, withRemaining bool) string {
 	return fmt.Sprintf("%.2f / %.2f %s", l.Billed, l.Budget, l.Currency)
 }
 
+// budgetPercentWidth measures the widest floored-percentage label across the
+// rows, e.g. 3 for "62%" and 4 for "104%". budgetLayout uses it to size the
+// row and view uses it to right-align renderBudgetBar's label into that same
+// size (#144); it lives here, and not inline in either caller, so there is one
+// formula for both to agree on rather than two that could drift apart.
+func budgetPercentWidth(lines []report.BudgetLine) int {
+	pctW := 0
+	for _, l := range lines {
+		pctW = max(pctW, lipgloss.Width(fmt.Sprintf("%.0f%%", math.Floor(l.PercentUsed))))
+	}
+	return pctW
+}
+
 // budgetLayout resolves the list-name column and whether "(remaining …)" fits.
 //
 // Everything except the name is MEASURED from the real rows, because none of it
@@ -117,10 +139,7 @@ func budgetLayout(lines []report.BudgetLine, width int) (nameW int, showRemainin
 	if width <= 0 { // before the first WindowSizeMsg nothing is sized against it
 		return budgetNameWidth, true
 	}
-	pctW := 0
-	for _, l := range lines {
-		pctW = max(pctW, lipgloss.Width(fmt.Sprintf("%.0f%%", math.Floor(l.PercentUsed))))
-	}
+	pctW := budgetPercentWidth(lines)
 	widestFigures := func(withRemaining bool) int {
 		w := 0
 		for _, l := range lines {
@@ -143,10 +162,17 @@ func (bm budgetModel) view(th theme, width int) string {
 		return title + "\n\n" + th.Box.Render("No budgets configured.")
 	}
 	nameW, showRemaining := budgetLayout(bm.lines, width)
+	// Same pctW budgetLayout's own arithmetic used, not a recomputed one that
+	// could diverge from it — width <= 0 is budgetLayout's fallback branch,
+	// which never measures pctW, so the label there stays natural (#144).
+	pctW := 0
+	if width > 0 {
+		pctW = budgetPercentWidth(bm.lines)
+	}
 	var rows strings.Builder
 	for _, l := range bm.lines {
 		rows.WriteString(fmt.Sprintf("%s %s  %s\n",
-			cell(l.ListName, nameW), renderBudgetBar(th, l.PercentUsed), budgetFigures(l, showRemaining)))
+			cell(l.ListName, nameW), renderBudgetBar(th, l.PercentUsed, pctW), budgetFigures(l, showRemaining)))
 	}
 	body := th.Box.Render(strings.TrimRight(rows.String(), "\n"))
 	return title + "\n\n" + body
