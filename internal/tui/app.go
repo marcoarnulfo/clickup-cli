@@ -746,7 +746,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// msg.start/msg.end directly, not activeRange(): this IS the load that
 		// just pinned them, so re-deriving would be redundant, and using
 		// activeRange() here would fall back to currentRange() whenever a
-		// caller-built msg leaves start/end zero (see the task's binding note).
+		// caller-built msg leaves start/end zero.
 		m.report = report.Build(m.visibleEntries(), groupBy, p, msg.start, msg.end, m.loc)
 		m.report.Scope = m.scope
 		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())

@@ -32,22 +32,38 @@ func TestRebuildKeepsTheRangeTheEntriesWereLoadedFor(t *testing.T) {
 	m.preset = report.PresetLast7d
 	m.now = func() time.Time { return now }
 
+	// The load resolves its range while "now" is still `before` — this is
+	// what loadEntriesCmd/demoEntriesCmd do, synchronously, right before
+	// dispatching the fetch.
 	start, end := m.currentRange()
-	mm, _ := m.Update(entriesMsg{entries: goldenEntries(), start: start, end: end})
-	m = mm.(Model)
-	if !m.report.Start.Equal(start) {
-		t.Fatalf("report.Start = %v, want the loaded range start %v", m.report.Start, start)
-	}
 
-	now = after // midnight passes; last_7d would now resolve one day later
+	// "now" advances HERE, between the load resolving its range and the
+	// entriesMsg carrying it actually being processed by Update — the
+	// latency the whole task exists to cover (a load at 23:59:59 whose
+	// result lands at 00:00:01). If the handler re-derived the range from
+	// m.currentRange() instead of using the message's own start/end, it
+	// would resolve it against "now" as it stands at THIS call, i.e. after
+	// midnight — this is the only window where re-deriving and carrying the
+	// range actually diverge; testing before this point cannot tell them apart.
+	now = after
 	if newStart, _ := m.currentRange(); newStart.Equal(start) {
 		t.Fatal("the fixture does not exercise the drift: currentRange did not move across midnight")
 	}
+
+	mm, _ := m.Update(entriesMsg{entries: goldenEntries(), start: start, end: end})
+	m = mm.(Model)
+	if !m.report.Start.Equal(start) {
+		t.Fatalf("report.Start = %v, want the loaded range start %v (the handler must use the message's own range, not re-derive it)", m.report.Start, start)
+	}
+
+	// A later rebuild over the same loaded entries (e.g. cycling groupBy)
+	// must still read the pinned range, not currentRange() at whatever "now"
+	// happens to be by then.
 	if !m.applyReport() {
 		t.Fatal("applyReport returned false")
 	}
 	if !m.report.Start.Equal(start) {
-		t.Errorf("after midnight report.Start = %v, want the pinned %v", m.report.Start, start)
+		t.Errorf("after a later rebuild report.Start = %v, want the pinned %v", m.report.Start, start)
 	}
 }
 
@@ -87,6 +103,16 @@ func TestBrowserReloadRepinsTheRange(t *testing.T) {
 	m := newTestModel()
 	m.cfg.Timezone = "UTC" // see TestRebuildKeepsTheRangeTheEntriesWereLoadedFor: locOrErr re-resolves m.loc from this on every Update
 	m.loc = time.UTC
+	// m.year/m.month are pinned away from July on purpose: the default
+	// preset is this_month, and currentRange() reads them directly (not
+	// m.now()). If the handler mis-recomputed the range instead of using the
+	// message's own start/end, m.currentRange() would resolve against
+	// WHATEVER real month the suite happens to run in; leaving them at
+	// newTestModel()'s construction-time default (today's real month) would
+	// make that mutation invisible whenever the suite is run in July, and
+	// this repo runs it plenty. Pinning them to January makes the verdict
+	// independent of the calendar.
+	m.year, m.month = 2026, time.January
 	old := time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)
 	m.loadedStart, m.loadedEnd = old, old.AddDate(0, 1, 0)
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
@@ -95,5 +121,13 @@ func TestBrowserReloadRepinsTheRange(t *testing.T) {
 	m = mm.(Model)
 	if got, _ := m.activeRange(); !got.Equal(start) {
 		t.Errorf("activeRange() = %v after a browser reload, want the reloaded %v", got, start)
+	}
+	// Also assert on the rebuilt report, not just activeRange(): the handler
+	// must pin loadedStart/loadedEnd BEFORE calling applyReport(), and this is
+	// the only assertion that would catch that ordering being reversed —
+	// activeRange() alone reads m.loadedStart/loadedEnd directly and would
+	// still report the fresh pin even if the rebuild ran first on the stale one.
+	if !m.report.Start.Equal(start) {
+		t.Errorf("report.Start = %v after a browser reload, want the reloaded %v (the pin must be set BEFORE the rebuild)", m.report.Start, start)
 	}
 }
