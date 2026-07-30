@@ -34,6 +34,31 @@ func (f *flexString) UnmarshalJSON(b []byte) error {
 	return fmt.Errorf("flexString: unhandled value: %s", b)
 }
 
+// tagName is a tag as ClickUp returns it on a time entry. The documented example
+// is an object ({name, tag_fg, tag_bg, creator}), but the API reference's
+// generated schema for the date-range endpoint types task_tags as an array of
+// strings. A bare string used to fail the WHOLE TimeEntries decode, not just the
+// tags, so both shapes are accepted and the assumption is gone rather than
+// annotated (#28). A live confirmation against a real workspace is tracked in
+// #129.
+type tagName struct{ Name string }
+
+func (t *tagName) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		t.Name = s
+		return nil
+	}
+	var o struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(b, &o); err != nil {
+		return fmt.Errorf("tagName: unhandled value: %s", b)
+	}
+	t.Name = o.Name
+	return nil
+}
+
 // rawEntry mirrors an entry of the "data" array from /team/{id}/time_entries.
 type rawEntry struct {
 	ID   string `json:"id"`
@@ -48,16 +73,12 @@ type rawEntry struct {
 		ID       int    `json:"id"`
 		Username string `json:"username"`
 	} `json:"user"`
-	Start    string `json:"start"`    // epoch ms as a string
-	Duration string `json:"duration"` // ms as a string (negative if a timer is running)
-	TaskTags []struct {
-		Name string `json:"name"`
-	} `json:"task_tags"`
-	Tags []struct {
-		Name string `json:"name"`
-	} `json:"tags"` // the entry's own time-tracking tags
-	Billable    *bool  `json:"billable"` // absent (nil) means "bill everything": defaults to true
-	Description string `json:"description"`
+	Start       string    `json:"start"`    // epoch ms as a string
+	Duration    string    `json:"duration"` // ms as a string (negative if a timer is running)
+	TaskTags    []tagName `json:"task_tags"`
+	Tags        []tagName `json:"tags"`     // the entry's own time-tracking tags
+	Billable    *bool     `json:"billable"` // absent (nil) means "bill everything": defaults to true
+	Description string    `json:"description"`
 }
 
 // toTimeEntry converts a rawEntry into the domain type. Errors if start/duration
