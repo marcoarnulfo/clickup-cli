@@ -28,7 +28,9 @@ var reportHeaders = []string{"Item", "Hours", "Billed", "Amount"}
 // reportRows renders the report as table cells and reports the index at which
 // the total rows begin. Bucket rows come first, then either a single TOTAL row
 // (one currency) or a TOTAL row with an empty Amount followed by one subtotal
-// row per currency.
+// row per currency. The exception is GroupByTotal with a single bucket: that
+// bucket row is suppressed as a duplicate of TOTAL (#137), so TOTAL is row 0
+// and there are no bucket rows at all.
 //
 // Per-bucket Amounts are indicative: PerDay rounding can drift a few cents
 // from the subtotals at a fine grouping. CurrencySubtotals is authoritative

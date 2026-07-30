@@ -234,6 +234,41 @@ func TestReportRowsSuppressesTheBucketUnderTotalGroupingMultiCurrency(t *testing
 	}
 }
 
+// The suppression targets the degenerate single-bucket case, not GroupByTotal
+// in general: today internal/report's aggregation (aggregate.go's groupKeys,
+// GroupByTotal's default branch) only ever emits one bucket for that grouping,
+// but nothing in this package enforces that invariant, and the guard reads
+// r.GroupBy == GroupByTotal alongside len(r.Buckets) == 1 for a reason — if a
+// future change to groupKeys ever produced more than one bucket under
+// GroupByTotal, dropping every bucket row on GroupBy alone would silently
+// discard real data with nothing to fall back on within a currency's
+// breakdown. This pins that the narrower, two-part condition is what is
+// actually checked, using two synthetic buckets that report.Build itself
+// would never produce today.
+func TestReportRowsKeepsMultipleBucketsUnderTotalGrouping(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{
+			{Label: "Total A", Hours: 10, BilledHours: 10,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 500}}},
+			{Label: "Total B", Hours: 5, BilledHours: 5,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 250}}},
+		},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 15, BilledHours: 15, Amount: 750}},
+		TotalHours:        15, BilledHours: 15, TotalAmount: 750,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 3 || firstTotal != 2 {
+		t.Fatalf("got %d rows firstTotal=%d, want 3 rows firstTotal=2 (both buckets survive, then TOTAL): %v",
+			len(rows), firstTotal, rows)
+	}
+	if rows[0][0] != "Total A" || rows[1][0] != "Total B" {
+		t.Errorf("bucket rows = %q, %q, want both bucket labels to survive", rows[0][0], rows[1][0])
+	}
+}
+
 // Every other grouping keeps its bucket rows: the suppression is about the
 // degenerate one-bucket case of GroupByTotal, not about totals in general.
 func TestReportRowsKeepsBucketsUnderOtherGroupings(t *testing.T) {
