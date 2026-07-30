@@ -151,7 +151,19 @@ func TestCompositeDoesNotClipTheReportTableBesideANarrowPalette(t *testing.T) {
 		boxW = max(boxW, lipgloss.Width(l))
 	}
 
-	row := strings.Split(got, "\n")[7] // the table's top border, ╭───...───╮
+	// Guards the "row 7" index above, not just the measurement: if the report
+	// screen ever gains or loses a line above the table, row 7 stops being the
+	// table's top border and this fails with a numeric delta that hides the
+	// real cause. Fail here instead, naming it, so a future reader lands on
+	// "the index moved" rather than "the count is off by one."
+	const tableTopBorderRow = 7
+	if r := strings.Split(body, "\n")[tableTopBorderRow]; !strings.HasPrefix(r, "╭") || !strings.HasSuffix(r, "╮") {
+		t.Fatalf("row %d of the body is no longer the report table's top border (got %q); "+
+			"the report screen's layout above the table changed, so this test's row index needs "+
+			"updating, not its numbers", tableTopBorderRow, r)
+	}
+
+	row := strings.Split(got, "\n")[tableTopBorderRow] // the table's top border, ╭───...───╮
 	exposed := ansi.Cut(row, x+boxW, lipgloss.Width(row))
 	if w := lipgloss.Width(exposed); w != 1 {
 		t.Fatalf("column exposed beside the box is %d cells wide, want 1: %q", w, exposed)
