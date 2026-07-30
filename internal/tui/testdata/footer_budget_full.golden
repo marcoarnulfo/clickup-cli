@@ -1,3 +1,4 @@
-b close budgets    ?   help
-                   esc back
-                   q   quit
+b close budgets    ?      help           
+                   esc    back           
+                   q      quit           
+                   ctrl+p command palette

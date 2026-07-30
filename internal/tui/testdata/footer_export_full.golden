@@ -1,3 +1,4 @@
-↑/↓/j/k move       ?   help
-enter   confirm    esc back
-                   q   quit
+↑/↓/j/k move       ?      help           
+enter   confirm    esc    back           
+                   q      quit           
+                   ctrl+p command palette

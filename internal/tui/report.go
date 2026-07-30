@@ -90,39 +90,19 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.replace(screenLoading)
 		return m, m.reloadEntriesCmd(screenReport)
 	case key.Matches(msg, k.Export):
-		m.export = newExport(m.report)
-		m = m.goTo(screenExport)
+		m = m.openExport()
 	case key.Matches(msg, k.Rates):
-		m.ratesScreen = newRates(m.entries, m.cfg)
-		m = m.goTo(screenRates)
+		m = m.openRates()
 	case key.Matches(msg, k.LogHours):
-		m.logScreen = newLog(m.entries, m.cfg)
-		m = m.goTo(screenLog)
+		m = m.openLog()
 	case key.Matches(msg, k.Filters):
-		missing := m.tasksMissingStatus()
-		if len(missing) == 0 {
-			m.assignStatuses()
-			m.filtersScreen = newFilters(m.entries, m.filterLists, m.filterTags, m.filterStatuses, m.filterBillable)
-			m = m.goTo(screenFilters)
-			return m, nil
-		}
-		m.filtersScreen = filtersModel{loadingStatuses: true}
-		m = m.goTo(screenFilters)
-		if m.demo {
-			return m, demoStatusEnrichCmd(m.entries)
-		}
-		return m, statusEnrichCmd(m.client, missing)
+		return m.openFilters()
 	case key.Matches(msg, k.Budget):
 		if !m.openBudgetView() {
 			return m, nil
 		}
 	case key.Matches(msg, k.OpenEntries):
-		m = m.openEntries()
-		var cmd tea.Cmd
-		if m.userID == 0 {
-			cmd = m.currentUserCmd() // lazy retry so gating can enable
-		}
-		return m, cmd
+		return m.openEntries()
 	}
 	return m, nil
 }

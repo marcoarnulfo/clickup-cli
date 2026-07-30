@@ -14,7 +14,7 @@ import (
 func TestListBrowserKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := browserFixture(screenLog)
-	want := []string{"?", "ctrl+c", "down", "enter", "esc", "j", "k", "up"}
+	want := []string{"?", "ctrl+c", "ctrl+p", "down", "enter", "esc", "j", "k", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("list browser labels = %v, want %v", got, want)
 	}

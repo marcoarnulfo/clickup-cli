@@ -350,3 +350,46 @@ func TestGoldenLoading(t *testing.T) {
 	m.screen = screenLoading
 	golden(t, "loading", m.View())
 }
+
+// goldenPaletteModel is a report screen with the palette open at a fixed size,
+// so the box's position and contents are byte-stable.
+func goldenPaletteModel() Model {
+	m := goldenModel()
+	m.theme = testTheme(true)
+	m.entries = goldenEntries()
+	m.report = goldenReport()
+	m.rep = newReport(m.report, "", goldenDaily())
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+	m.width, m.height = 90, 30
+	return m.openPalette()
+}
+
+func TestGoldenPalette(t *testing.T) {
+	t.Parallel()
+	golden(t, "palette_report", goldenPaletteModel().View())
+}
+
+func TestGoldenPaletteFiltered(t *testing.T) {
+	t.Parallel()
+	m := goldenPaletteModel()
+	m.palette.query = "exp"
+	m = m.refreshPalette()
+	golden(t, "palette_filtered", m.View())
+}
+
+func TestGoldenPaletteNoMatch(t *testing.T) {
+	t.Parallel()
+	m := goldenPaletteModel()
+	m.palette.query = "zzzzzz"
+	m = m.refreshPalette()
+	golden(t, "palette_no_match", m.View())
+}
+
+// A terminal narrower than the preferred box, to pin the floor and the centering.
+func TestGoldenPaletteNarrow(t *testing.T) {
+	t.Parallel()
+	m := goldenPaletteModel()
+	m.width = 40
+	golden(t, "palette_narrow", m.View())
+}

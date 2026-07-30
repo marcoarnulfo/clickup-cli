@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The report screen now draws a per-day sparkline of the selected range, with
   idle days rendered as gaps rather than as low bars (#80).
+- Command palette (`ctrl+p`): a fuzzy action launcher that floats over the current screen,
+  offering both that screen's commands and one-step navigation to any other (#71).
+- An overlay compositor: `View()` can now layer a floating box over a screen instead of
+  replacing it (#59).
 
 ### Changed
 

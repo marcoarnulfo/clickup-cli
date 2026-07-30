@@ -28,8 +28,9 @@
 Provala senza account ClickUp: **`CLICKUP_DEMO=1 clup`** avvia una modalità demo con dati
 fittizi — che include anche il modello di fatturazione: split billable/non billable, due
 valute di fatturazione, voci taggate e un budget per lista. Il GIF è registrato con
-[vhs](https://github.com/charmbracelet/vhs) da [`docs/demo.tape`](docs/demo.tape) (lancia
-`vhs docs/demo.tape` per rigenerarlo).
+[vhs](https://github.com/charmbracelet/vhs) da [`docs/demo.tape`](docs/demo.tape); rigeneralo
+con un binario compilato in locale e un `PATH` temporaneo, senza installare nulla —
+`go build -o /tmp/clupdemo/clup ./cmd/clup && PATH=/tmp/clupdemo:$PATH vhs docs/demo.tape`.
 
 ## Requisiti
 
@@ -124,6 +125,11 @@ quando la finestra si restringe, è la colonna delle etichette a cedere spazio p
 prima, così le colonne numeriche e l'importo restano leggibili. Sopra la tabella, una
 sparkline giornaliera mostra a colpo d'occhio l'andamento del periodo — un giorno
 senza ore registrate appare come un vuoto, non come una barra.
+
+Premi `ctrl+p` da qualunque schermata per aprire la **command palette**: un launcher
+fuzzy che galleggia sopra quello che stai guardando. Scrivi qualche lettera e premi
+`Enter` — offre i comandi della schermata corrente (gli stessi che il footer annuncia,
+con i loro tasti) più la navigazione in un passo verso qualunque altra schermata.
 
 ### Comandi nella TUI
 

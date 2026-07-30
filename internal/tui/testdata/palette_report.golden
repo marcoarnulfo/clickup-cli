@@ -1,0 +1,17 @@
+Report July 2026 — scope me — grouped by list — tz UTC
+                                                      
+                   ╭─ Command palette ────────────────────────────────╮
+0 billing lines · 1│ >                                                │
+                   ├──────────────────────────────────────────────────┤
+hours/day ▅ ▂▆ ▃█  │ ▸ Grouping                                     g │
+                   │   Change range/scope                         m/s │
+╭──────────────────│   Reload                                       r │
+│ Item      Hours  │   Export                                       e │
+├──────────────────│   Rates                                        p │
+│ Website   12.50  │   Filters                                      f │
+│ Internal   3.00  │   Budgets                                      b │
+│ TOTAL     15.50  │   Entries                                      v │
+╰──────────────────╰──────────────────────────────────────────────────╯
+  billable 12.50h · non-billable 3.00h
+
+↑/↓ move · enter run · esc close · ctrl+c force quit

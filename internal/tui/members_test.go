@@ -89,7 +89,7 @@ func TestMembersAllNoneEmptyRosterNoPanic(t *testing.T) {
 func TestMembersKeyLabels(t *testing.T) {
 	t.Parallel()
 	m := membersFixture()
-	want := []string{" ", "?", "a", "ctrl+c", "down", "enter", "esc", "j", "k", "q", "up"}
+	want := []string{" ", "?", "a", "ctrl+c", "ctrl+p", "down", "enter", "esc", "j", "k", "q", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("members labels = %v, want %v", got, want)
 	}

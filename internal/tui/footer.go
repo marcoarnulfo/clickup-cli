@@ -79,7 +79,7 @@ func pairHelp(a, b key.Binding, keyLabel, desc string) key.Binding {
 	return p
 }
 
-// anyKeyHelp returns a display-only binding for a handler whose behaviour is
+// anyKeyHelp returns a display-only binding for a handler whose behavior is
 // triggered by the ABSENCE of a match — the delete confirmation's "any other
 // key cancels". No real binding can express that, and dropping it from the
 // footer would lose information the hand-written line carried.

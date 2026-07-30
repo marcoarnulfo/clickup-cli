@@ -50,7 +50,7 @@ func TestBuildTotal(t *testing.T) {
 		t.Fatalf("total amount = %v, want 300", r.TotalAmount)
 	}
 	if len(r.Buckets) != 1 || r.Buckets[0].Label != "Total" {
-		t.Fatalf("total should have one bucket labelled Total, got %+v", r.Buckets)
+		t.Fatalf("total should have one bucket labeled Total, got %+v", r.Buckets)
 	}
 	if r.Timezone != "UTC" {
 		t.Errorf("nil loc should default to UTC, got %q", r.Timezone)

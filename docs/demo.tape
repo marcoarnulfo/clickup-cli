@@ -1,11 +1,13 @@
 # docs/demo.tape — vhs script for the README demo GIF.
 #
-# Generate:  vhs docs/demo.tape        (writes docs/demo.gif)
 # Install vhs: https://github.com/charmbracelet/vhs   (brew install vhs)
 #
 # Uses the built-in demo mode (CLICKUP_DEMO=1): fixture data, no ClickUp
-# account or token needed, so the GIF is fully reproducible. Requires the
-# `clup` binary on PATH (go install ./cmd/clup).
+# account or token needed, so the GIF is fully reproducible.
+#
+# Regenerate with a locally built binary, without installing anything:
+#   go build -o /tmp/clupdemo/clup ./cmd/clup
+#   PATH=/tmp/clupdemo:$PATH vhs docs/demo.tape
 #
 # NOTE: re-run `vhs docs/demo.tape` after ANY change to what a screen
 # renders. The v1.9 design system makes this easy to forget: the key footer
@@ -52,6 +54,16 @@ Sleep 700ms
 # Generate the report
 Enter
 Sleep 2500ms
+
+# Command palette (#71): ctrl+p opens a fuzzy launcher that floats over the
+# report; type a few letters to filter, then dismiss without picking anything
+# so the report underneath is untouched for the grouping cycle that follows
+Ctrl+P
+Sleep 1s
+Type "exp"
+Sleep 1500ms
+Escape
+Sleep 500ms
 
 # Cycle the grouping: total -> task -> list -> day -> tag (v1.7: the summary
 # line, billable/non-billable split and per-currency subtotals sit below the

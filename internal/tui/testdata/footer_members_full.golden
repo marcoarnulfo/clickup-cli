@@ -1,3 +1,4 @@
-↑/↓/j/k move        enter confirm    ?   help
-space   toggle                       esc back
-a       all/none                     q   quit
+↑/↓/j/k move        enter confirm    ?      help           
+space   toggle                       esc    back           
+a       all/none                     q      quit           
+                                     ctrl+p command palette

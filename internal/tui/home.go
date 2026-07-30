@@ -52,8 +52,7 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.periodMode = periodModeWeek
 		}
 	case key.Matches(msg, k.Range):
-		m.rangeScreen = newRange(m.preset)
-		m = m.goTo(screenRange)
+		m = m.openRange()
 		return m, nil
 	case key.Matches(msg, k.ToggleScope):
 		if m.scope == "me" {
@@ -62,8 +61,7 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.scope = "me"
 		}
 	case key.Matches(msg, k.LogHours):
-		m.logScreen = newLog(m.entries, m.cfg)
-		m = m.goTo(screenLog)
+		m = m.openLog()
 	case key.Matches(msg, k.Timer):
 		// The running-timer gate also lives entirely in homeKeys' Enabled()
 		// now (see TestHomeTimerKeyMatchesGuard).
@@ -72,19 +70,8 @@ func (m Model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logScreen.step = logTimerRunning
 		m = m.goTo(screenLog)
 	case key.Matches(msg, k.Members):
-		// The team-scope gate lives entirely in homeKeys' Enabled() now (see
-		// TestHomeMembersKeyIsTeamScopeOnly).
-		if len(m.teamMembers) > 0 {
-			m.membersScreen = newMembers(m.teamMembers, m.selectedMembers)
-			m = m.goTo(screenMembers)
-			return m, nil
-		}
-		m.membersScreen = membersModel{loading: true}
-		m = m.goTo(screenMembers)
-		if m.demo {
-			return m, demoMembersCmd()
-		}
-		return m, loadMembersCmd(m.client, m.cfg.WorkspaceID, screenHome)
+		mm, cmd := m.openMembers(screenHome)
+		return mm, cmd
 	case key.Matches(msg, k.Generate):
 		m.home.errText = "" // clear any previous inline error before retrying
 		m = m.replace(screenLoading)

@@ -28,8 +28,9 @@
 Try it yourself without a ClickUp account: **`CLICKUP_DEMO=1 clup`** runs a demo mode with
 fixture data — including the billing model: a billable/non-billable split, two invoicing
 currencies, tagged entries, and a per-list budget. The GIF is recorded with
-[vhs](https://github.com/charmbracelet/vhs) from [`docs/demo.tape`](docs/demo.tape) (run
-`vhs docs/demo.tape` to regenerate).
+[vhs](https://github.com/charmbracelet/vhs) from [`docs/demo.tape`](docs/demo.tape); regenerate
+it with a locally built binary on a temporary `PATH`, without installing anything —
+`go build -o /tmp/clupdemo/clup ./cmd/clup && PATH=/tmp/clupdemo:$PATH vhs docs/demo.tape`.
 
 ## Requirements
 
@@ -120,6 +121,11 @@ The report itself renders as a table sized to your terminal: as the window narro
 the label column gives up its space first, so the numeric and amount columns keep
 their footing. Above the table, a per-day sparkline shows the shape of the period at a
 glance — a day with no logged hours renders as a gap, not a bar.
+
+Press `ctrl+p` from any screen to open the **command palette**: a fuzzy launcher that
+floats over whatever you're looking at. Type a few letters and press `Enter` — it offers
+the current screen's own commands (the same ones the footer advertises, with their keys)
+plus one-step navigation to any other screen.
 
 ### TUI commands
 

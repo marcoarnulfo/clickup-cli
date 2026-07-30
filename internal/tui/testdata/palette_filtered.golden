@@ -1,0 +1,17 @@
+Report July 2026 — scope me — grouped by list — tz UTC
+                                                      
+                   ╭─ Command palette ────────────────────────────────╮
+0 billing lines · 1│ > exp                                            │
+                   ├──────────────────────────────────────────────────┤
+hours/day ▅ ▂▆ ▃█  │ ▸ Export                                       e │
+                   │   Go to export                                   │
+╭──────────────────╰──────────────────────────────────────────────────╯
+│ Item      Hours  Billed      Amount │
+├─────────────────────────────────────┤
+│ Website   12.50   12.50  625.00 EUR │
+│ Internal   3.00    0.00    0.00 EUR │
+│ TOTAL     15.50   12.50  625.00 EUR │
+╰─────────────────────────────────────╯
+  billable 12.50h · non-billable 3.00h
+
+↑/↓ move · enter run · esc close · ctrl+c force quit

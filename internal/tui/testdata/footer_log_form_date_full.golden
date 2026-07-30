@@ -1,2 +1,3 @@
-enter confirm    esc    back      
-                 ctrl+c force quit
+enter confirm    esc    back           
+                 ctrl+c force quit     
+                 ctrl+p command palette

@@ -94,7 +94,7 @@ func TestBudgetLinesCurrencyResolution(t *testing.T) {
 }
 
 // TestBudgetLinesNameFallsBackToListID pins that a budgeted list with no hours
-// in the period -- the most interesting row, an untouched budget -- is labelled
+// in the period -- the most interesting row, an untouched budget -- is labeled
 // by its id instead of rendering as a blank label.
 func TestBudgetLinesNameFallsBackToListID(t *testing.T) {
 	lines := BudgetLines(nil, map[string]float64{"901": 1000}, Pricing{DefaultCurrency: "EUR"}, nil)

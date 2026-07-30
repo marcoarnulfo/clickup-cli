@@ -1,3 +1,4 @@
-1 guided         ?      help      
-2 task ID/URL    esc    back      
-3 timer          ctrl+c force quit
+1 guided         ?      help           
+2 task ID/URL    esc    back           
+3 timer          ctrl+c force quit     
+                 ctrl+p command palette
