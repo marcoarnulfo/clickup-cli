@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The report header ("Report <period> — scope …") is now truncated on narrow
+  terminals instead of wrapping to a second line; with an ellipsis marking the
+  truncation (#143).
+- Budget burn-down view now aligns the percentage labels right-justified, so the
+  figures they precede start at the same column across rows instead of ragged;
+  this complements the visual alignment the gauge itself already provided (#144).
 - Removed the duplicate "Total" data row that appeared directly above the TOTAL row
   when the report is grouped as a single total (#137).
 - Budget burn-down view now sizes its list-name column to the available width
