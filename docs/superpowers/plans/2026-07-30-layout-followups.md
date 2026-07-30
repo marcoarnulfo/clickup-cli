@@ -4,10 +4,13 @@
 
 **Goal:** Chiudere #144 e #143, i due follow-up della tranche D.
 
-**Architecture:** Tre interventi indipendenti, in un ordine che non è
-arbitrario: il Task 2 cambia i numeri che il Task 3 deve misurare.
-
 **Spec:** `docs/superpowers/specs/2026-07-30-layout-followups-design.md`
+
+> **Questa è la seconda versione.** La prima è stata bocciata da una review
+> adversariale che ha trovato tre difetti critici: due test che non potevano
+> passare contro il codice corretto, e una formula di misura che guardava le
+> righe sbagliate e da cui dipendeva l'intero Task 3. Le correzioni sono
+> incorporate qui e nella spec §2.2/§3.3.
 
 ## Global Constraints
 
@@ -22,67 +25,92 @@ arbitrario: il Task 2 cambia i numeri che il Task 3 deve misurare.
 - Tutto in **inglese**, ortografia americana: codice, identificatori, commenti,
   nomi e messaggi dei test, messaggi di commit.
 - Conventional Commits. **MAI** `Co-Authored-By`.
-- **Le larghezze si misurano rendendo, non calcolando.** Usa
-  `lipgloss.Width(strings.Split(<render>, "\n")[0])`, o il ciclo su tutte le
-  righe quando quella più larga non è la prima. La tranche D ha prodotto due
-  numeri sbagliati perché sommati a mano: `reportAmountWidth` riprende spazio ad
-  Amount come ultima risorsa, e l'aritmetica a mano non lo vede.
+- **Le larghezze si misurano rendendo, non calcolando**, e si misurano sulle
+  righe **giuste**: la prima versione di questo piano ha misurato lo sforamento
+  del titolo credendo di misurare l'esposizione accanto al box, perché il titolo
+  è la riga più larga del body ma sta sopra il box, non accanto.
 - **Un test scritto contro un bug non è attendibile finché non lo si è visto
-  fallire contro quel bug**, e non deve asserire sotto il minimo che il codice
-  corretto può raggiungere: nella tranche D tre test asserivano l'impossibile.
-- **Ogni numero scritto in un commento va misurato.** La tranche D ha corretto
-  quattordici commenti falsi.
+  fallire contro quel bug**, e non deve asserire qualcosa che il codice corretto
+  non può dare: due dei test della prima versione asserivano un allineamento che
+  la spec dichiara fuori scope, e uno asseriva l'assenza di uno spazio che
+  l'implementazione prescritta emette sempre.
+- **Ogni numero scritto in un commento va misurato.**
 
-## Helper esistenti (verificati)
+## Helper esistenti (verificati contro il repo)
 
-- `truncateWidth(s string, cols int) string` e `cell(s string, cols int) string`
+- `truncateWidth(s string, cols int) string`, `cell(s string, cols int) string`
   — `internal/tui/width.go`. `cols <= 0` ritorna `""` in entrambi.
 - `testTheme(dark bool) theme` — `theme_test.go:15`.
-- `goldenReport()`, `goldenPaletteModel()`, `golden(t, name, out)` — `golden_test.go`.
-- `newReport(r report.Report, note string, series []float64) reportModel`.
-- `reportModel.view(th theme, width int) string` — **già riceve la larghezza**
-  (`report.go:198`), chiamata da `app.go:980`.
+- `golden(t, name, out)` — `golden_test.go:35`; `goldenReport()` — `:70`;
+  `goldenPaletteModel()` — `:397`.
+- `newReport(r report.Report, note string, daily []float64) reportModel`
+  — `report.go:23`. Il terzo parametro si chiama **`daily`**.
+- `reportModel.view(th theme, width int) string` — `report.go:198`, **già riceve
+  la larghezza**; chiamata da `app.go:980`.
 - `renderBudgetBar(th theme, percentUsed float64) string` — `budget.go:60`.
   Chiamanti: produzione `budget.go:149`, test `budget_test.go:43` e
   `budget_bar_test.go:57`.
 - `budgetLayout(lines []report.BudgetLine, width int) (nameW int, showRemaining bool)`
-  — `budget.go:116`. Misura `pctW` internamente e oggi non lo espone.
+  — `budget.go:116`. **Chiamanti di test: `budget_test.go:163`, `:171`, `:180`.**
+  Cambiarne la firma non compila finché non si toccano tutti e tre.
+- `composite(body, box string, x, y int) string` — `internal/tui/overlay.go:30`.
+  Il suo contratto è documentato alle righe 11-13 e inchiodato da
+  `TestCompositeSplicesTheBoxIntoTheBody`,
+  `TestCompositeKeepsEveryLineWidth`,
+  `TestCompositeHandlesWideGlyphsOnBothEdges` e
+  `TestCompositeDoesNotLeakStyleIntoTheBox` (`overlay_test.go`).
+- `paletteTopY = 2` — `palette.go:19`: il box comincia alla riga 2 del body.
 
 ## Ordine dei task
 
-`1` e `2` sono indipendenti. **`3` dipende da `2`**: il clamp
-dell'intestazione cambia la riga più larga del body, e quindi l'esposizione che
-il Task 3 deve misurare.
+`1`, `2` e `3` sono **indipendenti**. La prima versione dichiarava `3` dipendente
+da `2`; era un artefatto della formula sbagliata — la riga coperta più larga è la
+tabella, non il titolo, quindi il clamp del titolo non cambia niente per il
+Task 3 (spec §2.2).
 
 ---
 
 ### Task 1: allineare la percentuale del budget (#144)
 
 **Files:**
-- Modify: `internal/tui/budget.go` (`renderBudgetBar`, `budgetLayout`, `view`)
-- Modify: `internal/tui/budget_test.go:43`, `internal/tui/budget_bar_test.go:57`
-  (il terzo argomento)
+- Modify: `internal/tui/budget.go` (`renderBudgetBar`, la misura di `pctW`, `view`)
+- Modify: `internal/tui/budget_test.go` — il terzo argomento a riga 43, e i tre
+  chiamanti di `budgetLayout` a righe **163, 171, 180** se ne cambi la firma
+- Modify: `internal/tui/budget_bar_test.go:57` — il terzo argomento
 - Test: `internal/tui/budget_test.go`
 - Test: `internal/tui/testdata/budget.golden`
 
 **Interfaces:**
-- Produces: `renderBudgetBar(th theme, percentUsed float64, pctW int) string`;
-  `budgetLayout` espone anche `pctW`.
+- Produces: `renderBudgetBar(th theme, percentUsed float64, pctW int) string`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Il test che si vede fallire, con la fixture giusta**
+
+La fixture è scelta, non casuale, e il perché va nel commento: i due `Billed`
+hanno la **stessa** larghezza (`625.00` e `940.00`, sei caratteri) mentre le due
+percentuali no (`62%` e `104%`). Così la posizione dello `/` isola esattamente il
+padding della percentuale. Con `Billed` di larghezze diverse lo `/` divergerebbe
+comunque, e il test asserirebbe l'allineamento delle **cifre**, che la spec §4
+dichiara fuori scope — cioè non potrebbe passare mai.
 
 ```go
 // budgetLayout measures the widest percentage label across the real rows and
 // uses it to size the name column, but the rendering never padded to it: a row
-// at 62% started its figures one column left of a row at 104% (#144). The
-// fixture needs percentages of DIFFERENT label widths — with two rows both
-// under 100% the columns line up by accident and the test passes against the bug.
+// at 62% started its figures one column left of a row at 104% (#144).
+//
+// The fixture is picked, not arbitrary. Both Billed values are six characters
+// wide while the two percentage labels are three and four, so the column of the
+// "/" isolates the percentage padding and nothing else. With Billed values of
+// different widths the "/" would diverge anyway, and this test would be
+// asserting that the FIGURES line up — which the spec deliberately does not do.
+//
+// Measured before the fix: the "/" sits at column 65 on the 62% row and 66 on
+// the 104% row.
 func TestBudgetViewAlignsFiguresAcrossRows(t *testing.T) {
 	t.Parallel()
 	th := testTheme(true)
 	bm := newBudget([]report.BudgetLine{
 		{ListName: "Website", Billed: 625, Budget: 1000, Currency: "EUR", Remaining: 375, PercentUsed: 62.5},
-		{ListName: "Mobile app", Billed: 1040, Budget: 1000, Currency: "EUR", Remaining: -40, PercentUsed: 104},
+		{ListName: "Mobile app", Billed: 940, Budget: 900, Currency: "EUR", Remaining: -40, PercentUsed: 940.0 / 900 * 100},
 	})
 	var cols []int
 	for _, line := range strings.Split(bm.view(th, 100), "\n") {
@@ -99,8 +127,12 @@ func TestBudgetViewAlignsFiguresAcrossRows(t *testing.T) {
 }
 
 // A percentage narrower than the measured maximum is right-aligned into it, so
-// the columns after it hold. pctW <= 0 keeps the natural width, which is what
+// every column after it holds. pctW <= 0 keeps the natural width, which is what
 // the callers that are not testing alignment pass.
+//
+// The natural case is checked by WIDTH, not by suffix: renderBudgetBar always
+// emits one space between the bar and the label, so "ends in \" 62%\"" is true
+// of every conforming implementation and would assert nothing.
 func TestRenderBudgetBarRightAlignsThePercentage(t *testing.T) {
 	t.Parallel()
 	th := testTheme(true)
@@ -109,41 +141,39 @@ func TestRenderBudgetBarRightAlignsThePercentage(t *testing.T) {
 	if lipgloss.Width(wide) != lipgloss.Width(narrow) {
 		t.Errorf("bars are %d and %d columns wide, want equal", lipgloss.Width(wide), lipgloss.Width(narrow))
 	}
-	if !strings.HasSuffix(narrow, " 62%") {
-		t.Errorf("narrow = %q, want it to end in a right-aligned \" 62%%\"", narrow)
+	if !strings.HasSuffix(narrow, "  62%") {
+		t.Errorf("narrow = %q, want the label right-aligned into 4 columns", narrow)
 	}
 	natural := renderBudgetBar(th, 62.5, 0)
-	if !strings.HasSuffix(natural, "62%") || strings.HasSuffix(natural, " 62%") {
-		t.Errorf("natural = %q, want the unpadded \"62%%\" when pctW <= 0", natural)
+	if got, want := lipgloss.Width(natural), budgetBarWidth+1+3; got != want {
+		t.Errorf("natural width = %d, want %d (bar + separator + \"62%%\", no padding)", got, want)
 	}
 }
 ```
 
-- [ ] **Step 2: See the RED**
+- [ ] **Step 2: Vedere il RED**
 
-I due test nominano `renderBudgetBar` con tre argomenti, quindi il package non
-compila: `FAIL [build failed]` non è un RED. Per **vedere** il difetto, aggiungi
-solo `TestBudgetViewAlignsFiguresAcrossRows` (che usa la firma attuale di `view`)
-ed eseguilo.
+`TestRenderBudgetBarRightAlignsThePercentage` nomina `renderBudgetBar` con tre
+argomenti, quindi il package non compila: `FAIL [build failed]` non è un RED.
+Aggiungi quindi **solo** `TestBudgetViewAlignsFiguresAcrossRows`, che usa la
+firma attuale di `view`, ed eseguilo.
 
 Run: `go test ./internal/tui -run TestBudgetViewAlignsFiguresAcrossRows -v`
-Expected: FAIL, con due colonne diverse. **Riporta i due numeri** nel report:
-sono la misura del difetto.
+Expected: FAIL con `figures start at column 65 on one row and 66 on the other`.
+**Se i numeri non sono 65 e 66, fermati**: la fixture non è quella misurata.
 
-- [ ] **Step 3: Implement**
-
-`renderBudgetBar` prende `pctW` e allinea a destra:
+- [ ] **Step 3: Implementare**
 
 ```go
 // pctW is the width the caller measured for the widest percentage label across
 // all rows; the label is right-aligned into it so every row's figures start at
 // the same column (#144). pctW <= 0 means natural width — the callers that are
-// not testing alignment pass 0.
+// not testing alignment pass 0, and so does the pre-WindowSizeMsg path below.
 func renderBudgetBar(th theme, percentUsed float64, pctW int) string {
 	...
 	label := fmt.Sprintf("%.0f%%", math.Floor(percentUsed))
-	if pctW > lipgloss.Width(label) {
-		label = strings.Repeat(" ", pctW-lipgloss.Width(label)) + label
+	if pad := pctW - lipgloss.Width(label); pad > 0 {
+		label = strings.Repeat(" ", pad) + label
 	}
 	return fmt.Sprintf("%s %s", bar, label)
 }
@@ -153,17 +183,22 @@ Non toccare `math.Floor`: il riempimento tronca, quindi la label deve
 arrotondare per difetto o rivendicherebbe una soglia che la barra non ha
 raggiunto (#136).
 
-`budgetLayout` espone il `pctW` che già misura, invece di lasciarlo interno. La
-firma diventa `(nameW int, pctW int, showRemaining bool)` — oppure estrai la
-misura in un helper che sia `budgetLayout` sia `view` chiamano. Scegli tu, ma la
-quantità che `view` passa a `renderBudgetBar` deve essere **la stessa** che
-l'aritmetica di `budgetLayout` ha usato, non una ricalcolata: se divergono, la
-riga sfora di quanto divergono. Se estrai un helper, verifica che entrambi lo
-chiamino e non ne resti una copia.
+`view` deve passare **la stessa** `pctW` che l'aritmetica di `budgetLayout` ha
+usato, non una ricalcolata: se divergono, la riga sfora di quanto divergono. Due
+strade, scegli tu:
 
-`view` passa `pctW` alla `renderBudgetBar`. I due call site di test passano `0`.
+- allargare la firma di `budgetLayout` a `(nameW, pctW int, showRemaining bool)`
+  — ricorda i tre chiamanti di test a `budget_test.go:163, 171, 180`, o non
+  compila;
+- estrarre la misura in un helper che **entrambe** chiamano — verifica che non
+  resti una copia della formula.
 
-- [ ] **Step 4: Run and regenerate the golden**
+**Vincolo che vale per entrambe:** a `width <= 0` (primo render, prima del
+`WindowSizeMsg`) `budgetLayout` ritorna il fallback senza misurare niente, quindi
+la label resta **naturale**, `pctW = 0`. Non misurare `pctW` in quel ramo: le due
+strade divergerebbero là, e nessun test lo coprirebbe.
+
+- [ ] **Step 4: Eseguire e rigenerare il golden**
 
 ```bash
 go test ./internal/tui -run 'TestBudget|TestRenderBudgetBar' -v
@@ -171,8 +206,8 @@ go test ./internal/tui -race
 go test ./internal/tui -update
 git diff internal/tui/testdata/
 ```
-Expected: `budget.golden` ha una riga sola con `62%`, quindi `pctW` è 3 e non
-cambia niente — **verificalo**, non assumerlo. Se cambia, guarda cosa è
+Expected: `budget.golden` **non si muove** — ha una riga sola, al 62%, quindi
+`pctW` è 3 e il padding è un no-op. Verificalo; se si muove, guarda cosa è
 cambiato e riportalo.
 
 - [ ] **Step 5: Gate + commit**
@@ -190,12 +225,12 @@ git commit -m "fix(tui): right-align the budget percentage so the figures line u
 **Files:**
 - Modify: `internal/tui/report.go` (`reportModel.view`, il titolo a riga ~204)
 - Test: `internal/tui/report_test.go`
-- Test: i golden stretti che mostrano l'intestazione
+- Test: `internal/tui/testdata/palette_narrow.golden`
 
 **Interfaces:**
-- Consumes: `truncateWidth` (`width.go`).
+- Consumes: `truncateWidth`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Il test che si vede fallire**
 
 ```go
 // The report table became width-aware in #66 and the budget screen in #136, but
@@ -204,6 +239,10 @@ git commit -m "fix(tui): right-align the budget percentage so the figures line u
 // it measures without one). Line 1 is the title's own MarginBottom padding and
 // overflows with it, which is why the text is truncated BEFORE th.Title.Render
 // rather than after — truncating the rendered string would leave that line long.
+//
+// Measured: every other line of this view already fits at width 40 (summary 37,
+// billable note 38, table 39, sparkline 15), so this test can assert on the
+// whole view without depending on anything the spec left out of scope.
 func TestReportViewHeaderFitsTheTerminal(t *testing.T) {
 	t.Parallel()
 	th := testTheme(true)
@@ -230,17 +269,14 @@ func TestReportViewHeaderSurvivesZeroWidth(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: See the RED**
+- [ ] **Step 2: Vedere il RED**
 
 Run: `go test ./internal/tui -run TestReportViewHeader -v`
-Expected: il primo FAIL su width 40 e 60, riportando **68** colonne per la riga
-0 e per la riga 1 — quattro errori in tutto. Il secondo PASS (oggi il titolo non
-è troncato, quindi non può sparire). **Allega il transcript**: se i numeri non
-sono 68, la fixture non è quella misurata dalla spec.
+Expected: il primo FAIL **quattro volte** — righe 0 e 1 a width 40, righe 0 e 1 a
+width 60, ciascuna con **68** colonne. Il secondo PASS. Se i numeri non sono
+questi, fermati e riporta.
 
-- [ ] **Step 3: Implement**
-
-In `reportModel.view`, prima del `Render`:
+- [ ] **Step 3: Implementare**
 
 ```go
 	// Clamped before Render, not after: th.Title carries MarginBottom(1), which
@@ -256,7 +292,7 @@ In `reportModel.view`, prima del `Render`:
 	title := th.Title.Render(head)
 ```
 
-- [ ] **Step 4: Run and regenerate the goldens**
+- [ ] **Step 4: Eseguire e rigenerare i golden**
 
 ```bash
 go test ./internal/tui -run TestReportViewHeader -v
@@ -264,10 +300,9 @@ go test ./internal/tui -race
 go test ./internal/tui -update
 git diff internal/tui/testdata/
 ```
-Expected: si muovono i golden resi a una larghezza minore del titolo —
-`palette_narrow` fra questi. Quelli a 80 non si muovono (68 ≤ 80). **Guarda ogni
-golden cambiato** e riporta quali e come. Se un golden a 80 si muove, fermati:
-significa che il clamp scatta quando non dovrebbe.
+Expected: si muove **solo `palette_narrow.golden`** — è l'unico golden reso a una
+larghezza minore del titolo. Nessun golden a 80 si muove. **Guardalo.** Se si
+muove un golden a 80, il clamp scatta quando non dovrebbe.
 
 - [ ] **Step 5: Gate + commit**
 
@@ -279,23 +314,24 @@ git commit -m "fix(tui): clamp the report header to the terminal width (#143)"
 
 ---
 
-### Task 3: rimisurare l'esposizione accanto al box, e decidere (#143, prima metà)
+### Task 3: inchiodare la colonna esposta come comportamento voluto (#143, prima metà)
 
-> **Dipende dal Task 2.** Il clamp dell'intestazione cambia la riga più larga
-> del body, che è la quantità da misurare qui. Non eseguirlo prima.
+**Nessuna modifica al codice di produzione.** La spec §3.3 chiude questa metà
+della issue contro una misura: l'esposizione accanto al box è **una colonna** a
+larghezza 40 e **zero** altrove, è il bordo destro della tabella — contenuto
+legittimo dentro il terminale — e ritagliarla violerebbe il contratto di layering
+della #59, rompendo tre test di `overlay_test.go`.
+
+Quello che manca è un test che lo **dica**, così che chi vedrà quella colonna nel
+golden trovi scritto perché c'è invece di ri-aprire la issue.
 
 **Files:**
-- Modify: `internal/tui/overlay.go` (`composite`) — **solo se la misura lo dice**
 - Test: `internal/tui/overlay_test.go`
-- Test: `internal/tui/testdata/palette_narrow.golden`
 
-- [ ] **Step 1: Misurare, prima di scrivere codice**
+- [ ] **Step 1: Misurare, e confermare i numeri della spec**
 
-Con una sonda usa-e-getta che poi cancelli, misura per ogni larghezza in
-`{40, 50, 60, 80, 120}`: la riga più larga del body, la larghezza del box, il suo
-`x`, e quante colonne del body restano esposte a destra del box
-(`widestBodyLine - (x + boxW)`, se positivo). Prendi body, box, `x` e `y` dal
-percorso vero:
+Con una sonda usa-e-getta che poi cancelli, per ogni larghezza in
+`{40, 50, 60, 80, 120}`, prendendo body, box, `x` e `y` dal percorso vero:
 
 ```go
 m := goldenPaletteModel()
@@ -304,50 +340,43 @@ body := m.screenBody()
 box, x, y := m.palette.layout(m.theme, m.width, m.height, strings.Count(body, "\n")+1)
 ```
 
-Prima del Task 2 la misura era: 16 colonne esposte a larghezza 40, zero a ogni
-larghezza da 60 in su.
+misura **due** quantità distinte e riportale entrambe:
 
-**Riporta la tabella nel report, e poi segui la misura:**
+- la riga più larga di **tutto** il body, e quale indice ha;
+- la riga più larga fra quelle che il box **copre davvero**, cioè con indice in
+  `[y, y+len(boxLines))`, e quanto ne resta esposto a destra
+  (`larghezza − (x + boxW)`, se positivo).
 
-- **Se l'esposizione massima è ≤ 1 colonna** a ogni larghezza: implementa il
-  ritaglio (Step 2). È il caso atteso.
-- **Se è > 1 colonna** a qualche larghezza: **fermati**, riporta la tabella e
-  quale contenuto è esposto, e non implementare niente. Vuol dire che il Task 2
-  non ha coperto tutta la causa e la decisione torna all'umano.
+Expected, dalla spec §2.2: la riga più larga del body è sempre la **0** (il
+titolo, 54 colonne) e sta **sopra** il box, che comincia a `y=2`; la riga coperta
+più larga è sempre la **7** (la tabella, 39 colonne); l'esposizione accanto al box
+è **1** a larghezza 40 e **0** a 50, 60, 80 e 120.
 
-- [ ] **Step 2: Il ritaglio, solo se la misura lo autorizza**
+**Se i numeri non sono questi, fermati e riporta** invece di scrivere il test: la
+spec ha già sbagliato una volta questa misura e la seconda versione va confermata,
+non creduta.
 
-Il segmento destro di `composite` non viene disegnato quando ciò che esporrebbe
-è contenuto che sfonda comunque il terminale. Attenzione: `composite` non conosce
-la larghezza del terminale, conosce solo body e box. Il ritaglio quindi non può
-essere «oltre il terminale», deve essere «oltre il bordo destro del box» — che è
-la stessa cosa solo quando il body non è più largo del terminale, cioè dopo il
-Task 2.
+- [ ] **Step 2: Il test che inchioda il comportamento**
 
-Scrivi il perché nel commento, e scrivi **anche** il caso in cui questa scelta
-sarebbe sbagliata: se un giorno il body tornasse a essere più largo del
-terminale, il ritaglio nasconderebbe contenuto invece di detriti.
+Un test in `overlay_test.go` che asserisce che, a larghezza 40, la colonna del
+body oltre il bordo destro del box **c'è** e vale esattamente una colonna, con un
+commento che spiega: è il bordo destro della tabella, sta dentro il terminale, e
+il contratto della #59 dice che il body fuori dal rettangolo del box sopravvive
+verbatim. Nomina i tre test che cadrebbero se qualcuno decidesse di ritagliare.
 
-Il test deve inchiodare che il fondo esposto **non** compare, con una fixture in
-cui prima compariva. Provalo per mutazione: rimetti il segmento destro e verifica
-che il test fallisca.
+Il test non ha un red-green — non corregge un difetto, fissa una scelta. La sua
+prova è che fallisca se il comportamento cambia: **provalo** rendendo `composite`
+un ritaglio (elimina il segmento destro), verifica che il tuo test nuovo
+fallisca **e** che falliscano anche i tre test esistenti, poi ripristina. Metti
+entrambi gli output nel report: sono la dimostrazione che il contratto è
+protetto da più di un punto.
 
-- [ ] **Step 3: Golden e gate**
+- [ ] **Step 3: Gate + commit**
 
 ```bash
-go test ./internal/tui -race
-go test ./internal/tui -update
-git diff internal/tui/testdata/palette_narrow.golden
 gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
-```
-**Guarda il golden.** Deve mostrare il box senza i caratteri di cornice spuri a
-destra.
-
-- [ ] **Step 4: Commit**
-
-```bash
 git add internal/tui
-git commit -m "fix(tui): stop drawing the background past the overlay's right edge (#143)"
+git commit -m "test(tui): pin the body column beside the overlay as intended (#143)"
 ```
 
 ---
@@ -357,12 +386,16 @@ git commit -m "fix(tui): stop drawing the background past the overlay's right ed
 **Files:**
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1** Sotto `## [Unreleased]`, sezione `### Fixed`, una voce per issue
-  chiusa, nello stile delle voci già presenti: comportamento osservato, non
-  implementazione, e **niente garanzie assolute** — la tranche D ne ha dovuta
-  correggere una che prometteva «the table now always fits the terminal width».
-  Se il Task 3 si è fermato senza implementare, la voce sulla #143 copre solo il
-  clamp dell'intestazione e la issue resta aperta.
+- [ ] **Step 1** Sotto `## [Unreleased]` → `### Fixed`, una voce per issue,
+  nello stile delle voci già presenti: comportamento osservato, non
+  implementazione, e **niente garanzie assolute** — la tranche D ha dovuto
+  correggere una voce che prometteva «the table now always fits the terminal
+  width». Due voci:
+  - il report non manda più a capo la propria intestazione su un terminale
+    stretto (#143);
+  - le cifre del burn-down budget si allineano fra le righe (#144).
+
+  Non scrivere una voce per il Task 3: non cambia niente di osservabile.
 
 - [ ] **Step 2** Gate completo, poi commit `docs: changelog for the layout follow-ups`.
 
@@ -370,24 +403,24 @@ git commit -m "fix(tui): stop drawing the background past the overlay's right ed
 
 ## Self-review del piano
 
-**Copertura:** spec §3.1 → Task 1; §3.2 → Task 2; §3.3 → Task 3; §5 è vincolo
-globale; §4 (fuori scope) non genera task.
+**Copertura:** spec §3.1 → Task 1; §3.2 → Task 2; §3.3 → Task 3; §4 (fuori
+scope) non genera task.
 
-**Dipendenze:** `3` dipende da `2` ed è dichiarato in testa al task, non solo
-qui. `1` è indipendente da entrambi.
+**Dipendenze:** nessuna. La prima versione dichiarava `3` dipendente da `2`; la
+misura corretta mostra che la riga coperta più larga è la tabella, quindi il
+clamp del titolo non tocca il Task 3.
 
-**Il RED di ogni task è osservabile:** il Task 1 mette in staging il test che
-compila contro la firma attuale; il Task 2 non ha simboli nuovi, quindi il RED è
-diretto; il Task 3 non ha un RED perché è una misura che decide se c'è un
-difetto da correggere — e il suo test nasce dopo la misura, con la prova per
-mutazione al posto del red-green.
+**Ogni test prescritto può passare contro il codice corretto**, che è la cosa che
+la prima versione sbagliava due volte: la fixture del Task 1 ha `Billed` di pari
+larghezza perché l'allineamento delle cifre è fuori scope, e l'asserzione sul caso
+naturale guarda la **larghezza** e non un suffisso che l'implementazione emette
+sempre.
 
-**Le larghezze asserite** vengono tutte da §2 della spec, misurata rendendo. Il
-Task 2 asserisce a 40, 60 e 80: le prime due sono le larghezze in cui oggi sfora,
-la terza è il controllo che il clamp non scatti quando non serve.
+**Ogni RED è osservabile:** Task 1 mette in staging il test che compila con la
+firma attuale; Task 2 non introduce simboli nuovi; Task 3 non ha un RED per
+costruzione, e lo dice, con la prova per mutazione al suo posto.
 
-**Placeholder:** nessuno. Il Task 1 lascia una scelta esplicita
-all'implementatore (esporre `pctW` da `budgetLayout` o estrarre un helper) con il
-vincolo che la decide: la quantità passata a `renderBudgetBar` deve essere la
-stessa usata dall'aritmetica. Il Task 3 è deliberatamente condizionale, e la
-condizione è un numero misurato, non un giudizio.
+**Placeholder:** nessuno. Il Task 1 lascia una scelta con due vincoli espliciti
+(i tre chiamanti di test, e `pctW = 0` a `width <= 0`); il Task 3 chiede una
+conferma di misura prima di scrivere il test, e dice di fermarsi se la misura
+smentisce la spec.

@@ -44,27 +44,46 @@ Tre cose che la issue non diceva:
 
 ### 2.2 L'esposizione del fondo accanto al box (#143, prima metà)
 
-Misurato rendendo dal percorso vero di `View()` (verificato: la variante «oggi»
-riproduce `View()` byte per byte), per ogni larghezza:
+**Questa sezione è stata riscritta dopo una review: la prima versione misurava
+la cosa sbagliata, e il numero che ne era uscito è finito anche in un commento
+sulla issue.** Vale la pena raccontare l'errore, perché è istruttivo.
 
-| terminale | box | esposto a destra |
-|---|---|---|
-| 40 | 36 @ x=2 | **16 colonne** |
-| 60 | 52 @ x=4 | 0 |
-| 80 | 52 @ x=14 | 0 |
-| 120 | 52 @ x=34 | 0 |
-| 160 | 52 @ x=54 | 0 |
+La formula era `rigaPiùLargaDelBody − (x + boxW)`. Ma la riga più larga del body
+è la **0**, il titolo, e il box comincia a `paletteTopY = 2`: il titolo sta
+**sopra** il box, non accanto. La formula misurava quindi lo sforamento del
+titolo — cioè il difetto di §2.1 — e lo attribuiva al compositore.
 
-Il box è **centrato**, quindi da 60 colonne in su non resta esposto niente. E le
-16 colonne a larghezza 40 sono dell'**intestazione**, non della tabella: la riga
-esposta più larga è il titolo. Quindi §2.1 è la causa della maggior parte del
-sintomo di §2.2, ed è per questo che va fatto prima.
+Misurato di nuovo, distinguendo le due quantità, iterando solo sulle righe che
+il box copre davvero (`y .. y+len(boxLines)-1`, cioè 2..13):
 
-**L'attenuazione del fondo è invisibile a questa suite.** Misurato: ristilare il
-segmento esposto con `th.Help` produce output **byte-identico** a oggi sotto
-`termenv.Ascii`, che `TestMain` fissa per tutto il package — sia avvolgendo il
-segmento sia strippandolo prima. Nessun golden potrebbe distinguerla. È la
-trappola della #141, dove la prova ha dovuto essere un grep.
+| terminale | box | riga più larga del body | la vecchia formula diceva | esposto **accanto al box** |
+|---|---|---|---|---|
+| 40 | 36 @ x=2 | riga 0, 54 col | 16 | **1** |
+| 50 | 46 @ x=2 | riga 0, 54 col | 6 | **0** |
+| 60 | 52 @ x=4 | riga 0, 54 col | 0 | **0** |
+| 80 | 52 @ x=14 | riga 0, 54 col | 0 | **0** |
+| 120 | 52 @ x=34 | riga 0, 54 col | 0 | **0** |
+
+La riga coperta più larga è sempre la **7**, la tabella a 39 colonne, a ogni
+larghezza. Da cui tre conseguenze:
+
+- **L'esposizione accanto al box è una colonna sola, e solo a larghezza 40.** È
+  il bordo destro della tabella, contenuto legittimo dentro il terminale.
+- **Il clamp dell'intestazione non la cambia**, perché la riga coperta più larga
+  è la tabella e non il titolo. La dipendenza §3.3 → §3.2 che la prima versione
+  dichiarava era un artefatto della formula sbagliata.
+- **La vecchia formula sbagliava anche a 50 colonne**, dove diceva 6: quella
+  larghezza non era nello sweep originale, che saltava da 40 a 60.
+
+**Sull'attenuazione, una seconda correzione.** La prima versione diceva che
+attenuare il fondo è «invisibile a questa suite» perché sotto `termenv.Ascii`
+l'output è byte-identico. La premessa è vera per i **golden**, ma la conclusione
+no: `TestCompositeDoesNotLeakStyleIntoTheBox`
+(`internal/tui/overlay_test.go:95`) costruisce un renderer proprio con un
+profilo colore reale e asserisce sui byte — il suo stesso commento dice che è
+«the one failure mode a golden can never see». Con quella tecnica
+l'attenuazione **sarebbe** verificabile. Resta tagliata, ma per la ragione
+giusta: vedi §3.3.
 
 ### 2.3 L'allineamento del budget (#144)
 
@@ -110,25 +129,55 @@ In `reportModel.view`, il testo del titolo viene troncato con `truncateWidth`
 `truncateWidth(s, 0)` ritorna `""` e cancellerebbe l'intestazione. È lo stesso
 fallback che `reportItemWidth` e `budgetLayout` hanno già.
 
-### 3.3 La colonna residua accanto al box (#143, prima metà)
+### 3.3 Il compositore non si tocca (#143, prima metà)
 
-**Da decidere dopo §3.2, con i numeri nuovi.** Fatto il clamp
-dell'intestazione, la riga più larga del body diventa la tabella e l'esposizione
-attesa scende da 16 colonne a una. Il task rimisura e riporta; se resta una
-colonna sola, il ritaglio è una riga di codice con un golden che lo prova, e va
-fatto. Se resta di più, il task si ferma e riporta invece di decidere.
+**Chiuso senza modifiche al codice, e questa volta contro una misura.** Tre
+ragioni, in ordine di peso.
 
-Il ritaglio è sicuro in principio: l'unica cosa mai esposta è contenuto che già
-sfonda il terminale. Ma va deciso contro una misura, non contro un'aspettativa.
+**Non c'è un difetto da correggere.** L'esposizione accanto al box è **una
+colonna** a larghezza 40 e **zero** a ogni altra larghezza (§2.2). Quella colonna
+è il bordo destro della tabella del report, contenuto legittimo che sta dentro il
+terminale. Le sedici colonne che sembravano un problema del compositore erano lo
+sforamento del titolo, cioè §3.2.
+
+**Il ritaglio violerebbe un contratto documentato.** `overlay.go:11-13` dice che
+«cells of body outside the box's rectangle survive verbatim — that layering is
+the whole point of #59», e tre test lo inchiodano:
+`TestCompositeSplicesTheBoxIntoTheBody` pretende il segmento destro,
+`TestCompositeKeepsEveryLineWidth` e
+`TestCompositeHandlesWideGlyphsOnBothEdges` pretendono righe piene col box in
+mezzo. Un ritaglio incondizionato al bordo destro del box li fa fallire tutti e
+tre: non è una riga di codice, è un cambio di contratto.
+
+**E la giustificazione di sicurezza che avevo scritto era falsa.** Dicevo che
+«l'unica cosa mai esposta è contenuto che già sfonda il terminale». Dopo §3.2
+niente sfonda più il terminale, e su un terminale largo con un report largo il
+body sta legittimamente fra il bordo del box e il bordo dello schermo: il
+ritaglio cancellerebbe proprio l'effetto di profondità che il contratto difende.
+
+**L'attenuazione** resta tagliata perché non risolve niente — non c'è un difetto
+da attenuare — non perché non sia verificabile: come dice §2.2, lo sarebbe con
+la tecnica di `TestCompositeDoesNotLeakStyleIntoTheBox`.
+
+Resta un lavoro, e non è codice: aggiungere un test che **inchioda** l'unica
+colonna esposta a larghezza 40 come comportamento voluto, così che chi la vedrà
+nel golden trovi scritto perché c'è. E chiudere la prima metà della #143 con la
+misura.
 
 ## 4. Fuori scope (dichiarato)
 
 - Il padding delle **cifre** del budget (§3.1): sgranate a destra, dove il box
-  riempie comunque.
+  riempie comunque. **Conseguenza per i test:** un test che cerchi la colonna
+  delle cifre dovrà ancorarsi a qualcosa che non dipende dalla larghezza del
+  campo Billed, o usare una fixture in cui i Billed hanno la stessa larghezza —
+  altrimenti asserisce un allineamento che questa spec ha deciso di non dare.
 - L'overflow di `summary` e della nota billable con contenuti molto lunghi
-  (§2.1): reale ma non in queste issue.
-- L'**attenuazione** del fondo (§2.2): non implementabile in modo verificabile
-  da questa suite.
+  (§2.1): reale ma non in queste issue. Misurato che nelle fixture usate dai
+  test non sforano (37 e 38 colonne a larghezza 40), quindi il fuori-scope non
+  rompe un test dentro lo scope.
+- Il **ritaglio** e l'**attenuazione** del fondo esposto (§3.3): non c'è un
+  difetto da correggere, e il ritaglio violerebbe il contratto di layering
+  della #59.
 
 ## 5. Test
 
