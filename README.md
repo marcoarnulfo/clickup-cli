@@ -222,7 +222,7 @@ date range — they only narrow what is already loaded. When the date range chan
 filter selections automatically adjust to the new entries: any selected value that no
 longer occurs is dropped, so the report never gets stuck empty because of a stale
 filter. The screen scrolls vertically when there are many lists, tags or statuses,
-so you can navigate to any value even on narrow terminals. Available commands:
+so you can navigate to any value even on short terminals. Available commands:
 
 - `Tab` / `Shift+Tab`: switch section
 - `↑` / `↓` (also `k` / `j`): move within the section

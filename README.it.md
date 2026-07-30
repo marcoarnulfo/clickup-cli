@@ -233,7 +233,7 @@ restringono solo ciò che è già stato caricato. Quando il periodo cambia, le s
 dei filtri si adattano automaticamente alle nuove voci: ogni valore selezionato che
 non compare più viene scartato, così il report non resta mai bloccato vuoto per un
 filtro ormai obsoleto. La schermata scorre verticalmente quando ci sono molte liste,
-tag o status, così puoi navigare a qualsiasi valore anche su terminali stretti.
+tag o status, così puoi navigare a qualsiasi valore anche su terminali con poche righe.
 Comandi disponibili:
 
 - `Tab` / `Shift+Tab`: cambia sezione

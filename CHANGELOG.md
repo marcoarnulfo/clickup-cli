@@ -27,23 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Removed the duplicate 'Total' grouping header that appeared in the report below
-  the main Total row (#137).
-- Budget burn-down view now adapts its layout to terminal width: the list name
-  column shrinks to fit available space, and the "remaining" label is hidden on
-  narrow terminals; percentage labels now round down consistently with the
-  displayed progress bar (#136).
+- Removed the duplicate "Total" data row that appeared directly above the TOTAL row
+  when the report is grouped as a single total (#137).
+- Budget burn-down view now sizes its list-name column to the available width
+  instead of a fixed 24 columns, and drops the "(remaining …)" figure when that
+  column would otherwise fall below a readable minimum; percentage labels now
+  round down consistently with the displayed progress bar (#136).
 - Text truncation and column width measurement now use display columns (accounting
   for emoji and CJK character width) instead of Unicode rune count, preventing text
   overflow in list and task names (#135).
-- Report table Hours and Billed columns now size based on content instead of
-  reserving fixed space (#138).
+- Fixed the report table rendering wider than the terminal when Hours or Billed
+  totals needed more than 8 characters (e.g. large hour totals); the table now
+  always fits the terminal width (#138).
 - Relative date presets (like "last 7 days") now lock to the time the range was
   loaded, preventing automatic re-labeling when rebuilding after midnight (#28).
 - Filters screen now scrolls vertically to accommodate large lists of lists, tags
   and statuses (#28).
-- Task tags are now parsed correctly regardless of which API format ClickUp returns
-  (#28).
+- Task and entry tags are now parsed correctly whether ClickUp returns them as tag
+  objects or as plain strings — the two documented shapes (#28).
 
 ## [1.9.0] - 2026-07-28
 
