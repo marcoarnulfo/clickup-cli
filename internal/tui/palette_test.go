@@ -422,7 +422,7 @@ func TestPaletteHighlightUsesTheAccentStyle(t *testing.T) {
 //
 // The query is chosen so its match lands EXACTLY on the ellipsis column, not
 // merely "somewhere past the cut": "t" is label's 20th rune (index 19), and
-// shaveToWidth(label, 20) replaces that very column with "…". That is the only
+// truncateWidth(label, 20) replaces that very column with "…". That is the only
 // boundary this test can actually observe. An index further out (the original
 // version of this test used "z9", matching at columns 25 and 35) is never even
 // read: the render loop below only walks the truncated string's own 20 runes,
@@ -438,10 +438,10 @@ func TestPaletteHighlightSurvivesTruncation(t *testing.T) {
 		t.Fatal(`Match("t", label) did not match`)
 	}
 	if want := []int{19}; !slices.Equal(idx, want) {
-		t.Fatalf("idx = %v, want %v — this test needs the match to land exactly on the ellipsis column shaveToWidth(label, 20) produces", idx, want)
+		t.Fatalf("idx = %v, want %v — this test needs the match to land exactly on the ellipsis column truncateWidth(label, 20) produces", idx, want)
 	}
 
-	short := shaveToWidth(label, 20)
+	short := truncateWidth(label, 20)
 	got := highlight(th, short, idx)
 	if w := lipgloss.Width(got); w != 20 {
 		t.Errorf("highlighted label is %d cells, want 20: %q", w, got)

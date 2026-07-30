@@ -121,3 +121,19 @@ func TestTruncateWidthDoesNotCloseAnOpenStyle(t *testing.T) {
 		t.Errorf("truncateWidth of an unterminated style = %q, want %q", got, want)
 	}
 }
+
+// The rates list, the entries browser and the budget screen all pair a cut with
+// a fixed-width column. With a wide-rune list name the row used to render wider
+// than its own column, which is what pushed those screens past the terminal
+// edge. The fixture is deliberately CJK: an ASCII name passes against the bug.
+func TestFixedWidthRowsHoldTheirColumnWithWideRunes(t *testing.T) {
+	const wide = "日本語のリストの名前がとても長い場合"
+	if lipgloss.Width(wide) == len([]rune(wide)) {
+		t.Fatalf("fixture is not wide: %d runes, %d columns", len([]rune(wide)), lipgloss.Width(wide))
+	}
+	for _, cols := range []int{20, 24, 30} {
+		if w := lipgloss.Width(cell(wide, cols)); w != cols {
+			t.Errorf("cell(wide, %d) rendered %d columns, want %d", cols, w, cols)
+		}
+	}
+}

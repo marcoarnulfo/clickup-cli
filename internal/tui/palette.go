@@ -211,12 +211,12 @@ func (p paletteModel) box(th theme, boxW, rows int) string {
 	b.WriteString(th.Border.Render("╭─ ") + th.Accent.Render(paletteTitle) +
 		th.Border.Render(" "+strings.Repeat("─", dashes)+"╮") + "\n")
 
-	q := shaveToWidth("> "+p.query, innerW)
+	q := truncateWidth("> "+p.query, innerW)
 	b.WriteString(paletteLine(th, th.Cell.Render(q), innerW-lipgloss.Width(q)))
 	b.WriteString(th.Border.Render("├"+strings.Repeat("─", boxW-2)+"┤") + "\n")
 
 	if len(p.items) == 0 {
-		msg := shaveToWidth("no matching action", innerW)
+		msg := truncateWidth("no matching action", innerW)
 		b.WriteString(paletteLine(th, th.Help.Render(msg), innerW-lipgloss.Width(msg)))
 	}
 	for i := p.top; i < len(p.items) && i < p.top+rows; i++ {
@@ -250,7 +250,7 @@ func paletteRow(th theme, it paletteItem, selected bool, innerW int) string {
 	if hintW > 0 {
 		labelW -= 2 // two spaces between the label and the key
 	}
-	label := shaveToWidth(it.a.label, max(labelW, 1))
+	label := truncateWidth(it.a.label, max(labelW, 1))
 	gap := innerW - 2 - lipgloss.Width(label) - hintW
 
 	out := style.Render(cursor) + highlight(th, label, it.idx)

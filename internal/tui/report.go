@@ -259,24 +259,3 @@ func (rm reportModel) sparkView(th theme, width int) string {
 	label, chart := raw[:cut], raw[cut:]
 	return th.Help.Render(label) + th.Accent.Render(chart)
 }
-
-// truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
-// in task names with accents or emoji. An empty s always yields "", whatever
-// n is: there is nothing to truncate, so there is nothing to mark as cut.
-// Otherwise n <= 1 always yields "…": r[:n-1] would otherwise index
-// negatively (a panic) for n <= 0, and the whole package now relies on that
-// guard rather than on each call site keeping n >= some floor itself (see
-// report_table.go's shaveToWidth for why that matters).
-func truncate(s string, n int) string {
-	if s == "" {
-		return ""
-	}
-	if n <= 1 {
-		return "…"
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
-}

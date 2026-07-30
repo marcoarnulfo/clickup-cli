@@ -580,7 +580,7 @@ func (m Model) entriesView(th theme) string {
 	if es.mode == entriesConfirmDelete && len(es.entries) > 0 {
 		e := es.entries[es.idx]
 		return th.Title.Render("Delete entry") + "\n\n" +
-			"Delete " + th.Accent.Render(truncate(e.TaskName, 40)) + " (" +
+			"Delete " + th.Accent.Render(truncateWidth(e.TaskName, 40)) + " (" +
 			duration.FormatHours(e.Duration) + ")?"
 	}
 	if es.mode == entriesEdit {
@@ -590,7 +590,7 @@ func (m Model) entriesView(th theme) string {
 		return entriesHistoryView(th, es, m.loc)
 	}
 	if es.mode == entriesTags {
-		b := th.Title.Render("Tags") + "  " + th.Accent.Render(truncate(tagPickerTaskName(es), 40)) + "\n\n"
+		b := th.Title.Render("Tags") + "  " + th.Accent.Render(truncateWidth(tagPickerTaskName(es), 40)) + "\n\n"
 		if es.tagLoading {
 			b += th.Help.Render("Loading tags…") + "\n"
 			return b
@@ -639,13 +639,13 @@ func (m Model) entriesView(th theme) string {
 			bill = "$"
 		}
 		owner := "(" + ownerLabel(e, m.userID) + ")"
-		line := fmt.Sprintf("%s  %-24s %6s %s  %s",
-			when, truncate(e.TaskName, 24), duration.FormatHours(e.Duration), bill, owner)
+		line := fmt.Sprintf("%s  %s %6s %s  %s",
+			when, cell(e.TaskName, 24), duration.FormatHours(e.Duration), bill, owner)
 		if !canEdit(e, m.userID) {
 			line += " — read-only"
 		}
 		if len(e.EntryTags) > 0 {
-			line += "  " + truncate(tagBadges(e.EntryTags), 20)
+			line += "  " + truncateWidth(tagBadges(e.EntryTags), 20)
 		}
 		if i == es.idx {
 			line = th.Accent.Render(line)

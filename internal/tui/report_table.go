@@ -138,8 +138,11 @@ func reportItemWidth(rows [][]string, width int) int {
 // width <= 0 is the first render, before the terminal has sent its
 // WindowSizeMsg: nothing is sized against it yet, so Amount stays at its
 // natural width, same as Item. Otherwise this never stretches Amount past
-// what the content needs, only ever shrinks it — down to 1, never lower:
-// truncate's own guard (n <= 1) is what makes that safe, not a floor here.
+// what the content needs, only ever shrinks it — down to 1, never lower: 1 is
+// the floor because truncateWidth(s, 1) still cuts to a real, one-column
+// value, while truncateWidth(s, 0) collapses to "" and would leave Amount
+// with no column at all. That floor is enforced by max(1, ...) below, not by
+// any guard inside truncateWidth itself.
 func reportAmountWidth(rows [][]string, width, itemW int) int {
 	natural := lipgloss.Width(reportHeaders[3])
 	for _, row := range rows {
@@ -191,7 +194,7 @@ func reportStyleFunc(th theme, firstTotal int) table.StyleFunc {
 //
 // Three lipgloss/table defaults are wrong for this grid and are all turned
 // off: BorderColumn draws separators between columns, Wrap sends a long label
-// onto a second line instead of letting truncate cut it, and the zero
+// onto a second line instead of letting truncateWidth cut it, and the zero
 // BorderStyle renders the frame through the default renderer.
 //
 // Sizing is implicit and Table.Width is deliberately NOT called. With
@@ -206,8 +209,8 @@ func reportTable(th theme, r report.Report, width int) string {
 	itemW := reportItemWidth(rows, width)
 	amountW := reportAmountWidth(rows, width, itemW)
 	for i := range rows {
-		rows[i][0] = shaveToWidth(rows[i][0], itemW)
-		rows[i][3] = shaveToWidth(rows[i][3], amountW)
+		rows[i][0] = truncateWidth(rows[i][0], itemW)
+		rows[i][3] = truncateWidth(rows[i][3], amountW)
 	}
 	return table.New().
 		Border(lipgloss.RoundedBorder()).
@@ -219,41 +222,4 @@ func reportTable(th theme, r report.Report, width int) string {
 		Rows(rows...).
 		StyleFunc(reportStyleFunc(th, firstTotal)).
 		String()
-}
-
-// shaveToWidth truncates s until it renders at no more than w display
-// columns. truncate cuts by RUNE count (it never breaks a multi-byte UTF-8
-// character), but the widths this file computes (reportItemWidth,
-// reportAmountWidth) and lipgloss/table's own resizer all measure in DISPLAY
-// columns (lipgloss.Width). The two agree for ASCII but not for double-width
-// runes (CJK, emoji) or a multi-currency Amount like "12345.00 EUR + 6789.00
-// USD + 4321.00 GBP": a value truncated to w runes can still render at up to
-// 2w columns, which is exactly the "table wider than the terminal" bug this
-// whole file exists to prevent. Bucket labels are ClickUp list/task names and
-// a wide workspace can carry any number of currencies, so both are reachable,
-// not theoretical. Shave one more rune at a time until the rendered width
-// actually fits.
-//
-// Safe for w >= 1, without the caller keeping its own floor: truncate itself
-// guards n <= 1. reportItemWidth's own floor (reportMinItemWidth, itself
-// bounded below by "Item"'s own width) keeps its w at 4 or above, so the loop
-// never gets near that guard for the Item column; reportAmountWidth has no
-// equivalent floor and can legitimately hand back 1 — exactly the case the
-// guard exists for.
-//
-// w <= 0 is NOT safe and the caller must not pass it: truncate(s, 0) (like
-// truncate(s, 1)) returns "…", which is 1 column wide, so "> w" stays true
-// forever and the loop never returns. Both of today's callers keep w at 1 or
-// above (see above), so this is unreached, not merely untested — the guard
-// below exists so a future caller that breaks that invariant gets an empty
-// string back instead of a hang with no diagnosis.
-func shaveToWidth(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	s = truncate(s, w)
-	for lipgloss.Width(s) > w {
-		s = truncate(s, len([]rune(s))-1)
-	}
-	return s
 }

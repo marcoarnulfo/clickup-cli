@@ -71,8 +71,8 @@ func (bm budgetModel) view(th theme) string {
 	}
 	var rows strings.Builder
 	for _, l := range bm.lines {
-		rows.WriteString(fmt.Sprintf("%-24s %s  %.2f / %.2f %s (remaining %.2f)\n",
-			truncate(l.ListName, 24), renderBudgetBar(th, l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
+		rows.WriteString(fmt.Sprintf("%s %s  %.2f / %.2f %s (remaining %.2f)\n",
+			cell(l.ListName, 24), renderBudgetBar(th, l.PercentUsed), l.Billed, l.Budget, l.Currency, l.Remaining))
 	}
 	body := th.Box.Render(strings.TrimRight(rows.String(), "\n"))
 	return title + "\n\n" + body

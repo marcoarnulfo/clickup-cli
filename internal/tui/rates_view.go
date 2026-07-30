@@ -39,6 +39,10 @@ func billingRow(th theme, sel bool, line string) string {
 }
 
 func (rt ratesModel) listsView(th theme) string {
+	// Header labels are ASCII literals and the Cur column below is an ISO
+	// currency code, both places where runes and columns coincide by
+	// construction, so the %-Ns verbs stay aligned with cell(...,24), which
+	// pads the List column of the data rows to that same exact width.
 	b := th.Help.Render(fmt.Sprintf("  %-24s %10s %-5s %10s  %s", "List", "Rate", "Cur", "Budget", "Source")) + "\n"
 	if len(rt.rows) == 0 {
 		return b + th.Help.Render("  No lists in the current report — press 'b' to browse the workspace.") + "\n"
@@ -49,12 +53,12 @@ func (rt ratesModel) listsView(th theme) string {
 			rate, tag = v, "list rate"
 		}
 		bud, hasBud := rt.budgets[r.listID]
-		line := fmt.Sprintf("%-24s %10.2f %-5s %10s  %s",
-			truncate(r.name, 24), rate, rt.effectiveCurrency(r.listID), moneyOrDash(bud, hasBud), tag)
+		line := fmt.Sprintf("%s %10.2f %-5s %10s  %s",
+			cell(r.name, 24), rate, rt.effectiveCurrency(r.listID), moneyOrDash(bud, hasBud), tag)
 		b += billingRow(th, i == rt.sel[secLists], line)
 	}
 	sel := rt.rows[rt.sel[secLists]]
-	note := fmt.Sprintf("Effective for %s: %.2f %s", truncate(sel.name, 24), rt.rateFor(sel.listID), rt.effectiveCurrency(sel.listID))
+	note := fmt.Sprintf("Effective for %s: %.2f %s", truncateWidth(sel.name, 24), rt.rateFor(sel.listID), rt.effectiveCurrency(sel.listID))
 	if n := rt.pairsForList(sel.listID); n > 0 {
 		note += fmt.Sprintf(" · %d (list,member) override(s) take precedence here", n)
 	} else if len(rt.memberRates) > 0 {
@@ -64,6 +68,8 @@ func (rt ratesModel) listsView(th theme) string {
 }
 
 func (rt ratesModel) membersView(th theme) string {
+	// "Member" is an ASCII literal, where runes and columns coincide by
+	// construction, so %-30s stays aligned with cell(...,30) in the data rows.
 	b := th.Help.Render(fmt.Sprintf("  %-30s %10s  %s", "Member", "Rate", "Source")) + "\n"
 	if len(rt.members) == 0 {
 		return b + th.Help.Render("  No members in the current report — run a team-scope report first.") + "\n"
@@ -73,24 +79,27 @@ func (rt ratesModel) membersView(th theme) string {
 		if v, ok := rt.memberRates[mr.id]; ok {
 			rate, tag = v, "member rate"
 		}
-		line := fmt.Sprintf("%-30s %10.2f  %s", truncate(fmt.Sprintf("%s (%d)", mr.name, mr.id), 30), rate, tag)
+		line := fmt.Sprintf("%s %10.2f  %s", cell(fmt.Sprintf("%s (%d)", mr.name, mr.id), 30), rate, tag)
 		b += billingRow(th, i == rt.sel[secMembers], line)
 	}
 	sel := rt.members[rt.sel[secMembers]]
 	note := "A member rate wins over any per-list rate, on every list."
 	if n := rt.listsForMember(sel.id); n > 0 {
-		note = fmt.Sprintf("%s is overridden on %d list(s) by a (list,member) rate.", truncate(sel.name, 24), n)
+		note = fmt.Sprintf("%s is overridden on %d list(s) by a (list,member) rate.", truncateWidth(sel.name, 24), n)
 	}
 	return b + "\n" + th.Help.Render(note) + "\n"
 }
 
 func (rt ratesModel) overridesView(th theme) string {
+	// "List" and "Member" are ASCII literals, where runes and columns coincide
+	// by construction, so %-20s and %-22s stay aligned with the cell(...,20)
+	// and cell(...,22) data rows below.
 	b := th.Help.Render(fmt.Sprintf("  %-20s %-22s %10s  %s", "List", "Member", "Rate", "Instead of")) + "\n"
 	for i, o := range rt.overrides {
 		below, src := rt.rateBelowPair(o.listID, o.member)
-		line := fmt.Sprintf("%-20s %-22s %10.2f  %.2f (%s)",
-			truncate(rt.listName(o.listID), 20),
-			truncate(fmt.Sprintf("%s (%d)", rt.memberName(o.member), o.member), 22),
+		line := fmt.Sprintf("%s %s %10.2f  %.2f (%s)",
+			cell(rt.listName(o.listID), 20),
+			cell(fmt.Sprintf("%s (%d)", rt.memberName(o.member), o.member), 22),
 			o.rate, below, src)
 		b += billingRow(th, i == rt.sel[secOverrides], line)
 	}
@@ -140,13 +149,13 @@ func (rt ratesModel) draftView(th theme) string {
 	if rt.draft.step == draftPickList {
 		b := th.Help.Render("New override — choose the list:") + "\n"
 		for i, r := range rt.rows {
-			b += billingRow(th, i == rt.draft.idx, truncate(r.name, 40))
+			b += billingRow(th, i == rt.draft.idx, truncateWidth(r.name, 40))
 		}
 		return b
 	}
-	b := th.Help.Render(fmt.Sprintf("New override on %s — choose the member:", truncate(rt.listName(rt.draft.listID), 24))) + "\n"
+	b := th.Help.Render(fmt.Sprintf("New override on %s — choose the member:", truncateWidth(rt.listName(rt.draft.listID), 24))) + "\n"
 	for i, mr := range rt.members {
-		b += billingRow(th, i == rt.draft.idx, truncate(fmt.Sprintf("%s (%d)", mr.name, mr.id), 40))
+		b += billingRow(th, i == rt.draft.idx, truncateWidth(fmt.Sprintf("%s (%d)", mr.name, mr.id), 40))
 	}
 	return b
 }
