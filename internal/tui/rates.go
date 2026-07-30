@@ -844,17 +844,9 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 	if g == "" {
 		g = report.GroupByTotal
 	}
-	if _, ok := m.locOrErr(); !ok {
+	if !m.rebuildReport(g) {
 		return m, nil
 	}
-	p, ok := m.pricingOrErr()
-	if !ok {
-		return m, nil
-	}
-	start, end := m.activeRange()
-	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
-	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	m = m.pop()
 	return m, nil
 }

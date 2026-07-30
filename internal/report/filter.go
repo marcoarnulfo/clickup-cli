@@ -37,10 +37,10 @@ func countTrue(m map[string]bool) int {
 // at least one of its tags is selected, its status is selected, and (when
 // Billable is set) its Billable value matches.
 func Filter(entries []TimeEntry, c FilterCriteria) []TimeEntry {
-	if c.Empty() {
+	nL, nT, nS := countTrue(c.Lists), countTrue(c.Tags), countTrue(c.Statuses)
+	if nL+nT+nS == 0 && c.Billable == nil {
 		return entries
 	}
-	nL, nT, nS := countTrue(c.Lists), countTrue(c.Tags), countTrue(c.Statuses)
 	out := make([]TimeEntry, 0, len(entries))
 	for _, e := range entries {
 		if nL > 0 && !c.Lists[e.ListName] {

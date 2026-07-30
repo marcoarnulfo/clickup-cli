@@ -75,15 +75,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.pop()
 	case key.Matches(msg, k.GroupBy):
 		g := nextGroupBy(m.report.GroupBy, m.scope)
-		if _, ok := m.locOrErr(); !ok {
-			return m, nil
-		}
-		start, end := m.activeRange()
-		if p, ok := m.pricingOrErr(); ok {
-			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
-			m.report.Scope = m.scope
-			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
-		}
+		m.rebuildReport(g)
 	case key.Matches(msg, k.ChangeRange):
 		m = m.pop()
 	case key.Matches(msg, k.Reload):
@@ -165,6 +157,27 @@ func listNamesFromBuckets(buckets []report.Bucket) map[string]string {
 	return out
 }
 
+// rebuildReport rebuilds m.report and m.rep for the given grouping, over the
+// visible entries and the pinned range. It returns false when the timezone or
+// the pricing rules failed to parse, in which case the caller must not overwrite
+// the error screen those helpers already routed to. It is the single rebuild
+// used by applyReport, by the entries handler and by the grouping and rates
+// changes, which each carried their own copy.
+func (m *Model) rebuildReport(groupBy string) bool {
+	if _, ok := m.locOrErr(); !ok {
+		return false
+	}
+	p, ok := m.pricingOrErr()
+	if !ok {
+		return false
+	}
+	start, end := m.activeRange()
+	m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
+	m.report.Scope = m.scope
+	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
+	return true
+}
+
 // applyReport rebuilds m.report from the visible entries over the loaded
 // range (m.activeRange, #28), keeping the active grouping. It returns false
 // when the config's pricing rules failed to parse, in which case
@@ -175,18 +188,7 @@ func (m *Model) applyReport() bool {
 	if g == "" {
 		g = report.GroupByTotal
 	}
-	if _, ok := m.locOrErr(); !ok {
-		return false
-	}
-	p, ok := m.pricingOrErr()
-	if !ok {
-		return false
-	}
-	start, end := m.activeRange()
-	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
-	m.report.Scope = m.scope
-	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
-	return true
+	return m.rebuildReport(g)
 }
 
 // hoursOf renders hours the same way export.SummaryLine does, via

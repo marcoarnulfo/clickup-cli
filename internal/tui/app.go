@@ -723,8 +723,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entriesMsg:
 		m.entries = msg.entries
 		// Pin BEFORE rebuilding: activeRange (and every rebuild reached through
-		// it) must see the range this load actually resolved, not one
-		// recomputed after the fact (#28).
+		// it, including rebuildReport below) must see the range this load
+		// actually resolved, not one recomputed after the fact (#28).
 		m.loadedStart, m.loadedEnd = msg.start, msg.end
 		m.assignStatuses() // re-stamp session-cached statuses onto the freshly loaded entries
 		m.pruneFilters()   // drop filter selections whose value no longer occurs in the new entries
@@ -736,20 +736,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
-		if _, ok := m.locOrErr(); !ok {
+		if !m.rebuildReport(groupBy) {
 			return m, nil
 		}
-		p, ok := m.pricingOrErr()
-		if !ok {
-			return m, nil
-		}
-		// msg.start/msg.end directly, not activeRange(): this IS the load that
-		// just pinned them, so re-deriving would be redundant, and using
-		// activeRange() here would fall back to currentRange() whenever a
-		// caller-built msg leaves start/end zero.
-		m.report = report.Build(m.visibleEntries(), groupBy, p, msg.start, msg.end, m.loc)
-		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 		// Report is reached three ways (Home enter, Report's own reload, and
 		// the logDone reload) and all three arrive here: re-rooting rather
 		// than replacing makes every arrival converge on nav == [Home], which
