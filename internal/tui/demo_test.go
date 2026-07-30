@@ -305,3 +305,26 @@ func demoJuly2026() (time.Time, time.Time) {
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	return start, start.AddDate(0, 1, 0)
 }
+
+// Demo mode used to be near-empty for the non-month presets because the
+// fixtures lived on fixed month days; #4 made them day offsets wrapped modulo
+// the range span. This pins that, so the presets stay demoable (#28). It is a
+// regression-guard on a box that is ALREADY closed: it must pass on the first
+// run, and a failure means #4's wrapping regressed.
+func TestDemoEntriesPopulateEveryPreset(t *testing.T) {
+	now := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
+	for _, preset := range []string{report.PresetThisMonth, report.PresetLast7d, report.PresetLast30d, report.PresetThisWeek} {
+		t.Run(preset, func(t *testing.T) {
+			start, end := report.RangeForPreset(preset, 2026, time.July, now, time.UTC)
+			entries := demoEntries(start, end)
+			if len(entries) != 8 {
+				t.Errorf("got %d entries, want all 8 fixtures inside the range", len(entries))
+			}
+			for _, e := range entries {
+				if e.Start.Before(start) || !e.Start.Before(end) {
+					t.Errorf("entry %s at %v falls outside [%v, %v)", e.ID, e.Start, start, end)
+				}
+			}
+		})
+	}
+}
