@@ -59,7 +59,8 @@ Tutto misurato, niente dedotto:
 | #137 | `Total` duplica `TOTAL` | **Vero.** Fixture: `demoEntries` su luglio 2026, `Rates{Default:50}`, `Currencies{mobile:USD}`, `DefaultCurrency:EUR`, `GroupByTotal` → riga bucket `["Total" "18.00" "17.00" "337.50 EUR + 512.50 USD"]` e riga totali `["TOTAL" "18.00" "17.00" ""]`. (La issue cita `308.75 + 90.00`: altra fixture, stesso difetto.) |
 | #138.1 | 84 colonne in un terminale da 80 | **Vero, ma serve la congiunzione**: label lunga **e** Hours/Billed più larghi di 8. Fixture `{label 46 col, 1234567.50, 1234567.50, "625.00 EUR"}` → 64 col a width 60, 84 a width 80. Con la stessa label e `12.50` non sfora mai (55 col a width 60). Overflow esatto = 2 × (larghezza numerica − 8). |
 | #138.1 | «5 colonne inutilizzate a width 60» | **La issue aveva ragione per il suo caso, la mia bozza aveva torto.** Con label lunghe e cifre normali (il caso dei golden `report`/`report_narrow`) l'inutilizzato è 5. Con label corte è 21+, perché Item è tappato dalla label più lunga e la tabella non si allarga mai. Dipende dalla fixture, e va detto così. |
-| #138.1 | (corollario) | «con label corte non sfora mai» è **falso**: label corta + Hours/Billed a 10 caratteri → 47 colonne in un terminale da 40. |
+| #138.1 | (corollario) | «con label corte non sfora mai» è **falso**, ma il numero va misurato **rendendo**, non calcolando: label corta + Hours/Billed a 10 caratteri rende **44** colonne a width 40 (a mano ne avevo dedotte 47, dimenticando che `reportAmountWidth` riprende spazio ad Amount come ultima risorsa; 47 è la larghezza *naturale*, che si ottiene a ogni width ≥ 48). |
+| #138.1 | (limite del fix) | Dopo il fix la tabella **non può** stare in 40 colonne con cifre a 10: il minimo è `chrome(10) + floor Item + 10 + 10 + header Amount(6)` = **48** con label lunghe e **43** con label corte. Misurato rendendo. Un test che pretende ≤ 40 fallisce contro il codice corretto. |
 
 ### 2.4 Il resto della #28
 
@@ -117,6 +118,12 @@ comunque, solo nell'altra direzione.
 Conseguenze: la `truncate` rune-based **si elimina**, e con lei la
 `shaveToWidth` di `report_table.go`, che è una shave-loop che fa a mano ciò che
 `ansi.Truncate` fa in un passo.
+
+`shaveToWidth` ha **5 chiamanti**, non 2: `report_table.go:209,210` e — questo
+è il punto che si perde facilmente — `palette.go:214,219,253`. Eliminarla senza
+migrare anche il palette non compila. Anche `report.go:269`,
+`report_table.go:142` e `report_table.go:195` la citano nei commenti e vanno
+aggiornati, altrimenti restano a nominare funzioni che non esistono più.
 
 **Divergenza voluta da `truncate`, a `cols == 1`:** `truncate("x", 1)` = `"…"`,
 perché la guardia `n <= 1` scatta prima del controllo "ci sta"
@@ -180,7 +187,11 @@ Per `GroupByTotal` il bucket unico raccoglie tutte le entry, quindi i suoi
 Amounts sono **esattamente** i subtotali: sopprimerlo non perde nulla, nemmeno
 il caveat sul drift di arrotondamento che vale alle granularità fini.
 
-Golden nuovo per la forma a valuta singola **e** per quella multi-valuta.
+**Nessun golden esistente si muove**: tutti i golden del report girano su
+`goldenReport()`, che è `GroupByList`, e in `testdata/` non esiste una riga
+bucket `Total`. Vanno quindi **creati** due golden nuovi sotto `GroupByTotal`,
+uno a valuta singola e uno multi-valuta. Un piano che si aspetta un golden
+rosso qui sta descrivendo qualcosa che non c'è.
 
 ### 4.5 Il budget in 80 colonne (#136)
 
@@ -205,10 +216,17 @@ lasciata all'implementatore:
    ricalcola `figuresW` **senza** `(remaining …)` e da lì `nameW`, e non lo
    reintroduce;
 3. se `nameW` resta sotto la soglia anche così, `nameW = budgetMinNameWidth` e
-   **la riga sfora**. Accettato ed esplicito: sotto ~48 colonne nessuna
-   ripartizione salva questa riga, esattamente come la tabella report accetta
-   di sforare sotto la sua soglia. Un `nameW` negativo non deve mai raggiungere
-   `cell` (che comunque ritorna `""`).
+   **la riga sfora**. Accettato ed esplicito, esattamente come la tabella
+   report accetta di sforare sotto la sua soglia. Un `nameW` negativo non deve
+   mai raggiungere `cell` (che comunque ritorna `""`).
+
+La soglia sotto cui si sfora è
+`4 + 1 + budgetBarWidth + 1 + pctW + 2 + figuresW(senza remaining) + 12`, cioè
+**63** con le cifre del golden (`625.00 / 1000.00 EUR`, pct 3) e **65** con
+importi a quattro cifre e una percentuale sopra 100 (pct 4). Misurato
+simulando la funzione. Non è «~48»: quel numero vale per la tabella report
+(`reportAmountWidth`) e applicarlo qui farebbe credere che 60 colonne stiano
+sopra la soglia di degrado, quando invece è la prima larghezza che sfora.
 
 `width <= 0` (primo render, prima del `WindowSizeMsg`) → layout naturale
 attuale, `nameW = 24`, stesso fallback che `reportItemWidth` ha già
@@ -238,8 +256,26 @@ proprio la classe di bug che questa tranche chiude.
 Il test vuole la **congiunzione**: label lunga **e** Hours/Billed più larghi di
 8. Con label lunga e cifre normali la tabella non sfora (55 col a width 60), e
 con label corta nemmeno a width 60 — un test che manca uno dei due fattori
-passa contro il bug. Serve anche il caso label corta + cifre larghe a width 40
-(47 colonne oggi), che è l'altra direzione dell'overflow.
+passa contro il bug.
+
+E deve fermarsi alle larghezze raggiungibili: il minimo post-fix è 48 con label
+lunga e 43 con label corta, quindi asserire `≤ 40` fa fallire il test **contro
+il codice corretto**. Sweep misurato, larghezza resa dal codice attuale:
+
+| width | label lunga + cifre larghe | label corta + cifre larghe |
+|---|---|---|
+| 40 | 48 ✗ | 44 ✗ |
+| 44 | 48 ✗ | 47 ✗ |
+| 48 | 52 ✗ | 47 ✓ |
+| 60 | 64 ✗ | 47 ✓ |
+| 80 | 84 ✗ | 47 ✓ |
+| 100 | 86 ✗ | 47 ✓ |
+
+Quindi: per la label lunga usa **60, 80, 100** (oggi 64, 84, 86 — rosso su
+tutte; post-fix il minimo 48 sta in tutte). Per la label corta usa **44**, la
+larghezza in cui oggi rende 47 e sfora di 3 mentre il minimo post-fix è 43:
+è l'unica finestra in cui quella direzione dell'overflow è sia rossa prima sia
+verde dopo.
 
 Effetto sui golden: cambiano solo dove Item è vincolato dal budget — `report` e
 `report_narrow`; `report_wide`, multi-valuta e `partial_month` restano intatti.
