@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -11,7 +12,10 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
 
-func filtersFixture() Model {
+// filtersScreenFixture is a Model parked on screenFilters with two entries
+// (one billable, one not) so the screen's toggle/apply/discard behavior has
+// something concrete to act on.
+func filtersScreenFixture() Model {
 	entries := []report.TimeEntry{
 		{ListName: "Website", Tags: []string{"frontend"}, Status: "in progress", Billable: true},
 		{ListName: "Mobile", Tags: []string{"backend"}, Status: "done", Billable: false},
@@ -21,8 +25,22 @@ func filtersFixture() Model {
 	return m
 }
 
+// filtersFixture builds entries whose list names produce n Lists options, plus
+// one tag and one status, so the Filters screen has something to scroll.
+func filtersFixture(n int) []report.TimeEntry {
+	entries := make([]report.TimeEntry, 0, n)
+	for i := range n {
+		entries = append(entries, report.TimeEntry{
+			ListName: fmt.Sprintf("List %02d", i),
+			Tags:     []string{"backend"},
+			Status:   "done",
+		})
+	}
+	return entries
+}
+
 func TestFiltersToggleAndApply(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	// section 0 = Lists; toggle first option (row 0)
 	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 	m = u.(Model)
@@ -40,7 +58,7 @@ func TestFiltersToggleAndApply(t *testing.T) {
 // route to screenError instead of switching to screenReport with a stale
 // (unfiltered) report — applyReport's false return must not be papered over.
 func TestFiltersApplyWithBadRoundingRoutesToErrorScreen(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	m.cfg = config.Config{}
 	m.cfg.Billing.Rounding.Increment = "not-a-duration"
 	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
@@ -56,7 +74,7 @@ func TestFiltersApplyWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 }
 
 func TestFiltersTabChangesSection(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
 	m = u.(Model)
 	if m.filtersScreen.sec != 1 {
@@ -65,7 +83,7 @@ func TestFiltersTabChangesSection(t *testing.T) {
 }
 
 func TestFiltersEscDiscards(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
 	m = u.(Model)
 	u, _ = m.updateFilters(tea.KeyMsg{Type: tea.KeyEsc})
@@ -82,7 +100,7 @@ func TestFiltersEscDiscards(t *testing.T) {
 // Non-billable only) built on top of the existing report.FilterCriteria.Billable
 // field — not a private pre-filter (A3, binding).
 func TestFiltersBillableDefaultsToAll(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	sec := m.filtersScreen.sections[3]
 	if sec.title != "Billable" {
 		t.Fatalf("section 3 = %q, want Billable", sec.title)
@@ -93,7 +111,7 @@ func TestFiltersBillableDefaultsToAll(t *testing.T) {
 }
 
 func TestFiltersBillableRestrictsVisibleEntries(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	// Tab to the Billable section (index 3).
 	for i := 0; i < 3; i++ {
 		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
@@ -116,7 +134,7 @@ func TestFiltersBillableRestrictsVisibleEntries(t *testing.T) {
 }
 
 func TestFiltersBillableRadioIsExclusive(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	for i := 0; i < 3; i++ {
 		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
 		m = u.(Model)
@@ -148,7 +166,7 @@ func TestFiltersBillableRadioIsExclusive(t *testing.T) {
 // Billable radio section — applying it would select all three mutually
 // exclusive options at once, breaking the exactly-one-selected invariant.
 func TestFiltersBillableANoOp(t *testing.T) {
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	for i := 0; i < 3; i++ {
 		u, _ := m.updateFilters(tea.KeyMsg{Type: tea.KeyTab})
 		m = u.(Model)
@@ -175,7 +193,7 @@ func TestFiltersBillableANoOp(t *testing.T) {
 // arm never fired — dropped here deliberately, not a regression (#59 Task 3).
 func TestFiltersKeyLabels(t *testing.T) {
 	t.Parallel()
-	m := filtersFixture()
+	m := filtersScreenFixture()
 	want := []string{" ", "?", "a", "ctrl+c", "ctrl+p", "down", "enter", "esc", "j", "k", "q", "shift+tab", "tab", "up"}
 	if got := enabledLabels(keysFor(m)); !slices.Equal(got, want) {
 		t.Errorf("filters labels = %v, want %v", got, want)
@@ -188,5 +206,81 @@ func TestReportFOpensFilters(t *testing.T) {
 	m = u.(Model)
 	if m.screen != screenFilters {
 		t.Errorf("f should open filters, got %v", m.screen)
+	}
+}
+
+// The Filters screen had no window at all: many lists or tags simply ran off the
+// bottom of a short terminal, with no way to reach them (#28).
+func TestFiltersViewNeverExceedsItsRowBudget(t *testing.T) {
+	th := testTheme(true)
+	fs := newFilters(filtersFixture(40), nil, nil, nil, nil)
+	for _, rows := range []int{6, 10, 20} {
+		if got := strings.Count(fs.view(th, rows), "\n") + 1; got > rows {
+			t.Errorf("row budget %d: view rendered %d lines", rows, got)
+		}
+	}
+}
+
+// The window must follow the cursor. Asserting on the rendered cursor is not an
+// option: under termenv.Ascii the active row is byte-identical to the others
+// (th.Accent renders nothing), and "▸" marks the section header, which scrolls
+// out. So assert on the window indices instead — but with the SAME expression
+// production uses (filtersContentRows(filtersRows(m.height)), not a literal
+// -2), or this test would happily pass a cursor that updateFilters actually
+// scrolled off the rendered screen.
+func TestFiltersWindowFollowsTheCursor(t *testing.T) {
+	m := newTestModel()
+	m.filtersScreen = newFilters(filtersFixture(40), nil, nil, nil, nil)
+	m.screen = screenFilters
+	m.height = 12
+	for range 30 { // walk down well past the first window
+		mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = mm.(Model)
+	}
+	fs := m.filtersScreen
+	if fs.row == 0 && fs.sec == 0 {
+		t.Fatal("the cursor never moved: the fixture has no options to walk")
+	}
+	row, rows := filtersCursorRow(fs), filtersContentRows(filtersRows(m.height))
+	if row < fs.top || row >= fs.top+rows {
+		t.Errorf("cursor at visual row %d is outside the rendered window [%d, %d)", row, fs.top, fs.top+rows)
+	}
+}
+
+// scrollWindow is the palette's own scrolling, extracted so both screens share
+// one idiom. Same behavior, now with a name.
+func TestScrollWindow(t *testing.T) {
+	tests := []struct {
+		name                 string
+		idx, top, rows, want int
+	}{
+		{"inside stays", 3, 2, 5, 2},
+		{"above pulls up", 1, 4, 5, 1},
+		{"below pushes down", 9, 2, 5, 5},
+		{"first row", 0, 0, 5, 0},
+		{"zero rows", 7, 3, 0, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := scrollWindow(tc.idx, tc.top, tc.rows); got != tc.want {
+				t.Errorf("scrollWindow(%d, %d, %d) = %d, want %d", tc.idx, tc.top, tc.rows, got, tc.want)
+			}
+		})
+	}
+}
+
+// The cursor's visual row must account for section headers and the "(none)"
+// placeholder an empty section still renders, or the window scrolls to the wrong
+// place. With two Lists options, Lists row 1 is visual row 2 (header + first
+// option); the Tags section that follows starts after header + 2 options.
+func TestFiltersCursorRowCountsHeadersAndOptions(t *testing.T) {
+	fs := newFilters(filtersFixture(2), nil, nil, nil, nil)
+	fs.sec, fs.row = 0, 1
+	if got := filtersCursorRow(fs); got != 2 {
+		t.Errorf("filtersCursorRow at Lists row 1 = %d, want 2", got)
+	}
+	fs.sec, fs.row = 1, 0
+	if got := filtersCursorRow(fs); got != 4 {
+		t.Errorf("filtersCursorRow at Tags row 0 = %d, want 4", got)
 	}
 }

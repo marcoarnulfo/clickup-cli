@@ -60,11 +60,11 @@ func (m Model) memberFilterNote() string {
 	return fmt.Sprintf(" (%d/%d members)", k, n)
 }
 
-// dailySeries is the per-day hours of the visible entries over the current
+// dailySeries is the per-day hours of the visible entries over the loaded
 // range. It lives on the Model because reportModel has no entries — the report
 // is a rendering of an already-aggregated value.
 func (m Model) dailySeries() []float64 {
-	start, end := m.currentRange()
+	start, end := m.activeRange()
 	return report.DailyHours(m.visibleEntries(), start, end, m.loc)
 }
 
@@ -75,15 +75,7 @@ func (m Model) updateReport(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.pop()
 	case key.Matches(msg, k.GroupBy):
 		g := nextGroupBy(m.report.GroupBy, m.scope)
-		if _, ok := m.locOrErr(); !ok {
-			return m, nil
-		}
-		start, end := m.currentRange()
-		if p, ok := m.pricingOrErr(); ok {
-			m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
-			m.report.Scope = m.scope
-			m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
-		}
+		m.rebuildReport(g)
 	case key.Matches(msg, k.ChangeRange):
 		m = m.pop()
 	case key.Matches(msg, k.Reload):
@@ -124,7 +116,7 @@ func (m *Model) openBudgetView() bool {
 	if !ok {
 		return false
 	}
-	start, end := m.currentRange()
+	start, end := m.activeRange()
 	perList := report.Build(m.visibleEntries(), report.GroupByList, p, start, end, m.loc)
 	billed := billedByListFromBuckets(perList.Buckets, p)
 	budgets := service.BudgetsFromConfig(m.cfg)
@@ -165,15 +157,13 @@ func listNamesFromBuckets(buckets []report.Bucket) map[string]string {
 	return out
 }
 
-// applyReport rebuilds m.report from the visible entries over the current
-// range, keeping the active grouping. It returns false when the config's
-// pricing rules failed to parse, in which case pricingOrErr has already
-// routed the model to screenError and the caller must not overwrite that.
-func (m *Model) applyReport() bool {
-	g := m.report.GroupBy
-	if g == "" {
-		g = report.GroupByTotal
-	}
+// rebuildReport rebuilds m.report and m.rep for the given grouping, over the
+// visible entries and the pinned range. It returns false when the timezone or
+// the pricing rules failed to parse, in which case the caller must not overwrite
+// the error screen those helpers already routed to. It is the single rebuild
+// used by applyReport, by the entries handler and by the grouping and rates
+// changes, which each carried their own copy.
+func (m *Model) rebuildReport(groupBy string) bool {
 	if _, ok := m.locOrErr(); !ok {
 		return false
 	}
@@ -181,11 +171,22 @@ func (m *Model) applyReport() bool {
 	if !ok {
 		return false
 	}
-	start, end := m.currentRange()
-	m.report = report.Build(m.visibleEntries(), g, p, start, end, m.loc)
+	start, end := m.activeRange()
+	m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
 	m.report.Scope = m.scope
 	m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 	return true
+}
+
+// applyReport calls rebuildReport with the active grouping (m.report.GroupBy,
+// defaulting to GroupByTotal when unset) — see rebuildReport's doc comment
+// for the false-return cases.
+func (m *Model) applyReport() bool {
+	g := m.report.GroupBy
+	if g == "" {
+		g = report.GroupByTotal
+	}
+	return m.rebuildReport(g)
 }
 
 // hoursOf renders hours the same way export.SummaryLine does, via
@@ -258,25 +259,4 @@ func (rm reportModel) sparkView(th theme, width int) string {
 	cut := min(len(sparkLabel), len(raw))
 	label, chart := raw[:cut], raw[cut:]
 	return th.Help.Render(label) + th.Accent.Render(chart)
-}
-
-// truncate shortens to n runes (not bytes), to avoid breaking UTF-8 characters
-// in task names with accents or emoji. An empty s always yields "", whatever
-// n is: there is nothing to truncate, so there is nothing to mark as cut.
-// Otherwise n <= 1 always yields "…": r[:n-1] would otherwise index
-// negatively (a panic) for n <= 0, and the whole package now relies on that
-// guard rather than on each call site keeping n >= some floor itself (see
-// report_table.go's shaveToWidth for why that matters).
-func truncate(s string, n int) string {
-	if s == "" {
-		return ""
-	}
-	if n <= 1 {
-		return "…"
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
 }

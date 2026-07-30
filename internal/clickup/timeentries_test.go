@@ -3,6 +3,7 @@ package clickup
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -81,5 +82,49 @@ func TestTimeEntriesParsesEntryTags(t *testing.T) {
 	}
 	if len(e.EntryTags) != 2 || e.EntryTags[0] != "focus" || e.EntryTags[1] != "client-A" {
 		t.Errorf("EntryTags = %v, want [focus client-A]", e.EntryTags)
+	}
+}
+
+// ClickUp's documented example returns task_tags as objects
+// ({name, tag_fg, tag_bg, creator}), but the reference's generated schema for
+// the date-range endpoint types task_tags as an array of strings. A bare
+// string used to fail the WHOLE decode — "cannot unmarshal string into Go
+// struct field rawEntry.data.task_tags" — losing every entry, not just the
+// tags (#28).
+func TestTimeEntriesAcceptsBothTagShapes(t *testing.T) {
+	tests := []struct {
+		name string
+		tags string
+		want []string
+	}{
+		{"objects, as documented", `[{"name":"urgent"},{"name":"frontend"}]`, []string{"urgent", "frontend"}},
+		{"bare strings, as the generated schema types it", `["urgent","frontend"]`, []string{"urgent", "frontend"}},
+		{"mixed", `[{"name":"urgent"},"frontend"]`, []string{"urgent", "frontend"}},
+		{"empty", `[]`, nil},
+		{"null", `null`, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"data":[
+				{"id":"e1","task":{"id":"t1","name":"T"},"user":{"id":1,"username":"u"},
+				 "start":"1700000000000","duration":"3600000","task_tags":` + tc.tags + `}
+			]}`
+			c, srv := newTestClient(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(body))
+			})
+			defer srv.Close()
+
+			got, err := c.TimeEntries(context.Background(), "team1",
+				time.UnixMilli(0), time.UnixMilli(2_000_000_000_000), nil)
+			if err != nil {
+				t.Fatalf("TimeEntries error: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d entries, want 1", len(got))
+			}
+			if !slices.Equal(got[0].Tags, tc.want) {
+				t.Errorf("Tags = %v, want %v", got[0].Tags, tc.want)
+			}
+		})
 	}
 }

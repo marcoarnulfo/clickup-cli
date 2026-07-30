@@ -61,6 +61,7 @@ type filtersModel struct {
 	sections        []filterSection // [Lists, Tags, Statuses, Billable]
 	sec             int             // active section index
 	row             int             // active row within the section
+	top             int             // first visible visual row (#28)
 	loadingStatuses bool
 }
 
@@ -167,6 +168,7 @@ func (m Model) updateFilters(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m = m.pop()
 		return m, nil
 	}
+	fs.top = scrollWindow(filtersCursorRow(fs), fs.top, filtersContentRows(filtersRows(m.height)))
 	m.filtersScreen = fs
 	return m, nil
 }
@@ -184,11 +186,50 @@ func allChosen(s filterSection) bool {
 	return true
 }
 
-func (fs filtersModel) view(th theme) string {
-	if fs.loadingStatuses {
-		return th.Title.Render("Loading statuses…")
+// filtersRows is how many lines view() may emit in total, title included. The
+// subtraction accounts for the blank line and the footer that View always
+// appends; the floor says the screen shrinks but never vanishes.
+func filtersRows(height int) int {
+	return max(6, height-2)
+}
+
+// filtersTitleRows is the title block's physical line cost, measured (not
+// assumed): th.Title.Render("Filters") itself renders as TWO lines, not one —
+// its MarginBottom(1) pads out a second, space-filled line below "Filters" —
+// and view() adds one further blank line after that. Three, not two.
+const filtersTitleRows = 3
+
+// filtersContentRows is how many of filtersVisualRows' rows view(th, rows) can
+// actually show out of a total budget of rows: rows, minus the title block
+// (filtersTitleRows), minus one more for the line-counting convention
+// strings.Count(s, "\n")+1 uses (the tests measure rows this way, and it counts
+// the string's own trailing newline as one further line). updateFilters must
+// scroll to the same window this slices, or the cursor tracks a window wider
+// than what actually renders.
+func filtersContentRows(rows int) int {
+	return max(rows-filtersTitleRows-1, 0)
+}
+
+// filtersCursorRow is the visual row (sec, row) sits on — the index
+// filtersVisualRows puts it at. Headers and the "(none)" placeholder count.
+func filtersCursorRow(fs filtersModel) int {
+	n := 0
+	for si, sec := range fs.sections {
+		if si == fs.sec {
+			return n + 1 + fs.row // this section's header, then row
+		}
+		n += 1 + max(1, len(sec.options)) // header + options, or the "(none)" row
 	}
-	b := th.Title.Render("Filters") + "\n\n"
+	return n
+}
+
+// filtersVisualRows renders the screen's CONTENT as one flat slice of visual
+// rows: a section header, then its options (or a single "(none)"), for each
+// section. The title is not part of the slice. The window in view() is taken
+// over THIS slice, so the cursor's index and the rendering can never disagree
+// about what row something is on.
+func filtersVisualRows(fs filtersModel, th theme) []string {
+	rows := make([]string, 0, len(fs.sections)*2)
 	for si, sec := range fs.sections {
 		head := sec.title
 		if si == fs.sec {
@@ -196,9 +237,9 @@ func (fs filtersModel) view(th theme) string {
 		} else {
 			head = "  " + head
 		}
-		b += head + "\n"
+		rows = append(rows, head)
 		if len(sec.options) == 0 {
-			b += "    " + th.Help.Render("(none)") + "\n"
+			rows = append(rows, "    "+th.Help.Render("(none)"))
 		}
 		for ri, o := range sec.options {
 			box := "[ ]"
@@ -209,8 +250,24 @@ func (fs filtersModel) view(th theme) string {
 			if si == fs.sec && ri == fs.row {
 				line = "    " + box + " " + th.Accent.Render(o)
 			}
-			b += line + "\n"
+			rows = append(rows, line)
 		}
+	}
+	return rows
+}
+
+func (fs filtersModel) view(th theme, rows int) string {
+	if fs.loadingStatuses {
+		return th.Title.Render("Loading statuses…")
+	}
+	visual := filtersVisualRows(fs, th)
+	window := filtersContentRows(rows)
+	top := min(fs.top, max(0, len(visual)-window))
+	end := min(len(visual), top+window)
+
+	b := th.Title.Render("Filters") + "\n\n"
+	for _, line := range visual[top:end] {
+		b += line + "\n"
 	}
 	return b
 }

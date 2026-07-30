@@ -340,15 +340,14 @@ func TestSparkViewAllZeroSeriesHasNoTrailingWhitespace(t *testing.T) {
 }
 
 // TestTruncateEmptyStringAlwaysEmpty covers the deliberately empty Amount
-// cell in the multi-currency TOTAL row (see reportRows): with the n <= 1
-// guard alone, truncate("", n) for n <= 1 returned "…" — an ellipsis standing
-// in for nothing, rendered whenever that cell's column shrinks to 1 or less.
-// An empty input has nothing to mark as cut, whatever n is.
+// cell in the multi-currency TOTAL row (see reportRows): whatever cols
+// shrinks to, there is nothing to mark as cut, so truncateWidth must never
+// turn an empty cell into a lone ellipsis.
 func TestTruncateEmptyStringAlwaysEmpty(t *testing.T) {
 	t.Parallel()
-	for _, n := range []int{0, 1, 5} {
-		if got := truncate("", n); got != "" {
-			t.Errorf("truncate(%q, %d) = %q, want %q", "", n, got, "")
+	for _, cols := range []int{0, 1, 5} {
+		if got := truncateWidth("", cols); got != "" {
+			t.Errorf("truncateWidth(%q, %d) = %q, want %q", "", cols, got, "")
 		}
 	}
 }

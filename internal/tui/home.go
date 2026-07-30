@@ -95,6 +95,9 @@ func (m Model) homeMembersNote() string {
 }
 
 // rangeLabel returns a short label for the active range shown on Home.
+//
+// Uses currentRange(), not activeRange(): Home changes month, week mode and
+// preset without reloading, so a pinned label would freeze mid-navigation (#28).
 func (m Model) rangeLabel() string {
 	start, end := m.currentRange()
 	return report.PeriodLabel(start, end)

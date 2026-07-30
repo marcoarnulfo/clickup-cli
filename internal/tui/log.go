@@ -537,7 +537,7 @@ func (lg logModel) view(th theme) string {
 		b += "Choose the task:\n\n"
 		for i, tk := range lg.tasks {
 			cursor := "  "
-			line := truncate(tk.Name, 40)
+			line := truncateWidth(tk.Name, 40)
 			if i == lg.taskIdx {
 				cursor = "▸ "
 				line = th.Accent.Render(line)

@@ -184,6 +184,39 @@ func TestGoldenReportPartialMonth(t *testing.T) {
 	golden(t, "report_partial_month", newReport(goldenReport(), "", goldenDailyPartialMonth()).view(testTheme(true), 80))
 }
 
+// The Total grouping is what the report loads with, so it is the first table a
+// user (and the README GIF) ever sees. Two goldens: one currency, and the
+// multi-currency shape where TOTAL's Amount is empty and the subtotals carry
+// the figures (#137).
+func TestGoldenReportTotalGrouping(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 15.5, BilledHours: 12.5,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 15.5, BilledHours: 12.5, Amount: 625}},
+		TotalHours:        15.5, BilledHours: 12.5, TotalAmount: 625,
+	}
+	golden(t, "report_total", reportTable(testTheme(true), r, 80))
+}
+
+func TestGoldenReportTotalGroupingMultiCurrency(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 18, BilledHours: 17,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 337.5}, {Currency: "USD", Amount: 512.5}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{
+			{Currency: "EUR", Hours: 7.75, BilledHours: 6.75, Amount: 337.5},
+			{Currency: "USD", Hours: 10.25, BilledHours: 10.25, Amount: 512.5},
+		},
+		TotalHours: 18, BilledHours: 17,
+	}
+	golden(t, "report_total_multicurrency", reportTable(testTheme(true), r, 80))
+}
+
 func TestGoldenExport(t *testing.T) {
 	t.Parallel()
 	golden(t, "export", newExport(goldenReport()).view(testTheme(true)))
@@ -195,12 +228,12 @@ func TestGoldenBudget(t *testing.T) {
 		{ListID: "l1", ListName: "Website", Currency: "EUR",
 			Budget: 1000, Billed: 625, Remaining: 375, PercentUsed: 62.5},
 	}
-	golden(t, "budget", newBudget(lines).view(testTheme(true)))
+	golden(t, "budget", newBudget(lines).view(testTheme(true), 80))
 }
 
 func TestGoldenBudgetEmpty(t *testing.T) {
 	t.Parallel()
-	golden(t, "budget_empty", newBudget(nil).view(testTheme(true)))
+	golden(t, "budget_empty", newBudget(nil).view(testTheme(true), 80))
 }
 
 func TestGoldenMembers(t *testing.T) {
@@ -216,7 +249,15 @@ func TestGoldenRange(t *testing.T) {
 
 func TestGoldenFilters(t *testing.T) {
 	t.Parallel()
-	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view(testTheme(true)))
+	golden(t, "filters", newFilters(goldenEntries(), nil, nil, nil, nil).view(testTheme(true), 24))
+}
+
+// TestGoldenFiltersScrolled pins the windowed view a short terminal actually
+// renders: 40 lists is far more than fits in 12 rows, so the golden should cut
+// off partway through the Lists section with the cursor still inside it (#28).
+func TestGoldenFiltersScrolled(t *testing.T) {
+	t.Parallel()
+	golden(t, "filters_scrolled", newFilters(filtersFixture(40), nil, nil, nil, nil).view(testTheme(true), 12))
 }
 
 func TestGoldenSetup(t *testing.T) {

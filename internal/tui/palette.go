@@ -136,17 +136,28 @@ func (m Model) updateOverlay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// scrollPalette moves the visible window so idx is always inside it. This is the
-// scrolling the Filters screen still lacks (#28); the palette gets it right from
-// the start.
+// scrollPalette moves the visible window so idx is always inside it, on the
+// shared idiom in scrollWindow.
 func scrollPalette(p paletteModel, rows int) paletteModel {
-	if p.idx < p.top {
-		p.top = p.idx
-	}
-	if p.idx >= p.top+rows {
-		p.top = p.idx - rows + 1
-	}
+	p.top = scrollWindow(p.idx, p.top, rows)
 	return p
+}
+
+// scrollWindow moves a visible window of `rows` rows so idx stays inside it, and
+// returns the new top. Shared by the palette and the Filters screen (#28): the
+// palette had this from the start, and Filters now uses the same idiom instead
+// of a second one.
+func scrollWindow(idx, top, rows int) int {
+	if rows <= 0 {
+		return 0
+	}
+	if idx < top {
+		return idx
+	}
+	if idx >= top+rows {
+		return idx - rows + 1
+	}
+	return top
 }
 
 // paletteRows is how many action rows fit. The subtraction accounts for the box
@@ -211,12 +222,12 @@ func (p paletteModel) box(th theme, boxW, rows int) string {
 	b.WriteString(th.Border.Render("╭─ ") + th.Accent.Render(paletteTitle) +
 		th.Border.Render(" "+strings.Repeat("─", dashes)+"╮") + "\n")
 
-	q := shaveToWidth("> "+p.query, innerW)
+	q := truncateWidth("> "+p.query, innerW)
 	b.WriteString(paletteLine(th, th.Cell.Render(q), innerW-lipgloss.Width(q)))
 	b.WriteString(th.Border.Render("├"+strings.Repeat("─", boxW-2)+"┤") + "\n")
 
 	if len(p.items) == 0 {
-		msg := shaveToWidth("no matching action", innerW)
+		msg := truncateWidth("no matching action", innerW)
 		b.WriteString(paletteLine(th, th.Help.Render(msg), innerW-lipgloss.Width(msg)))
 	}
 	for i := p.top; i < len(p.items) && i < p.top+rows; i++ {
@@ -250,7 +261,7 @@ func paletteRow(th theme, it paletteItem, selected bool, innerW int) string {
 	if hintW > 0 {
 		labelW -= 2 // two spaces between the label and the key
 	}
-	label := shaveToWidth(it.a.label, max(labelW, 1))
+	label := truncateWidth(it.a.label, max(labelW, 1))
 	gap := innerW - 2 - lipgloss.Width(label) - hintW
 
 	out := style.Render(cursor) + highlight(th, label, it.idx)

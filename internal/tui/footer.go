@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // footerView renders one screen's advertised bindings as the bottom help line,
@@ -57,9 +58,16 @@ func clampWidth(th theme, s string, width int) string {
 	if width <= 1 || lipgloss.Width(s) <= width {
 		return s
 	}
-	// MaxWidth truncates ANSI-aware; the ellipsis is added separately so the
-	// cut is visible rather than looking like a footer that simply ends.
-	return lipgloss.NewStyle().MaxWidth(width-1).Render(s) + th.Help.Render("…")
+	// ansi.Truncate cuts ANSI-aware without a renderer. MaxWidth produces the
+	// same truncation point for single-line input without tabs — which is all
+	// this function receives, since the full help is deliberately unbounded and
+	// returns before clamping. On tab-containing input the two diverge: Render
+	// expands tabs to four spaces before truncating, while ansi.Truncate does
+	// not. The style carries no color, so the output is identical regardless of
+	// color profile. This is why the change is invisible to tests — the guard is
+	// the grep that this style is never built, not the suite. The ellipsis is
+	// added separately, styled from the theme, so the cut is visible.
+	return ansi.Truncate(s, width-1, "") + th.Help.Render("…")
 }
 
 // pairHelp returns a display-only binding that advertises two related bindings

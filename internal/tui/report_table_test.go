@@ -180,6 +180,175 @@ func TestReportRowsMultiCurrencyTotals(t *testing.T) {
 	}
 }
 
+// Under GroupByTotal — the grouping the report loads with — the single bucket IS
+// the totals row: same hours, same billed, and the same amounts, because one
+// bucket collects every entry. The table used to show "Total" directly above
+// "TOTAL", differing only in case and color (#137).
+func TestReportRowsSuppressesTheBucketUnderTotalGrouping(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 15.5, BilledHours: 12.5,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 15.5, BilledHours: 12.5, Amount: 625}},
+		TotalHours:        15.5, BilledHours: 12.5, TotalAmount: 625,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1 (the TOTAL row alone): %v", len(rows), rows)
+	}
+	if firstTotal != 0 {
+		t.Errorf("firstTotal = %d, want 0 (the TOTAL row is the first row)", firstTotal)
+	}
+	if rows[0][0] != "TOTAL" {
+		t.Errorf("rows[0][0] = %q, want %q", rows[0][0], "TOTAL")
+	}
+}
+
+// Multi-currency keeps its shape: TOTAL with an empty Amount, then one subtotal
+// row per currency. The suppressed bucket carried "A + B", which is the same
+// information those subtotal rows carry.
+func TestReportRowsSuppressesTheBucketUnderTotalGroupingMultiCurrency(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: "Total", Hours: 18, BilledHours: 17,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 337.5}, {Currency: "USD", Amount: 512.5}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{
+			{Currency: "EUR", Hours: 7.75, BilledHours: 6.75, Amount: 337.5},
+			{Currency: "USD", Hours: 10.25, BilledHours: 10.25, Amount: 512.5},
+		},
+		TotalHours: 18, BilledHours: 17,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (TOTAL + two subtotals): %v", len(rows), rows)
+	}
+	if firstTotal != 0 {
+		t.Errorf("firstTotal = %d, want 0", firstTotal)
+	}
+	if rows[0][3] != "" {
+		t.Errorf("TOTAL Amount = %q, want empty (the subtotals carry the figures)", rows[0][3])
+	}
+}
+
+// The suppression targets the degenerate single-bucket case, not GroupByTotal
+// in general: today internal/report's aggregation (aggregate.go's groupKeys,
+// GroupByTotal's default branch) only ever emits one bucket for that grouping,
+// but nothing in this package enforces that invariant, and the guard reads
+// r.GroupBy == GroupByTotal alongside len(r.Buckets) == 1 for a reason — if a
+// future change to groupKeys ever produced more than one bucket under
+// GroupByTotal, dropping every bucket row on GroupBy alone would silently
+// discard real data with nothing to fall back on within a currency's
+// breakdown. This pins that the narrower, two-part condition is what is
+// actually checked, using two synthetic buckets that report.Build itself
+// would never produce today.
+func TestReportRowsKeepsMultipleBucketsUnderTotalGrouping(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:         report.GroupByTotal,
+		DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{
+			{Label: "Total A", Hours: 10, BilledHours: 10,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 500}}},
+			{Label: "Total B", Hours: 5, BilledHours: 5,
+				Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 250}}},
+		},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 15, BilledHours: 15, Amount: 750}},
+		TotalHours:        15, BilledHours: 15, TotalAmount: 750,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 3 || firstTotal != 2 {
+		t.Fatalf("got %d rows firstTotal=%d, want 3 rows firstTotal=2 (both buckets survive, then TOTAL): %v",
+			len(rows), firstTotal, rows)
+	}
+	if rows[0][0] != "Total A" || rows[1][0] != "Total B" {
+		t.Errorf("bucket rows = %q, %q, want both bucket labels to survive", rows[0][0], rows[1][0])
+	}
+}
+
+// Every other grouping keeps its bucket rows: the suppression is about the
+// degenerate one-bucket case of GroupByTotal, not about totals in general.
+func TestReportRowsKeepsBucketsUnderOtherGroupings(t *testing.T) {
+	t.Parallel()
+	r := report.Report{
+		GroupBy:           report.GroupByList,
+		DefaultCurrency:   "EUR",
+		Buckets:           []report.Bucket{{Label: "Website", Hours: 12.5, BilledHours: 12.5}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: 12.5, BilledHours: 12.5, Amount: 625}},
+		TotalHours:        12.5, BilledHours: 12.5, TotalAmount: 625,
+	}
+	rows, firstTotal := reportRows(r)
+	if len(rows) != 2 || firstTotal != 1 {
+		t.Fatalf("got %d rows firstTotal=%d, want 2 rows firstTotal=1: %v", len(rows), firstTotal, rows)
+	}
+}
+
+// reportNumWidth reserved 8 columns for each of Hours and Billed but nothing
+// enforced it: a wider value pushed the table past the terminal edge by exactly
+// 2 x (width - 8). The overflow needs BOTH factors — a long label (so Item is
+// budget-bound rather than capped by its own content) and numbers wider than 8.
+// A test missing either one passes against the bug: measured, a long label with
+// ordinary hours renders 55 columns at width 60.
+//
+// 40 and 44 are deliberately absent: the fix cannot fit this table in fewer than
+// 48 columns (chrome 10 + Item floor 12 + 10 + 10 + Amount header 6), so
+// asserting there would fail against correct code.
+func TestReportTableNeverExceedsWidthWithLongLabelAndWideNumbers(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	const longLabel = "Website redesign and content migration backlog"
+	rep := reportWithHours(longLabel, 1234567.5)
+	for _, width := range []int{60, 80, 100} {
+		got := lipgloss.Width(strings.Split(reportTable(th, rep, width), "\n")[0])
+		if got > width {
+			t.Errorf("width %d: table rendered %d columns", width, got)
+		}
+	}
+}
+
+// The other direction: short labels leave Item capped by its own content, but
+// wide numbers still push the table past a narrow terminal. 44 is the width
+// where the current code renders 47 (overflowing by 3) and the fix renders 44
+// (fitting exactly: Item stays at its content cap of 7 and Amount is trimmed
+// by the budget down to 7). 43 is the floor the fix falls back to below this
+// width, not what it renders at 44 itself.
+func TestReportTableNeverExceedsWidthWithShortLabelAndWideNumbers(t *testing.T) {
+	t.Parallel()
+	th := testTheme(true)
+	rep := reportWithHours("Website", 1234567.5)
+	if got := lipgloss.Width(strings.Split(reportTable(th, rep, 44), "\n")[0]); got > 44 {
+		t.Errorf("table rendered %d columns in a 44-column terminal", got)
+	}
+}
+
+// reportWithHours builds a one-bucket report whose Hours and Billed carry the
+// given value, so a test can dial the numeric width independently of the label.
+func reportWithHours(label string, hours float64) report.Report {
+	return report.Report{
+		GroupBy: report.GroupByList, DefaultCurrency: "EUR",
+		Buckets: []report.Bucket{{Label: label, Hours: hours, BilledHours: hours,
+			Amounts: []report.CurrencyAmount{{Currency: "EUR", Amount: 625}}}},
+		CurrencySubtotals: []report.CurrencySubtotal{{Currency: "EUR", Hours: hours, BilledHours: hours, Amount: 625}},
+		TotalHours:        hours, BilledHours: hours, TotalAmount: 625,
+	}
+}
+
+// Measuring the data only would make the budget assume 8 (4+4, from "1.00"
+// twice) where the renderer uses 11 (5+6, from the "Hours"/"Billed" headers),
+// and the table would overflow by 3 — the same bug in a smaller size.
+func TestReportNumWidthsIncludeTheHeaders(t *testing.T) {
+	t.Parallel()
+	rows := [][]string{{"Website", "1.00", "1.00", "5.00 EUR"}}
+	hours, billed := reportNumWidths(rows)
+	if hours != lipgloss.Width(reportHeaders[1]) || billed != lipgloss.Width(reportHeaders[2]) {
+		t.Errorf("reportNumWidths = (%d, %d), want the header widths (%d, %d)",
+			hours, billed, lipgloss.Width(reportHeaders[1]), lipgloss.Width(reportHeaders[2]))
+	}
+}
+
 // TestReportStyleFunc is the ONLY check on the grid's colors. The package
 // goldens run under termenv.Ascii, which strips backgrounds and bold, so a
 // broken zebra or an uncolored TOTAL would leave every golden byte-identical.

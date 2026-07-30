@@ -51,7 +51,10 @@ const (
 
 // Async messages.
 type (
-	entriesMsg  struct{ entries []report.TimeEntry }
+	entriesMsg struct {
+		entries    []report.TimeEntry
+		start, end time.Time
+	}
 	teamsMsg    struct{ teams []clickup.Team }
 	membersMsg  struct{ members []clickup.Member }
 	statusesMsg struct{ byTask map[string]string }
@@ -131,6 +134,11 @@ type Model struct {
 	// periodModeWeek (#4); "" (periodModeMonth) is the default month/preset
 	// behavior. Toggled from Home with 'w'.
 	periodMode string
+
+	// loadedStart/loadedEnd are the range the currently loaded entries were
+	// fetched for, pinned from the pair the load itself resolved (#28). Zero
+	// means nothing has been loaded yet.
+	loadedStart, loadedEnd time.Time
 
 	// injectable clock (default: time.Now)
 	now func() time.Time
@@ -278,6 +286,22 @@ func (m Model) currentRange() (start, end time.Time) {
 	return report.RangeForPreset(m.preset, m.year, m.month, m.now(), m.loc)
 }
 
+// activeRange is the range the LOADED entries actually cover: the pinned pair
+// when a load has happened, else what the next load would use.
+//
+// The split matters because a relative preset moves under you. Every rebuild
+// over already-loaded entries goes through here, so it describes its own data.
+// Every surface that describes the NEXT load — Home's label, and the loads
+// themselves — uses currentRange() instead: Home changes month, week mode and
+// preset WITHOUT reloading, so a pinned label would freeze while the user
+// navigates.
+func (m Model) activeRange() (start, end time.Time) {
+	if !m.loadedStart.IsZero() {
+		return m.loadedStart, m.loadedEnd
+	}
+	return m.currentRange()
+}
+
 // reloadEntriesCmd picks the source for time entries: demo data (no I/O)
 // in demo mode, otherwise the real API call. origin identifies the screen
 // that dispatched the load, so a failure can be routed back there (see
@@ -387,7 +411,7 @@ func loadEntriesCmd(c *clickup.Client, teamID string, start, end time.Time, scop
 		if err != nil {
 			return retryableErrMsg{origin: origin, err: err}
 		}
-		return entriesMsg{entries: entries}
+		return entriesMsg{entries: entries, start: start, end: end}
 	}
 }
 
@@ -698,6 +722,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entriesMsg:
 		m.entries = msg.entries
+		// Pin BEFORE rebuilding: activeRange (and every rebuild reached through
+		// it, including rebuildReport below) must see the range this load
+		// actually resolved, not one recomputed after the fact (#28).
+		m.loadedStart, m.loadedEnd = msg.start, msg.end
 		m.assignStatuses() // re-stamp session-cached statuses onto the freshly loaded entries
 		m.pruneFilters()   // drop filter selections whose value no longer occurs in the new entries
 		groupBy := m.report.GroupBy
@@ -708,17 +736,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// member grouping is team-only: never let it leak into a "me" report.
 			groupBy = report.GroupByTotal
 		}
-		if _, ok := m.locOrErr(); !ok {
+		if !m.rebuildReport(groupBy) {
 			return m, nil
 		}
-		start, end := m.currentRange()
-		p, ok := m.pricingOrErr()
-		if !ok {
-			return m, nil
-		}
-		m.report = report.Build(m.visibleEntries(), groupBy, p, start, end, m.loc)
-		m.report.Scope = m.scope
-		m.rep = newReport(m.report, m.memberFilterNote()+m.filteredNote(), m.dailySeries())
 		// Report is reached three ways (Home enter, Report's own reload, and
 		// the logDone reload) and all three arrive here: re-rooting rather
 		// than replacing makes every arrival converge on nav == [Home], which
@@ -728,6 +748,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entriesReloadedMsg:
 		m.entries = msg.entries
+		// Pin BEFORE rebuilding, same as entriesMsg above: a browser reload is
+		// a load, so it must refresh the pin rather than leave a stale one (#28).
+		m.loadedStart, m.loadedEnd = msg.start, msg.end
 		m.assignStatuses()
 		m.pruneFilters()
 		if !m.applyReport() { // rebuilds m.report + m.rep; returns false on loc/pricing error
@@ -967,11 +990,11 @@ func (m Model) screenBody() string {
 	case screenRange:
 		return m.rangeScreen.view(m.theme)
 	case screenFilters:
-		return m.filtersScreen.view(m.theme)
+		return m.filtersScreen.view(m.theme, filtersRows(m.height))
 	case screenListBrowser:
 		return m.browserScreen.view(m.theme)
 	case screenBudget:
-		return m.budgetScreen.view(m.theme)
+		return m.budgetScreen.view(m.theme, m.width)
 	case screenEntries:
 		return m.entriesView(m.theme)
 	case screenError:
