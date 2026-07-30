@@ -971,7 +971,7 @@ func (m Model) screenBody() string {
 	case screenListBrowser:
 		return m.browserScreen.view(m.theme)
 	case screenBudget:
-		return m.budgetScreen.view(m.theme)
+		return m.budgetScreen.view(m.theme, m.width)
 	case screenEntries:
 		return m.entriesView(m.theme)
 	case screenError:

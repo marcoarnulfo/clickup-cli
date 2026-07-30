@@ -228,12 +228,12 @@ func TestGoldenBudget(t *testing.T) {
 		{ListID: "l1", ListName: "Website", Currency: "EUR",
 			Budget: 1000, Billed: 625, Remaining: 375, PercentUsed: 62.5},
 	}
-	golden(t, "budget", newBudget(lines).view(testTheme(true)))
+	golden(t, "budget", newBudget(lines).view(testTheme(true), 80))
 }
 
 func TestGoldenBudgetEmpty(t *testing.T) {
 	t.Parallel()
-	golden(t, "budget_empty", newBudget(nil).view(testTheme(true)))
+	golden(t, "budget_empty", newBudget(nil).view(testTheme(true), 80))
 }
 
 func TestGoldenMembers(t *testing.T) {
