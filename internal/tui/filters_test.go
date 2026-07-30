@@ -224,7 +224,10 @@ func TestFiltersViewNeverExceedsItsRowBudget(t *testing.T) {
 // The window must follow the cursor. Asserting on the rendered cursor is not an
 // option: under termenv.Ascii the active row is byte-identical to the others
 // (th.Accent renders nothing), and "▸" marks the section header, which scrolls
-// out. So assert on the window itself, which is what the feature actually is.
+// out. So assert on the window indices instead — but with the SAME expression
+// production uses (filtersContentRows(filtersRows(m.height)), not a literal
+// -2), or this test would happily pass a cursor that updateFilters actually
+// scrolled off the rendered screen.
 func TestFiltersWindowFollowsTheCursor(t *testing.T) {
 	m := newTestModel()
 	m.filtersScreen = newFilters(filtersFixture(40), nil, nil, nil, nil)
@@ -238,9 +241,9 @@ func TestFiltersWindowFollowsTheCursor(t *testing.T) {
 	if fs.row == 0 && fs.sec == 0 {
 		t.Fatal("the cursor never moved: the fixture has no options to walk")
 	}
-	row, rows := filtersCursorRow(fs), filtersRows(m.height)-2
+	row, rows := filtersCursorRow(fs), filtersContentRows(filtersRows(m.height))
 	if row < fs.top || row >= fs.top+rows {
-		t.Errorf("cursor at visual row %d is outside the window [%d, %d)", row, fs.top, fs.top+rows)
+		t.Errorf("cursor at visual row %d is outside the rendered window [%d, %d)", row, fs.top, fs.top+rows)
 	}
 }
 
