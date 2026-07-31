@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offering both that screen's commands and one-step navigation to any other (#71).
 - An overlay compositor: `View()` can now layer a floating box over a screen instead of
   replacing it (#59).
+- The mouse wheel scrolls every list screen, and the command palette when it is
+  open. Mouse reporting can be turned off with `mouse: false` in the config,
+  which gives the terminal its native text selection back (#74).
 
 ### Changed
 
@@ -55,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and statuses (#28).
 - Task and entry tags are now parsed correctly whether ClickUp returns them as tag
   objects or as plain strings — the two documented shapes (#28).
+- The report's zebra stripe no longer disappears on a 16-color terminal, where
+  the automatic downconvert of its 256-color grey landed on the background color
+  itself (#74).
 
 ## [1.9.0] - 2026-07-28
 

@@ -437,6 +437,11 @@ billing:
       any other value rounds each entry individually.
 - `update_check` (optional): set to `false` to turn off the update check described
   below. Omitting the key (or setting `true`) leaves it enabled.
+- `mouse` (optional): set to `false` to turn off mouse reporting. Omitting the key
+  (or setting `true`) leaves it enabled, which makes the wheel scroll lists. Mouse
+  reporting takes the terminal's native text selection away: with it on, hold
+  **Shift** while dragging to select and copy, or set this key to `false` to give
+  the mouse back to the terminal for good.
 
 ### How billed amounts are computed
 

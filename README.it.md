@@ -467,6 +467,12 @@ billing:
 - `update_check` (opzionale): impostare `false` per disattivare il controllo
   aggiornamenti descritto più sotto. Omettere la chiave (o impostare `true`) lo
   lascia attivo.
+- `mouse` (opzionale): impostare `false` per disattivare il supporto mouse.
+  Omettere la chiave (o impostare `true`) lo lascia attivo, e la rotella scorre le
+  liste. Il mouse tracking toglie al terminale la selezione nativa del testo: con
+  il mouse attivo, tenere **Shift** mentre si trascina per selezionare e copiare,
+  oppure impostare questa chiave a `false` per restituire il mouse al terminale
+  una volta per tutte.
 
 ### Come vengono calcolati gli importi fatturati
 
