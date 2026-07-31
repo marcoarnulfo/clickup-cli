@@ -101,7 +101,6 @@ func TestPaletteIsAdaptive(t *testing.T) {
 	}{
 		{"Primary", p.Primary}, {"Accent", p.Accent},
 		{"Danger", p.Danger}, {"Success", p.Success},
-		{"Subtle", p.Subtle},
 	} {
 		if tc.c.Light == tc.c.Dark {
 			t.Errorf("%s is not adaptive: Light == Dark == %q", tc.name, tc.c.Dark)
@@ -110,6 +109,15 @@ func TestPaletteIsAdaptive(t *testing.T) {
 	if p.Muted.Light != p.Muted.Dark {
 		t.Errorf("Muted was adapted (%q/%q) but reads fine on both backgrounds",
 			p.Muted.Light, p.Muted.Dark)
+	}
+
+	// Subtle is checked separately: it is a CompleteAdaptiveColor, so it does
+	// not fit the AdaptiveColor loop above. The requirement is the same one —
+	// light and dark must differ — carried over to the two slots that survived
+	// the type change. (The TrueColor slot holds the same 256-color index as
+	// ANSI256 by design, so checking it too would assert the same thing twice.)
+	if s := defaultPalette().Subtle; s.Light.ANSI256 == s.Dark.ANSI256 || s.Light.ANSI == s.Dark.ANSI {
+		t.Errorf("Subtle is not adaptive: light %+v, dark %+v", s.Light, s.Dark)
 	}
 }
 
@@ -154,6 +162,52 @@ func TestZebraCarriesBackground(t *testing.T) {
 	th := paletteTheme(true)
 	if th.Zebra.GetBackground() == th.Cell.GetBackground() {
 		t.Error("Zebra has the same background as a plain cell, so odd rows are indistinguishable")
+	}
+}
+
+// The zebra stripe is the one palette token whose automatic downconvert lands
+// on the wrong color. Measured, with Subtle as a plain AdaptiveColor: 236
+// becomes "\x1b[40m" (black) on a dark background and 254 becomes "\x1b[107m"
+// (bright white) on a light one — on a normal terminal, exactly the background
+// color, so the stripe disappears. CompleteAdaptiveColor names the 16-color
+// value instead of letting the nearest-color search pick it.
+//
+// The second half of this test is the one that keeps the change surgical: at
+// TrueColor and ANSI256 the output must stay byte-identical to what the old
+// AdaptiveColor produced. Putting a hex triple in the TrueColor slot would
+// break that half — and would render as 227;227;227, not 228, because of a
+// rounding step in lipgloss's hex path.
+func TestZebraSurvivesSixteenColors(t *testing.T) {
+	t.Parallel()
+	old := lipgloss.AdaptiveColor{Light: "254", Dark: "236"}
+	for _, tc := range []struct {
+		name    string
+		dark    bool
+		profile termenv.Profile
+		want    string // "" means: identical to the old AdaptiveColor
+	}{
+		{"dark 16-color", true, termenv.ANSI, "\x1b[100m"},
+		{"light 16-color", false, termenv.ANSI, "\x1b[47m"},
+		{"dark truecolor", true, termenv.TrueColor, ""},
+		{"light truecolor", false, termenv.TrueColor, ""},
+		{"dark 256-color", true, termenv.ANSI256, ""},
+		{"light 256-color", false, termenv.ANSI256, ""},
+	} {
+		r := lipgloss.NewRenderer(io.Discard)
+		r.SetColorProfile(tc.profile)
+		r.SetHasDarkBackground(tc.dark)
+		got := newTheme(r, defaultPalette()).Zebra.Render("x")
+
+		if tc.want == "" {
+			if want := r.NewStyle().Background(old).Render("x"); got != want {
+				t.Errorf("%s: Zebra = %q, want %q — this profile must not move",
+					tc.name, got, want)
+			}
+			continue
+		}
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: Zebra = %q, want it to contain %q", tc.name, got, tc.want)
+		}
 	}
 }
 

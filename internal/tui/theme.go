@@ -11,7 +11,13 @@ type palette struct {
 	Muted   lipgloss.AdaptiveColor // help lines and secondary text
 	Danger  lipgloss.AdaptiveColor // errors
 	Success lipgloss.AdaptiveColor // confirmations
-	Subtle  lipgloss.AdaptiveColor // zebra row background
+
+	// Subtle is the only token whose automatic downconvert lands on the wrong
+	// color, so it names a value per profile instead of letting termenv pick
+	// the nearest one. The other five stay AdaptiveColor: measured, their
+	// nearest-color conversion already arrives where it should, and making
+	// them explicit would be five times the surface for no visible change.
+	Subtle lipgloss.CompleteAdaptiveColor // zebra row background
 }
 
 // theme is the styled surface the views render through. It travels as an
@@ -84,6 +90,20 @@ func defaultPalette() palette {
 		Muted:   lipgloss.AdaptiveColor{Light: "240", Dark: "240"},
 		Danger:  lipgloss.AdaptiveColor{Light: "124", Dark: "196"},
 		Success: lipgloss.AdaptiveColor{Light: "28", Dark: "42"},
-		Subtle:  lipgloss.AdaptiveColor{Light: "254", Dark: "236"},
+
+		// The 256-color index sits in the TrueColor slot on purpose, so only
+		// the 16-color profile moves: measured, TrueColor and ANSI256 stay
+		// byte-identical to the AdaptiveColor this replaces. At 16 colors the
+		// only choices that are a shade rather than a hue are 0/8 (black,
+		// bright black) and 7/15 (white, bright white); on a dark background 0
+		// and 15 are the background and the text, leaving 8, and on a light one
+		// the same argument leaves 7. Indices 0-15 belong to the user's
+		// terminal theme, so the exact contrast is not knowable from here —
+		// this is the best choice by construction, not a measured ratio like
+		// the five foregrounds above.
+		Subtle: lipgloss.CompleteAdaptiveColor{
+			Light: lipgloss.CompleteColor{TrueColor: "254", ANSI256: "254", ANSI: "7"},
+			Dark:  lipgloss.CompleteColor{TrueColor: "236", ANSI256: "236", ANSI: "8"},
+		},
 	}
 }
