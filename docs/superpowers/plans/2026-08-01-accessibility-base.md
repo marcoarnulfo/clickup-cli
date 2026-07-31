@@ -184,13 +184,27 @@ git commit -m "feat(config): add the optional mouse key (#74)"
 - Modify: `internal/tui/app.go` (type-switch di `Update`, accanto a `case tea.KeyMsg`)
 
 **Interfaces:**
-- Consuma: `routeKey`, `updateOverlay`, `Model.overlay` (già esistenti).
-- Produce: `func wheelKey(msg tea.MouseMsg) (tea.KeyMsg, bool)`.
+- Consuma: `routeKey`, `updateOverlay`, `Model.overlay`, `Model.screen`,
+  `Model.entriesScreen.mode`, la costante `entriesConfirmDelete` (tutti già
+  esistenti).
+- Produce: `func wheelKey(msg tea.MouseMsg) (tea.KeyMsg, bool)` e
+  `func (m Model) anyKeyIsAnAnswer() bool`.
 
-**Contesto che il brief non può sapere.** `keyMsgFor` (`internal/tui/actions.go:149`)
-esiste già e costruisce `KeyMsg` sintetici, ma **non va usata né allargata**: il
-suo commento dichiara l'insieme chiuso di proposito, per la command palette.
-`wheelKey` è una funzione separata con la propria motivazione.
+**Contesto che il brief non può sapere.**
+
+1. `keyMsgFor` (`internal/tui/actions.go:149`) esiste già e costruisce `KeyMsg`
+   sintetici, ma **non va usata né allargata**: il suo commento dichiara
+   l'insieme chiuso di proposito, per la command palette. `wheelKey` è una
+   funzione separata con la propria motivazione.
+2. Le fixture dei test esistono già nel package e vanno riusate, non riscritte:
+   `filtersScreenFixture()` (`filters_test.go:18`), `newTestModel()`
+   (`log_test.go:31`), `newTestModelOnReport()` (`log_test.go:36`),
+   `openPaletteOn()` (`palette_test.go:18`), `browserWithEntries()`
+   (`entries_delete_test.go:13`) e l'helper `keyMsg(...)`.
+3. I valori attesi dai test sono stati **misurati** su queste fixture prima di
+   scrivere il piano: filters parte a `row=0` e va a 1 con una tacca; la palette
+   ha 18 azioni e `idx` va da 0 a 1. Non serve impostare `m.height`:
+   `paletteRows(0)` ritorna già `paletteMaxRows`.
 
 - [ ] **Step 1: scrivere i test che falliscono**
 
@@ -255,11 +269,22 @@ func TestWheelScrollsTheActiveScreen(t *testing.T) {
 
 // A click carries no meaning yet (#74 ships the wheel only), and must not be
 // mistaken for a keystroke by the screen underneath.
+//
+// The cursor is moved off row 0 first, and deliberately: asserting "row 0
+// before, row 0 after" would also pass if a click were translated into an UP
+// key, because at row 0 the cursor is already at the top and cannot move. From
+// row 1 the test sees both mistranslations.
 func TestClickChangesNothing(t *testing.T) {
 	m := filtersScreenFixture()
-	u, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if got := u.(Model).filtersScreen.row; got != 0 {
-		t.Errorf("row = %d after a click, want 0 — clicks are ignored", got)
+	u, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	m = u.(Model)
+	if m.filtersScreen.row != 1 {
+		t.Fatalf("setup: row = %d after one wheel-down, want 1", m.filtersScreen.row)
+	}
+
+	u, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if got := u.(Model).filtersScreen.row; got != 1 {
+		t.Errorf("row = %d after a click, want it to stay 1 — clicks are ignored", got)
 	}
 }
 
@@ -267,7 +292,6 @@ func TestClickChangesNothing(t *testing.T) {
 // keyboard: the screen underneath must not scroll behind it.
 func TestWheelGoesToTheOverlayWhenOneIsOpen(t *testing.T) {
 	m := openPaletteOn(newTestModelOnReport())
-	m.height = 24
 	if len(m.palette.items) < 2 {
 		t.Fatalf("the fixture has %d actions; this test needs at least 2", len(m.palette.items))
 	}
@@ -278,12 +302,47 @@ func TestWheelGoesToTheOverlayWhenOneIsOpen(t *testing.T) {
 		t.Errorf("palette idx = %d after wheel-down, want 1", got.palette.idx)
 	}
 }
+
+// The error screen dismisses itself on any key. A wheel notch is not an answer
+// to it: with mouse reporting on and a trackpad's inertia, one stray notch
+// would wipe an error message before it had been read.
+func TestWheelDoesNotDismissTheErrorScreen(t *testing.T) {
+	m := newTestModel()
+	m.screen = screenError
+	m.err = errors.New("boom")
+
+	u, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	if got := u.(Model).screen; got != screenError {
+		t.Errorf("screen = %v after a wheel notch, want it to stay on the error screen", got)
+	}
+}
+
+// Same rule, second context: the delete confirmation answers "any key but y"
+// with a cancel, and a wheel notch must not be that answer.
+func TestWheelDoesNotCancelTheDeleteConfirmation(t *testing.T) {
+	m := browserWithEntries(newTestModel(),
+		report.TimeEntry{ID: "e1", TaskName: "Fix", UserID: 1, Start: time.Now()})
+	u, _ := m.Update(keyMsg("x"))
+	m = u.(Model)
+	if m.entriesScreen.mode != entriesConfirmDelete {
+		t.Fatalf("setup: mode = %v, want the confirm dialog open", m.entriesScreen.mode)
+	}
+
+	u, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	if got := u.(Model).entriesScreen.mode; got != entriesConfirmDelete {
+		t.Errorf("mode = %v after a wheel notch, want the confirm dialog still open", got)
+	}
+}
 ```
+
+Gli import di `mouse_test.go` diventano quindi `errors`, `testing`, `time`, `tea`
+e `github.com/marcoarnulfo/clickup-cli/internal/report`.
 
 - [ ] **Step 2: eseguirli e vederli fallire**
 
 Run: `go test ./internal/tui -run 'TestWheel|TestClick' -v`
-Expected: FAIL in compilazione — `undefined: wheelKey`.
+Expected: FAIL in compilazione — `undefined: wheelKey` (e, una volta creato il
+file, `undefined: anyKeyIsAnAnswer`).
 
 - [ ] **Step 3: implementare**
 
@@ -325,6 +384,24 @@ func wheelKey(msg tea.MouseMsg) (tea.KeyMsg, bool) {
 	}
 	return tea.KeyMsg{}, false
 }
+
+// anyKeyIsAnAnswer reports whether the active context treats every keystroke as
+// an answer to a question rather than as a movement. A wheel notch is not an
+// answer, so it is dropped there instead of being replayed.
+//
+// Measured, these are the two contexts where replaying a notch does damage: on
+// screenError any key resets to Home (app.go), so a stray notch wipes an error
+// message before it has been read; in entriesConfirmDelete any key but "y"
+// cancels (entries.go), so a notch dismisses the confirmation. They are the
+// same two places where the app already had to leave "?" unassigned.
+//
+// The name states the property rather than the mechanism on purpose: it gives
+// the list an admission rule — a context belongs here if and only if every key
+// is an answer in it — instead of leaving it to rot as a list of special cases.
+func (m Model) anyKeyIsAnAnswer() bool {
+	return m.screen == screenError ||
+		(m.screen == screenEntries && m.entriesScreen.mode == entriesConfirmDelete)
+}
 ```
 
 In `internal/tui/app.go`, dentro il type-switch di `Update`, **subito sotto il
@@ -340,9 +417,14 @@ blocco `case tea.KeyMsg:`** (che finisce con `return m.routeKey(msg)`):
 		// Help, Palette — are all keystrokes, so a wheel notch cannot match
 		// any of them and they are skipped. The overlay check is not optional:
 		// with the palette open the wheel must move its selection, not scroll
-		// the screen behind it.
+		// the screen behind it. It comes before the gate below because an
+		// overlay owns the wheel the way it owns the keyboard, whatever screen
+		// is underneath.
 		if m.overlay != overlayNone {
 			return m.updateOverlay(k)
+		}
+		if m.anyKeyIsAnAnswer() {
+			return m, nil
 		}
 		return m.routeKey(k)
 ```
@@ -350,20 +432,27 @@ blocco `case tea.KeyMsg:`** (che finisce con `return m.routeKey(msg)`):
 - [ ] **Step 4: eseguirli e vederli passare**
 
 Run: `go test ./internal/tui -run 'TestWheel|TestClick' -v`
-Expected: PASS (4 test).
+Expected: PASS (6 test).
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-Due mutazioni, ognuna eseguita e con il transcript nel report:
+Quattro mutazioni, una alla volta, ognuna eseguita e con il transcript nel
+report. Ognuna nomina il test che **deve** fallire: se passa lo stesso, il test
+non prova quello che dice e va riscritto, non aggirato.
 
-1. Togliere le tre righe `if m.overlay != overlayNone { ... }` dal caso nuovo.
-   `TestWheelGoesToTheOverlayWhenOneIsOpen` **deve** fallire. Se passa lo stesso,
-   il test non prova quello che dice e va riscritto.
-2. In `wheelKey`, far ritornare `true` anche per `MouseButtonLeft`.
-   `TestClickChangesNothing` **deve** fallire.
+1. Togliere le tre righe `if m.overlay != overlayNone { ... }` dal caso nuovo →
+   `TestWheelGoesToTheOverlayWhenOneIsOpen` deve fallire.
+2. Togliere le tre righe `if m.anyKeyIsAnAnswer() { ... }` →
+   `TestWheelDoesNotDismissTheErrorScreen` **e**
+   `TestWheelDoesNotCancelTheDeleteConfirmation` devono fallire entrambi.
+3. In `wheelKey`, aggiungere `case tea.MouseButtonLeft:` al ramo che ritorna
+   `tea.KeyUp` — cioè far tradurre il click in **su**, che è la svista da copia
+   più probabile → `TestClickChangesNothing` deve fallire.
+4. In `wheelKey`, scambiare `KeyUp` e `KeyDown` →
+   `TestWheelScrollsTheActiveScreen` deve fallire.
 
-Ripristinare entrambe le mutazioni prima di proseguire, e verificare con
-`git diff` che l'albero sia tornato quello di prima.
+Ripristinare dopo ogni mutazione, e alla fine verificare con `git diff` che
+l'albero sia tornato esattamente quello di prima.
 
 - [ ] **Step 6: gate + commit**
 
@@ -585,8 +674,9 @@ In `theme_test.go`, togliere `{"Subtle", p.Subtle}` dal loop di
 ```go
 	// Subtle is checked separately: it is a CompleteAdaptiveColor, so it does
 	// not fit the AdaptiveColor loop above. The requirement is the same one —
-	// light and dark must differ — and it is checked on the two profiles that
-	// actually render a stripe.
+	// light and dark must differ — carried over to the two slots that survived
+	// the type change. (The TrueColor slot holds the same 256-color index as
+	// ANSI256 by design, so checking it too would assert the same thing twice.)
 	if s := defaultPalette().Subtle; s.Light.ANSI256 == s.Dark.ANSI256 || s.Light.ANSI == s.Dark.ANSI {
 		t.Errorf("Subtle is not adaptive: light %+v, dark %+v", s.Light, s.Dark)
 	}

@@ -81,9 +81,16 @@ colore sparisce su ogni terminale non truecolor.
 ### 2.3 Perché 8 e 7, e cosa non possiamo sapere
 
 A 16 colori le uniche scelte che non sono una *tinta* (rosso, verde, blu…) sono
-le quattro sfumature: 0 nero, 8 nero brillante, 7 bianco, 15 bianco brillante. Su
-fondo scuro 0 e 15 sono lo sfondo o il testo; resta **8**. Su fondo chiaro 15 è
-lo sfondo e 0 il testo; resta **7**.
+le quattro sfumature: 0 nero, 8 nero brillante, 7 bianco, 15 bianco brillante.
+
+Su fondo scuro cadono 0 (è lo sfondo) e 15 (è il testo), e restano **due**
+candidati, 7 e 8 — non uno solo. Il criterio che sceglie fra i due è che la
+striscia deve restare **vicina alla sfumatura che sostituisce**: il 236 di oggi è
+#303030, un grigio scuro, e l'8 è la sua controparte a 16 colori, mentre il 7 è
+un grigio chiaro che su molti temi coincide con il colore di default del testo —
+una striscia che si confonde col testo è peggio di una che si confonde con lo
+sfondo. Specularmente su fondo chiaro cadono 15 e 0, restano 7 e 8, e il 254
+(#E4E4E4, grigio chiarissimo) porta al **7**.
 
 Va detto onestamente: gli indici 0-15 sono il tema del terminale dell'utente, non
 un colore che conosciamo. Il contrasto esatto della striscia **non è
@@ -102,6 +109,30 @@ eseguire alla command palette le azioni di schermata costruendo un `tea.KeyMsg`
 sintetico e **rigiocandolo dentro `routeKey`**. Una rotella tradotta in su/giù e
 mandata per la stessa strada eredita il cursore di ogni schermata, e i test che
 lo coprono, senza toccarne nessuna.
+
+### 2.5 Due contesti in cui una tacca non deve arrivare
+
+Rigiocare la rotella come su/giù la fa arrivare anche dove **qualunque tasto è
+una risposta**, non un movimento di cursore. Misurato mandando un `KeyDown`
+dentro `routeKey` su ogni schermata, due casi fanno danno:
+
+| contesto | cosa succede con un `KeyDown` | perché è un problema |
+|---|---|---|
+| `screenError` | `resetTo(screenHome)` (`app.go:953-960`) | una tacca accidentale **chiude il messaggio d'errore** prima che sia stato letto |
+| `entriesConfirmDelete` | `mode` torna a `entriesList` (`entries.go:262-266`) | una tacca **annulla la conferma di cancellazione** |
+
+Il secondo è dal lato sicuro — la cancellazione richiede `y`, e una rotella non
+la conferma mai — ma resta sorprendente. Il primo no: con il mouse tracking
+attivo e l'inerzia di un trackpad, perdere un errore per una tacca di troppo
+succederà davvero.
+
+Sono esattamente i due contesti in cui il codebase ha già dovuto disattivare a
+mano il tasto `?` (`app.go:675-678` li elenca fra i posti dove `keysFor(m).Help`
+resta non assegnata). La proprietà che li accomuna non è la schermata: è che
+**ogni tasto è una risposta a una domanda**, e una tacca di rotella non è una
+risposta.
+
+### 2.6 La forma degli eventi rotella
 
 **Misurato dal sorgente di bubbletea v1.3.10**, e non assunto: gli eventi rotella
 portano sempre `Action == MouseActionPress`. Il parser SGR lo dice esplicitamente
@@ -142,6 +173,9 @@ case tea.MouseMsg:
 	if m.overlay != overlayNone {
 		return m.updateOverlay(k)
 	}
+	if m.anyKeyIsAnAnswer() {
+		return m, nil
+	}
 	return m.routeKey(k)
 ```
 
@@ -149,7 +183,21 @@ ForceQuit, Quit, `?` e `ctrl+p` non sono controllati perché una rotella non pu�
 corrispondervi: sono tutti tasti. Il controllo sull'overlay invece resta, ed è
 nello stesso ordine del ramo `tea.KeyMsg` (`app.go:662-668`), perché con la
 palette aperta la rotella deve muovere la selezione della palette e non la
-schermata sotto.
+schermata sotto. E viene **prima** del cancello di §2.5: un overlay possiede la
+rotella come possiede la tastiera, qualunque cosa ci sia sotto.
+
+Il cancello è un predicato con un criterio di ammissione dichiarato, non un
+elenco di schermate:
+
+```go
+func (m Model) anyKeyIsAnAnswer() bool
+```
+
+Vero per `screenError` e per `screenEntries` in `entriesConfirmDelete`, cioè per
+i due contesti misurati in §2.5. Il nome dice la proprietà e non il meccanismo,
+di proposito: è quello che dà alla lista un criterio per crescere — un contesto
+nuovo ci entra se e solo se ogni tasto vi è una risposta — invece di lasciarla
+marcire come elenco di casi speciali.
 
 **Una tacca muove una riga.** Nessuna accelerazione, nessun moltiplicatore: la
 misura in §2.4 dice che il terminale manda già un messaggio per tacca, quindi
@@ -225,8 +273,14 @@ trovare.
   accorge se qualcuno «migliora» gli slot mettendoci un hex.
 - **`wheelKey`**: tabella su su/giù/sinistra/destra, click sinistro, motion.
 - **Instradamento**: la rotella muove il cursore su una schermata a lista; con la
-  palette aperta muove la selezione della palette e non la schermata sotto; un
-  click non cambia niente.
+  palette aperta muove la selezione della palette e non la schermata sotto; non
+  chiude la schermata d'errore e non annulla la conferma di cancellazione (§2.5);
+  un click non cambia niente.
+- **Il test sul click parte da un cursore diverso da zero.** Asserire «riga 0
+  prima, riga 0 dopo» lo farebbe passare anche se il click venisse tradotto in
+  *su*: a riga 0 il cursore è già in cima e non si muove comunque. Va portato
+  prima a riga 1 con una tacca, e lì il click deve lasciarlo a 1 — così il test
+  vede sia click→giù sia click→su.
 - **Config**: `MouseEnabled()` per `nil`/`true`/`false`, e il round-trip su disco
   di `mouse: false`.
 - **Ogni difetto ha un test visto fallire** contro il difetto, col transcript. In
