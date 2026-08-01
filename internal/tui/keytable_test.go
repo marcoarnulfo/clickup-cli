@@ -92,6 +92,20 @@ func TestDerivedLabelPanicsOnUnknownBindingName(t *testing.T) {
 	DefaultKeyTable().label("typo", "does_not_exist")
 }
 
+func TestRemappedPanicsOnUnknownBindingName(t *testing.T) {
+	t.Parallel()
+	kt, err := ResolveKeys(map[string]config.KeySpec{"yes": {"f4"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("remapped stopped at an overridden name and did not validate the later typo")
+		}
+	}()
+	kt.remapped("yes", "does_not_exist")
+}
+
 func TestResolveKeysDoesNotAliasConfigInput(t *testing.T) {
 	t.Parallel()
 	keys := config.KeySpec{"k", "ctrl+u"}

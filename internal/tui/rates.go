@@ -518,7 +518,9 @@ func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap, kt KeyTable) ratesMod
 // startDraft begins a new (list,member) override.
 func (rt ratesModel) startDraft(kt KeyTable) ratesModel {
 	if len(rt.rows) == 0 || len(rt.members) == 0 {
-		rt.msg = fmt.Sprintf("No lists or members known yet: browse a list ('%s') or run a team report first", kt.label("b", "browse_list"))
+		sectionKeys := kt.label("tab/⇧tab", "next_section", "prev_section")
+		browseKey := kt.label("b", "browse_list")
+		rt.msg = fmt.Sprintf("No lists or members known yet: switch to Lists with '%s', then press '%s' to browse the workspace, or run a team report first", sectionKeys, browseKey)
 		return rt
 	}
 	rt.draft = overrideDraft{active: true, step: draftPickList}
@@ -613,8 +615,13 @@ func (rt ratesModel) commit(v string, kt KeyTable) ratesModel {
 		rt.editing, rt.edit, rt.msg = false, editNone, ""
 		return rt
 	}
-	badRate := fmt.Sprintf("Invalid rate: enter a number >= 0 (0 bills at zero; '%s' clears the value so the inherited rate applies)", kt.label("d", "clear_value"))
-	badBudget := fmt.Sprintf("Invalid budget: enter an amount > 0 (press '%s' and submit an empty value to remove the budget)", kt.label("g", "list_budget"))
+	backKey := kt.label("Esc", "back")
+	clearKey := kt.label("d", "clear_value")
+	badRate := fmt.Sprintf("Invalid rate: enter a number >= 0 (0 bills at zero; press '%s' to cancel, then '%s' to clear the existing value)", backKey, clearKey)
+	if rt.edit == editOverrideRate && rt.draft.active {
+		badRate = fmt.Sprintf("Invalid rate: enter a number >= 0 (0 bills at zero; press '%s' to cancel this new override)", backKey)
+	}
+	const badBudget = "Invalid budget: enter an amount > 0, or submit an empty value to remove the budget"
 	const badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
 
 	switch rt.edit {
@@ -879,8 +886,7 @@ func (rt ratesModel) view(th theme, kt KeyTable) string {
 	// what a client is billed, so it belongs on the screen rather than only in
 	// the README. It used to ride along in the key-hint line ("Enter: rate (0:
 	// bill at zero)"); the generated footer names keys, not values.
-	clearKey := kt.label("d", "clear_value")
-	b += "\n" + th.Help.Render(fmt.Sprintf("A rate of 0 bills at zero — an empty list/member rate makes no change; press '%s' to unset it.", clearKey))
+	b += "\n" + th.Help.Render("A rate of 0 bills at zero — to unset a value instead, submit an empty field.")
 	return b
 }
 

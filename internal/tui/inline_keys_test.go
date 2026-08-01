@@ -117,10 +117,12 @@ func TestBillableInstructionsUseLiveKeys(t *testing.T) {
 func TestRatesInlineInstructionsUseLiveKeys(t *testing.T) {
 	t.Parallel()
 	remapped := mustResolveInlineKeys(t, map[string]config.KeySpec{
-		"back":        {"f6"},
-		"browse_list": {"f7"},
-		"clear_value": {"f8"},
-		"list_budget": {"f9"},
+		"back":         {"f6"},
+		"browse_list":  {"f7"},
+		"clear_value":  {"f8"},
+		"list_budget":  {"f9"},
+		"next_section": {"f10"},
+		"prev_section": {"f11"},
 	})
 
 	editCases := []struct {
@@ -171,28 +173,70 @@ func TestRatesInlineInstructionsUseLiveKeys(t *testing.T) {
 		})
 	}
 
-	t.Run("browse list error", func(t *testing.T) {
-		m := Model{screen: screenRates, keys: remapped, ratesScreen: ratesModel{sec: secOverrides}}
+	t.Run("empty draft guidance leads to browse", func(t *testing.T) {
+		m := Model{screen: screenRates, demo: true, keys: remapped, ratesScreen: ratesModel{sec: secOverrides}}
 		next, _ := m.updateRates(keyMsg("enter"))
-		got := next.(Model).ratesScreen.msg
-		if !strings.Contains(got, "('f7')") || strings.Contains(got, "('b')") {
-			t.Errorf("browse-list error is not truthful: %q", got)
+		m = next.(Model)
+		for _, want := range []string{"'f10/f11'", "'f7'"} {
+			if !strings.Contains(m.ratesScreen.msg, want) {
+				t.Fatalf("empty-draft guidance does not mention %s: %q", want, m.ratesScreen.msg)
+			}
+		}
+
+		// Follow the advertised previous-section binding twice:
+		// Overrides -> Members -> Lists, where BrowseList is enabled.
+		for _, want := range []ratesSection{secMembers, secLists} {
+			next, _ = m.updateRates(keyMsg("f11"))
+			m = next.(Model)
+			if m.ratesScreen.sec != want {
+				t.Fatalf("f11 moved to section %v, want %v", m.ratesScreen.sec, want)
+			}
+		}
+		next, _ = m.updateRates(keyMsg("f7"))
+		if got := next.(Model).screen; got != screenListBrowser {
+			t.Errorf("advertised browse route ended on screen %v, want list browser", got)
 		}
 	})
 
-	t.Run("invalid rate", func(t *testing.T) {
-		rt := ratesModel{editing: true, edit: editListRate, rows: []rateRow{{listID: "1"}}, rates: map[string]float64{}}
+	t.Run("invalid existing rate", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			rt   ratesModel
+		}{
+			{name: "list", rt: ratesModel{editing: true, edit: editListRate, rows: []rateRow{{listID: "1"}}, rates: map[string]float64{}}},
+			{name: "member", rt: ratesModel{editing: true, edit: editMemberRate, members: []memberRow{{id: 1}}, memberRates: map[int]float64{}}},
+			{name: "override", rt: ratesModel{editing: true, edit: editOverrideRate, overrides: []overrideRow{{listID: "1", member: 1}}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				got := tc.rt.commit("-1", remapped).msg
+				for _, want := range []string{"'f6'", "'f8'", "cancel"} {
+					if !strings.Contains(got, want) {
+						t.Errorf("invalid existing-rate hint does not mention %q: %q", want, got)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("invalid draft rate", func(t *testing.T) {
+		rt := ratesModel{editing: true, edit: editOverrideRate, draft: overrideDraft{active: true}}
 		got := rt.commit("-1", remapped).msg
-		if !strings.Contains(got, "'f8'") || strings.Contains(got, "'d'") {
-			t.Errorf("invalid-rate hint is not truthful: %q", got)
+		if !strings.Contains(got, "'f6'") || !strings.Contains(got, "cancel") {
+			t.Errorf("invalid draft-rate hint does not offer live cancellation: %q", got)
+		}
+		if strings.Contains(got, "'f8'") || strings.Contains(got, "clear") {
+			t.Errorf("invalid draft-rate hint advertises clearing a nonexistent value: %q", got)
 		}
 	})
 
-	t.Run("invalid budget", func(t *testing.T) {
+	t.Run("invalid budget stays in the open field", func(t *testing.T) {
 		rt := ratesModel{editing: true, edit: editListBudget, rows: []rateRow{{listID: "1"}}, budgets: map[string]float64{}}
 		got := rt.commit("-1", remapped).msg
-		if !strings.Contains(got, "'f9'") || strings.Contains(got, "'g'") {
-			t.Errorf("invalid-budget hint is not truthful: %q", got)
+		if !strings.Contains(got, "submit an empty value to remove the budget") {
+			t.Errorf("invalid-budget hint is not actionable in the open field: %q", got)
+		}
+		if strings.Contains(got, "f9") || strings.Contains(got, "press") {
+			t.Errorf("invalid-budget hint advertises a disabled binding: %q", got)
 		}
 	})
 
@@ -203,22 +247,13 @@ func TestRatesInlineInstructionsUseLiveKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("always-visible unset hint", func(t *testing.T) {
+	t.Run("always-visible sentence remains unchanged", func(t *testing.T) {
 		rt := ratesModel{sec: secLists}
-		for _, tc := range []struct {
-			name string
-			kt   KeyTable
-			key  string
-		}{
-			{name: "defaults", kt: KeyTable{}, key: "d"},
-			{name: "remapped", kt: remapped, key: "f8"},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				got := rt.view(testTheme(true), tc.kt)
-				if !strings.Contains(got, "empty list/member rate makes no change") || !strings.Contains(got, "press '"+tc.key+"' to unset") {
-					t.Errorf("unset-rate hint is not truthful:\n%s", got)
-				}
-			})
+		const want = "A rate of 0 bills at zero — to unset a value instead, submit an empty field."
+		for _, kt := range []KeyTable{{}, remapped} {
+			if got := rt.view(testTheme(true), kt); !strings.Contains(got, want) {
+				t.Errorf("always-visible rates sentence changed:\n%s", got)
+			}
 		}
 	})
 }
