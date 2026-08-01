@@ -4,8 +4,6 @@ package tui
 // log_test.go's tea.KeyMsg helper is named keyMsg rather than key: that is what
 // lets bubbles/key keep its own name here and in every handler.
 import (
-	"strings"
-
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -200,8 +198,8 @@ func billablePrompt(th theme, kt KeyTable) string {
 	if !kt.remapped("yes", "no") {
 		return "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
 	}
-	yes := strings.Join(kt.keysOf("yes"), "/")
-	no := strings.Join(kt.keysOf("no"), "/")
+	yes := keyLabel(kt.keysOf("yes"))
+	no := keyLabel(kt.keysOf("no"))
 	return "Billable? " + th.Accent.Render("["+yes+"/"+no+"]")
 }
 

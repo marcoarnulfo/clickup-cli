@@ -95,6 +95,7 @@ func TestBillableInstructionsUseLiveKeys(t *testing.T) {
 				{name: "yes", over: map[string]config.KeySpec{"yes": {"f4"}}, want: "Billable? [f4/n/N]"},
 				{name: "no", over: map[string]config.KeySpec{"no": {"f5"}}, want: "Billable? [y/Y/enter/f5]"},
 				{name: "both", over: map[string]config.KeySpec{"yes": {"f4"}, "no": {"f5"}}, want: "Billable? [f4/f5]"},
+				{name: "space", over: map[string]config.KeySpec{"yes": {" "}, "toggle_item": {"f6"}}, want: "Billable? [space/n/N]"},
 			} {
 				t.Run(remap.name, func(t *testing.T) {
 					m := tc.model

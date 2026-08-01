@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
@@ -52,6 +53,75 @@ func TestResolveKeysRegeneratesTheHelp(t *testing.T) {
 	}
 	if want := defaultKeys().Up.Help().Desc; h.Desc != want {
 		t.Errorf("help desc = %q, want the original %q", h.Desc, want)
+	}
+}
+
+func TestLiteralSpaceOverrideRoutesAndRendersAsSpace(t *testing.T) {
+	t.Parallel()
+	kt, err := ResolveKeys(map[string]config.KeySpec{
+		"export":      {" "},
+		"toggle_item": {"f2"}, // vacate ToggleItem's default literal space
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := kt.bindings()
+	if got := d.Export.Keys(); len(got) != 1 || got[0] != " " {
+		t.Fatalf("Export raw keys = %q, want one literal space", got)
+	}
+	if got := claims(d)[" "]; len(got) != 1 || got[0] != "export" {
+		t.Errorf("literal-space claims = %v, want [export]", got)
+	}
+	if got := d.Export.Help().Key; got != "space" {
+		t.Errorf("Export help key = %q, want space", got)
+	}
+	if got := kt.label("unused", "export", "toggle_item"); got != "space/f2" {
+		t.Errorf("derived pair label = %q, want space/f2", got)
+	}
+
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), kt)
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+	m.report = goldenReport()
+	m.width = 140
+
+	var export action
+	found := false
+	for _, a := range screenActions(m) {
+		if a.label == "Export" {
+			export, found = a, true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("Export disappeared from screenActions")
+	}
+	if export.hint != "space" {
+		t.Errorf("Export palette hint = %q, want space", export.hint)
+	}
+	physical := tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
+	viaAction, _ := export.run(m)
+	viaKey, _ := m.Update(physical)
+	if got, want := viaAction.(Model).screen, viaKey.(Model).screen; got != screenExport || want != screenExport {
+		t.Errorf("palette action screen = %v, physical space screen = %v, want %v", got, want, screenExport)
+	}
+
+	for _, showAll := range []bool{false, true} {
+		footer := footerView(testTheme(true), m.width, showAll, keysFor(m))
+		if !strings.Contains(footer, "space export") {
+			t.Errorf("showAll=%v footer does not render the space key:\n%s", showAll, footer)
+		}
+	}
+}
+
+func TestAltSpaceOverrideRendersAsAltSpace(t *testing.T) {
+	t.Parallel()
+	kt, err := ResolveKeys(map[string]config.KeySpec{"export": {"alt+ "}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := kt.bindings().Export.Help().Key; got != "alt+space" {
+		t.Errorf("Export help key = %q, want alt+space", got)
 	}
 }
 

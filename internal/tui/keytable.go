@@ -60,6 +60,24 @@ func (kt KeyTable) remapped(names ...string) bool {
 	return remapped
 }
 
+// keyLabel renders canonical key names without changing the raw strings used
+// by key.Matches and collision claims. A literal space is the only canonical
+// Bubble Tea name that would otherwise be invisible in generated guidance.
+func keyLabel(keys []string) string {
+	labels := make([]string, len(keys))
+	for i, k := range keys {
+		switch k {
+		case " ":
+			labels[i] = "space"
+		case "alt+ ":
+			labels[i] = "alt+space"
+		default:
+			labels[i] = k
+		}
+	}
+	return strings.Join(labels, "/")
+}
+
 // label returns lit unless one of the named bindings was remapped, in which
 // case it derives the label from the keys actually bound.
 //
@@ -74,7 +92,7 @@ func (kt KeyTable) label(lit string, names ...string) string {
 	for _, name := range names {
 		keys = append(keys, kt.keysOf(name)...)
 	}
-	return strings.Join(keys, "/")
+	return keyLabel(keys)
 }
 
 // setHelp is label's counterpart for single-binding SetHelp call sites.
@@ -188,7 +206,7 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 		// prettier rendering for them would be guessing.
 		v.Field(i).Set(reflect.ValueOf(key.NewBinding(
 			key.WithKeys(ks...),
-			key.WithHelp(strings.Join(ks, "/"), old.Help().Desc),
+			key.WithHelp(keyLabel(ks), old.Help().Desc),
 		)))
 		over[name] = true
 	}
