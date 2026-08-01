@@ -223,18 +223,24 @@ tranche.
   avviata, ed è dove `Execute` lo stampa già come `error: …`.
 - `internal/tui` cambia firma: `New(cfg config.Config, pal themes.Palette) Model`.
 
-**I call site di `New` sono 44, su 8 file** — misurati, non stimati: `app_test.go`
-34, `demo_test.go` 3, `log_test.go` 2, `report_test.go` 2, `golden_test.go` 1,
-`home_test.go` 1, `palette_demo_test.go` 1, `internal/cli/cli.go:57` 1, più la
-definizione in `app.go`.
+**I call site di `New` sono 44, su 8 file**: `app_test.go` 33, `demo_test.go` 3,
+`log_test.go` 2, `report_test.go` 2, `golden_test.go` 1, `home_test.go` 1,
+`palette_demo_test.go` 1, `internal/cli/cli.go:57` 1, più la definizione in
+`app.go`.
 
-> **Una nota di metodo, perché il numero sbagliato è stato scritto qui prima.**
-> La prima versione di questa sezione diceva «nove call site», perché avevo
-> cercato la stringa letterale `New(cfg)`. Quella cerca non trova
-> `New(config.Config{…})` (34 volte nel solo `app_test.go`), né
+> **Due note di metodo, perché il numero è stato sbagliato qui due volte.**
+>
+> La prima versione diceva «nove call site», perché avevo cercato la stringa
+> letterale `New(cfg)`. Quella ricerca non trova `New(config.Config{…})`, né
 > `New(demoConfig())`, né `New(realCfg)`. Un piano costruito su quel numero
-> avrebbe lasciato `internal/tui` non compilabile a metà esecuzione, con quattro
-> file da toccare fuori dallo scope dichiarato del task.
+> avrebbe lasciato `internal/tui` non compilabile a metà esecuzione.
+>
+> La correzione, però, dava `app_test.go` a 34, e sono **33**: il conteggio per
+> file e il totale erano stati presi con due comandi diversi e non tornavano fra
+> loro. Se ne è accorto l'implementer del Task 5, misurando prima di iniziare e
+> segnalando la discrepanza invece di aggiustarla in silenzio. Il modo
+> affidabile non è nessuno dei due grep: si cambia la firma e si lascia che sia
+> il compilatore a elencare le chiamate rimaste.
 
 L'alternativa — lasciare `New(cfg)` e farle risolvere il tema da sola — vorrebbe
 un ramo «non può succedere» per l'errore, dato che `cli` avrebbe già rifiutato di
