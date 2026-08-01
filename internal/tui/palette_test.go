@@ -13,6 +13,7 @@ import (
 
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/fuzzy"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 func openPaletteOn(m Model) Model { return m.openPalette() }
@@ -396,7 +397,7 @@ func colorTheme() theme {
 	r := lipgloss.NewRenderer(io.Discard)
 	r.SetColorProfile(termenv.ANSI)
 	r.SetHasDarkBackground(true)
-	return newTheme(r, defaultPalette())
+	return newTheme(r, themes.Default())
 }
 
 func TestPaletteHighlightUsesTheAccentStyle(t *testing.T) {

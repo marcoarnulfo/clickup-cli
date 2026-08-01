@@ -15,6 +15,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/*.golden files")
@@ -59,7 +60,7 @@ var goldenFixedTime = time.Date(2026, time.July, 15, 10, 30, 0, 0, time.UTC)
 
 // goldenModel is a Model with a frozen clock and a fixed configuration.
 func goldenModel() Model {
-	m := New(config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 50})
+	m := New(config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 50}, themes.Default())
 	m.now = func() time.Time { return goldenFixedTime }
 	m.loc = time.UTC
 	m.year, m.month = 2026, time.July

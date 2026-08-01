@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
@@ -62,5 +63,35 @@ func TestProgramOptionsAddsOneWhenMouseIsEnabled(t *testing.T) {
 	on := len(programOptions(config.Config{}))
 	if on != off+1 {
 		t.Errorf("programOptions: %d options with the mouse on, %d with it off; want exactly one more", on, off)
+	}
+}
+
+// An unresolvable theme must stop the launch with an error the user can act on,
+// not start a TUI with the wrong colors. The check is on resolveTheme, which is
+// the production code path runTUI takes: runTUI itself blocks on a terminal and
+// cannot be called from a test, the same reason programOptions was extracted.
+func TestResolveThemeRejectsAnUnknownName(t *testing.T) {
+	t.Parallel()
+	_, err := resolveTheme(config.Config{Theme: "nope"})
+	if err == nil {
+		t.Fatal("resolveTheme of an unknown theme = nil error, want one")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error %q does not name the theme the user asked for", err)
+	}
+	// The prefix is what tells the user which part of their config is at fault
+	// once Execute prints it as "error: …".
+	if !strings.HasPrefix(err.Error(), "theme:") {
+		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+}
+
+func TestResolveThemeAcceptsABuiltin(t *testing.T) {
+	t.Parallel()
+	if _, err := resolveTheme(config.Config{Theme: "dracula"}); err != nil {
+		t.Errorf("resolveTheme(dracula) = %v, want nil", err)
+	}
+	if _, err := resolveTheme(config.Config{}); err != nil {
+		t.Errorf("resolveTheme with no theme set = %v, want nil (the default)", err)
 	}
 }

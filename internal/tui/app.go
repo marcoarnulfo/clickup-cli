@@ -15,6 +15,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 	"github.com/marcoarnulfo/clickup-cli/internal/service"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 type screen int
@@ -194,8 +195,11 @@ type Model struct {
 	browserContents map[string]browserSpaceContents
 }
 
-// New builds the root model from the config.
-func New(cfg config.Config) Model {
+// New builds the root model from the config and the already-resolved palette
+// it renders with. Resolving the palette is the caller's job (internal/cli's
+// resolveTheme): by the time New runs, a bad theme name or color has already
+// been turned into a startup error, so New itself never fails on it.
+func New(cfg config.Config, pal themes.Palette) Model {
 	demo := demoEnabled()
 	if demo {
 		cfg = demoConfig()
@@ -207,7 +211,7 @@ func New(cfg config.Config) Model {
 		preset: report.PresetThisMonth,
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
-		theme:  newTheme(lipgloss.DefaultRenderer(), defaultPalette()),
+		theme:  newTheme(lipgloss.DefaultRenderer(), pal),
 	}
 	// Best-effort default so range/label display works before the first report
 	// build; a genuinely invalid configured zone is caught and surfaced by

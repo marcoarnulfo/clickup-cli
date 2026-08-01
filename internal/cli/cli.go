@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/service"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 	"github.com/marcoarnulfo/clickup-cli/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,22 @@ func programOptions(cfg config.Config) []tea.ProgramOption {
 		opts = append(opts, tea.WithMouseCellMotion())
 	}
 	return opts
+}
+
+// resolveTheme builds the palette the TUI will render with, and refuses to
+// start on a configuration it cannot honor.
+//
+// Extracted from runTUI for the same reason programOptions was: runTUI blocks
+// on a terminal and cannot be called from a test, while the decision it makes
+// can. Called before the program starts because this is the last place a
+// configuration error still reaches stderr — Execute prints it as "error: …"
+// — instead of appearing inside an already-running TUI.
+func resolveTheme(cfg config.Config) (themes.Palette, error) {
+	pal, err := themes.Resolve(cfg.Theme, cfg.Themes)
+	if err != nil {
+		return themes.Palette{}, fmt.Errorf("theme: %w", err)
+	}
+	return pal, nil
 }
 
 // rootCmd builds the root command. Unexported so tests can exercise the
@@ -54,7 +71,11 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	p := tea.NewProgram(tui.New(cfg), programOptions(cfg)...)
+	pal, err := resolveTheme(cfg)
+	if err != nil {
+		return err
+	}
+	p := tea.NewProgram(tui.New(cfg, pal), programOptions(cfg)...)
 	_, err = p.Run()
 	return err
 }

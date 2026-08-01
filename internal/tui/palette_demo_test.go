@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 // Demo mode must offer the same palette, and open it without any I/O: the demo
@@ -14,7 +15,7 @@ import (
 // from racing TestMain's os.Unsetenv of the same variable.
 func TestPaletteWorksInDemoMode(t *testing.T) {
 	t.Setenv("CLICKUP_DEMO", "1")
-	m := New(demoConfig())
+	m := New(demoConfig(), themes.Default())
 	m.entries = goldenEntries()
 	// A non-empty Status is load-bearing for the "Go to filters" assertion
 	// below: demoStatusEnrichCmd echoes each entry's own Status, and

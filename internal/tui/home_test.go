@@ -9,6 +9,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 func TestHomeFOpensMembersInTeam(t *testing.T) {
@@ -181,7 +182,7 @@ func TestHomeMembersNote(t *testing.T) {
 }
 
 func TestHomeShowsUpdateNotice(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	m.latestVersion = "v1.8.0"
 	out := m.View()
 	if !strings.Contains(out, "v1.8.0") {

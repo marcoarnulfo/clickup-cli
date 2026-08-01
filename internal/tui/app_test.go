@@ -20,6 +20,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/export"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 // TestDefaultYearMonthFollowsLoc pins the fix for "New's default year/month
@@ -104,7 +105,7 @@ func TestLoadEntriesUsesGivenRange(t *testing.T) {
 }
 
 func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
-	m := New(config.Config{})
+	m := New(config.Config{}, themes.Default())
 	for _, r := range "tok" {
 		u, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = u.(Model)
@@ -125,7 +126,7 @@ func TestSetupIgnoresKeysWhileLoading(t *testing.T) {
 }
 
 func TestSetupRejectsInvalidRate(t *testing.T) {
-	m := New(config.Config{})
+	m := New(config.Config{}, themes.Default())
 	m.setup.step = stepRate
 	m.setup.input = newNumberInput("")
 	m.setup.input.SetValue("abc")
@@ -319,14 +320,14 @@ func TestReloadEntriesCmdIgnoresSelectionInMeScope(t *testing.T) {
 }
 
 func TestNewStartsInSetupWhenInvalid(t *testing.T) {
-	m := New(config.Config{})
+	m := New(config.Config{}, themes.Default())
 	if m.screen != screenSetup {
 		t.Fatalf("invalid config should start in setup, got %v", m.screen)
 	}
 }
 
 func TestNewStartsInHomeWhenValid(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	if m.screen != screenHome {
 		t.Fatalf("valid config should start in home, got %v", m.screen)
 	}
@@ -352,7 +353,7 @@ func TestNewInDemoModeBuildsClientFromDemoToken(t *testing.T) {
 	defer srv.Close()
 
 	realCfg := config.Config{Token: "REAL-SECRET-TOKEN", WorkspaceID: "1"}
-	m := New(realCfg)
+	m := New(realCfg, themes.Default())
 	if !m.demo {
 		t.Fatal("expected m.demo = true with CLICKUP_DEMO set")
 	}
@@ -371,7 +372,7 @@ func TestNewInDemoModeBuildsClientFromDemoToken(t *testing.T) {
 }
 
 func TestErrMsgSwitchesToErrorScreen(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	updated, _ := m.Update(errMsg{err: errTest})
 	mm := updated.(Model)
 	if mm.screen != screenError {
@@ -382,7 +383,7 @@ func TestErrMsgSwitchesToErrorScreen(t *testing.T) {
 // #38: a retryable error originating from Home must send the user back to
 // Home with an inline message, instead of the dead-end error screen.
 func TestRetryableErrOnHomeStaysHome(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: errors.New("boom")})
 	mm := updated.(Model)
 	if mm.screen != screenHome {
@@ -395,7 +396,7 @@ func TestRetryableErrOnHomeStaysHome(t *testing.T) {
 
 // #38: a 401 must still relaunch the setup wizard, regardless of origin.
 func TestRetryableErrUnauthorizedGoesToSetup(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	updated, _ := m.Update(retryableErrMsg{origin: screenHome, err: fmt.Errorf("x: %w", clickup.ErrUnauthorized)})
 	mm := updated.(Model)
 	if mm.screen != screenSetup {
@@ -404,7 +405,7 @@ func TestRetryableErrUnauthorizedGoesToSetup(t *testing.T) {
 }
 
 func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
 	mm := updated.(Model)
@@ -422,7 +423,7 @@ func TestEntriesMsgBuildsReportAndShowsReportScreen(t *testing.T) {
 // day-grouping are computed in Rome — never a mix of Rome and UTC.
 func TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Europe/Rome"}
-	m := New(cfg)
+	m := New(cfg, themes.Default())
 	m.year, m.month = 2026, 7
 	m.preset = report.PresetThisMonth
 	m.report.GroupBy = report.GroupByDay // carried across the reload by entriesMsg
@@ -459,7 +460,7 @@ func TestEntriesMsgThreadsConfiguredTimezoneThroughRangeAndBuild(t *testing.T) {
 func TestEntriesMsgWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}
 	cfg.Billing.Rounding.Increment = "not-a-duration"
-	m := New(cfg)
+	m := New(cfg, themes.Default())
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
 	mm := updated.(Model)
@@ -476,7 +477,7 @@ func TestEntriesMsgWithBadRoundingRoutesToErrorScreen(t *testing.T) {
 // — never silently fall back to time.Local or UTC.
 func TestEntriesMsgWithBadTimezoneRoutesToErrorScreen(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR", Timezone: "Not/AZone"}
-	m := New(cfg)
+	m := New(cfg, themes.Default())
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{}})
 	mm := updated.(Model)
@@ -489,7 +490,7 @@ func TestEntriesMsgWithBadTimezoneRoutesToErrorScreen(t *testing.T) {
 }
 
 func TestQuitKey(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if cmd == nil {
 		t.Fatal("q should return a quit command")
@@ -501,7 +502,7 @@ func TestQuitKey(t *testing.T) {
 // key.Matches(msg, defaultKeys().ForceQuit)): it must quit even on a screen
 // where 'q' itself does not (screenLog — see TestQuitBindingPerScreen).
 func TestCtrlCForceQuits(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	m.screen = screenLog
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
 	if cmd == nil {
@@ -510,7 +511,7 @@ func TestCtrlCForceQuits(t *testing.T) {
 }
 
 func TestSetupTokenStepAcceptsInput(t *testing.T) {
-	m := New(config.Config{})
+	m := New(config.Config{}, themes.Default())
 	// type a character in the token field
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	mm := updated.(Model)
@@ -526,7 +527,7 @@ type testErr struct{}
 func (*testErr) Error() string { return "boom" }
 
 func TestReportCycleGroupBy(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	updated, _ := m.Update(entriesMsg{entries: []report.TimeEntry{
 		{TaskName: "A", ListName: "L", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -556,7 +557,7 @@ func TestEntriesMsgMemberGroupingDoesNotLeakIntoMeScope(t *testing.T) {
 }
 
 func TestHomeChangesMonthAndScope(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	m.year, m.month = 2026, 7
 	m.home = newHome()
 
@@ -581,7 +582,7 @@ func TestExportWritesFile(t *testing.T) {
 	defer os.Chdir(oldwd)
 	os.Chdir(dir)
 
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	jStart := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
 	m.report = report.Report{Start: jStart, End: jStart.AddDate(0, 1, 0), DefaultCurrency: "EUR",
@@ -601,7 +602,7 @@ func TestExportWritesFile(t *testing.T) {
 }
 
 func TestHomeEnterStartsLoading(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	m.home = newHome()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := updated.(Model)
@@ -614,7 +615,7 @@ func TestHomeEnterStartsLoading(t *testing.T) {
 }
 
 func TestRatesScreenOpensFromReport(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Client Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -637,7 +638,7 @@ func TestRatesScreenEditSaveRecomputes(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("CLICKUP_TOKEN", "")
 
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
@@ -686,7 +687,7 @@ func TestRatesScreenSaveWithBadRoundingIsRejected(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("CLICKUP_TOKEN", "")
 
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: 2 * time.Hour, Billable: true},
@@ -710,7 +711,7 @@ func TestRatesScreenSaveWithBadRoundingIsRejected(t *testing.T) {
 }
 
 func TestRatesScreenEscCancelsEdit(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -736,7 +737,7 @@ func TestRatesScreenEscCancelsEdit(t *testing.T) {
 }
 
 func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -764,7 +765,7 @@ func TestRatesScreenInvalidRateStaysEditing(t *testing.T) {
 }
 
 func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -783,7 +784,7 @@ func TestRatesScreenRejectsNonNumericInput(t *testing.T) {
 }
 
 func TestRatesScreenEscDiscardsAndReturns(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -816,7 +817,7 @@ func TestRatesScreenDropsOverrideEqualToDefault(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("CLICKUP_TOKEN", "")
 
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -960,7 +961,7 @@ func TestRatesScreenSaveErrorStaysOnScreen(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", f) // ...or from here (Linux); a file => MkdirAll fails
 	t.Setenv("CLICKUP_TOKEN", "")
 
-	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1", Rate: 30, Currency: "EUR"}, themes.Default())
 	m.year, m.month = 2026, 7
 	entries := []report.TimeEntry{
 		{ListID: "55", ListName: "Z", Start: time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC), Duration: time.Hour, Billable: true},
@@ -1177,7 +1178,7 @@ func TestStatusEnrichUnauthorizedReturnsErrMsg(t *testing.T) {
 // Fix 3: 'q' must not quit while typing a custom date on the range screen —
 // it has free-text inputs, so a stray 'q' shouldn't kill the whole session.
 func TestQuitKeyDoesNotQuitWhileEditingCustomRange(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	m.screen = screenRange
 	m.rangeScreen = newRange(report.PresetThisMonth)
 	m.rangeScreen.editing = true
@@ -1246,7 +1247,7 @@ func TestSpacesMsgWarmsCacheAndUpdatesWhenOnBrowser(t *testing.T) {
 
 // newWithClock is a test helper that builds a Model with an injected clock.
 func newWithClock(cfg config.Config, now func() time.Time) Model {
-	m := New(cfg)
+	m := New(cfg, themes.Default())
 	m.now = now
 	// Re-derive the default month from the injected clock the same way New
 	// does, so the helper cannot re-encode the local-calendar bug
@@ -1302,7 +1303,7 @@ func TestExportInvoiceWritesDistinctFile(t *testing.T) {
 		Buckets: []report.Bucket{{Label: "A", Key: "l1", Hours: 1}}, TotalHours: 1}
 
 	for i, f := range exportFormats {
-		m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"})
+		m := New(config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR"}, themes.Default())
 		m.report = r
 		m.export = newExport(r)
 		m.export.idx = i
@@ -1322,7 +1323,7 @@ func TestExportInvoiceWritesDistinctFile(t *testing.T) {
 }
 
 func TestUpdateAvailableMsgSetsLatestVersion(t *testing.T) {
-	m := New(config.Config{Token: "t", WorkspaceID: "1"})
+	m := New(config.Config{Token: "t", WorkspaceID: "1"}, themes.Default())
 	next, _ := m.Update(updateAvailableMsg{latest: "v1.8.0"})
 	got := next.(Model)
 	if got.latestVersion != "v1.8.0" {
@@ -1341,7 +1342,7 @@ func TestUpdateAvailableMsgSetsLatestVersion(t *testing.T) {
 // sub-command's message is one of those demo-safe kinds, never an
 // update-check message.
 func TestInitDoesNotCheckInDemoMode(t *testing.T) {
-	m := New(config.Config{})
+	m := New(config.Config{}, themes.Default())
 	m.demo = true
 	cmd := m.Init()
 	if cmd == nil {
