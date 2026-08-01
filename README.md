@@ -447,6 +447,34 @@ billing:
   reporting takes the terminal's native text selection away: with it on, in most
   terminals holding **Shift** while dragging still selects and copies, or set this
   key to `false` to give the mouse back to the terminal for good.
+- `theme` (optional): the palette the TUI renders with. Built-in names are
+  `default`, `dracula` and `nord`; you can also name one of your own from `themes`
+  below. Omitting the key uses `default`. An unknown name stops `clup` from starting
+  rather than silently falling back.
+  - **`dracula` and `nord` are designed for a dark terminal and are shipped
+    faithfully.** On a light background parts of the UI become hard or impossible
+    to read — measured against white, dracula's green sits at 1.37:1; measured
+    against the terminal's own dark text painted on top of it, nord's zebra
+    stripe sits at 2.09:1. Both are far below the 3:1 floor. `default` is the
+    adaptive one: it changes with your terminal background.
+- `themes` (optional): your own palettes, by name. A theme names only the tokens it
+  changes; the rest come from `default`. The six tokens are `primary`, `accent`,
+  `muted`, `danger`, `success` and `subtle` (the report's zebra stripe). A value is
+  either one color, used on both backgrounds, or a `{light: …, dark: …}` pair. A
+  color is a `#RGB`/`#RRGGBB` hex or a number from 0 to 255. Anything else stops
+  startup with a message naming the theme, the token and the value — and every
+  theme you define is checked, not just the one you selected.
+  - **Quote your hex values.** In YAML an unquoted `#` starts a comment, so
+    `muted: #fff` sets `muted` to nothing at all. `muted: "#fff"` is the color.
+    Plain numbers need no quotes.
+
+    ```yaml
+    theme: mine
+    themes:
+      mine:
+        accent: {light: "127", dark: "205"}
+        muted: "240"
+    ```
 
 ### How billed amounts are computed
 

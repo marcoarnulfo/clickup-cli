@@ -12,6 +12,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 	"github.com/marcoarnulfo/clickup-cli/internal/service"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 func keyMsg(s string) tea.KeyMsg {
@@ -30,12 +31,12 @@ func keyMsg(s string) tea.KeyMsg {
 // timer indicator and its 'c' key handling.
 func newTestModel() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
-	return New(cfg)
+	return New(cfg, themes.Default())
 }
 
 func newTestModelOnReport() Model {
 	cfg := config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 40}
-	m := New(cfg)
+	m := New(cfg, themes.Default())
 	m.screen = screenReport
 	// Report is only ever reached from Home: seed that parent so pop()
 	// (esc/m/s and everything built on top of this fixture) lands where the

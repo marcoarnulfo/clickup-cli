@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 	"github.com/muesli/termenv"
 )
 
@@ -16,29 +17,7 @@ func testTheme(dark bool) theme {
 	r := lipgloss.NewRenderer(io.Discard)
 	r.SetColorProfile(termenv.Ascii)
 	r.SetHasDarkBackground(dark)
-	return newTheme(r, defaultPalette())
-}
-
-// The default palette must keep today's colors on a dark background, so the
-// refactor is a no-op for the terminals most users are on.
-func TestDefaultPaletteKeepsCurrentDarkColors(t *testing.T) {
-	t.Parallel()
-	p := defaultPalette()
-	for _, tc := range []struct {
-		name string
-		got  string
-		want string
-	}{
-		{"Primary", p.Primary.Dark, "205"},
-		{"Accent", p.Accent.Dark, "205"},
-		{"Muted", p.Muted.Dark, "240"},
-		{"Danger", p.Danger.Dark, "196"},
-		{"Success", p.Success.Dark, "42"},
-	} {
-		if tc.got != tc.want {
-			t.Errorf("%s dark = %q, want %q", tc.name, tc.got, tc.want)
-		}
-	}
+	return newTheme(r, themes.Default())
 }
 
 // A theme built on a private renderer must not disturb the package default.
@@ -47,7 +26,7 @@ func TestThemeRendererIsIsolated(t *testing.T) {
 	before := lipgloss.ColorProfile()
 	r := lipgloss.NewRenderer(io.Discard)
 	r.SetColorProfile(termenv.TrueColor)
-	_ = newTheme(r, defaultPalette())
+	_ = newTheme(r, themes.Default())
 	if after := lipgloss.ColorProfile(); after != before {
 		t.Errorf("building a theme changed the default color profile: %v -> %v", before, after)
 	}
@@ -59,7 +38,7 @@ func paletteTheme(dark bool) theme {
 	r := lipgloss.NewRenderer(io.Discard)
 	r.SetColorProfile(termenv.TrueColor)
 	r.SetHasDarkBackground(dark)
-	return newTheme(r, defaultPalette())
+	return newTheme(r, themes.Default())
 }
 
 // paletteSample renders one labeled line per style, so a single golden pins
@@ -89,38 +68,6 @@ func TestGoldenPaletteLight(t *testing.T) {
 	golden(t, "palette_light", paletteSample(paletteTheme(false)))
 }
 
-// The four tokens that are unreadable on white must differ between
-// backgrounds. Muted must NOT: 240 already clears 7:1 on white, so changing it
-// would be churn dressed up as accessibility.
-func TestPaletteIsAdaptive(t *testing.T) {
-	t.Parallel()
-	p := defaultPalette()
-	for _, tc := range []struct {
-		name string
-		c    lipgloss.AdaptiveColor
-	}{
-		{"Primary", p.Primary}, {"Accent", p.Accent},
-		{"Danger", p.Danger}, {"Success", p.Success},
-	} {
-		if tc.c.Light == tc.c.Dark {
-			t.Errorf("%s is not adaptive: Light == Dark == %q", tc.name, tc.c.Dark)
-		}
-	}
-	if p.Muted.Light != p.Muted.Dark {
-		t.Errorf("Muted was adapted (%q/%q) but reads fine on both backgrounds",
-			p.Muted.Light, p.Muted.Dark)
-	}
-
-	// Subtle is checked separately: it is a CompleteAdaptiveColor, so it does
-	// not fit the AdaptiveColor loop above. The requirement is the same one —
-	// light and dark must differ — carried over to the two slots that survived
-	// the type change. (The TrueColor slot holds the same 256-color index as
-	// ANSI256 by design, so checking it too would assert the same thing twice.)
-	if s := defaultPalette().Subtle; s.Light.ANSI256 == s.Dark.ANSI256 || s.Light.ANSI == s.Dark.ANSI {
-		t.Errorf("Subtle is not adaptive: light %+v, dark %+v", s.Light, s.Dark)
-	}
-}
-
 // NO_COLOR is honored by termenv inside lipgloss's renderer; this pins that
 // contract so a future lipgloss bump cannot silently break it.
 //
@@ -146,7 +93,7 @@ func TestNoColorProducesNoEscapes(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	r := lipgloss.NewRenderer(io.Discard, termenv.WithUnsafe())
 	r.SetColorProfile(r.Output().EnvColorProfile())
-	th := newTheme(r, defaultPalette())
+	th := newTheme(r, themes.Default())
 	out := paletteSample(th)
 	if strings.Contains(out, "\x1b") {
 		t.Errorf("NO_COLOR=1 still produced escape sequences:\n%q", out)
@@ -196,7 +143,7 @@ func TestZebraSurvivesSixteenColors(t *testing.T) {
 		r := lipgloss.NewRenderer(io.Discard)
 		r.SetColorProfile(tc.profile)
 		r.SetHasDarkBackground(tc.dark)
-		got := newTheme(r, defaultPalette()).Zebra.Render("x")
+		got := newTheme(r, themes.Default()).Zebra.Render("x")
 
 		if tc.want == "" {
 			if want := r.NewStyle().Background(old).Render("x"); got != want {
@@ -207,6 +154,32 @@ func TestZebraSurvivesSixteenColors(t *testing.T) {
 		}
 		if !strings.Contains(got, tc.want) {
 			t.Errorf("%s: Zebra = %q, want it to contain %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The report screen draws its table frame with th.Border and its empty-state
+// box with th.Box. Until th.Box carried a border color the two frames rendered
+// at different weights on the same screen, which is #138's second point: a user
+// whose report has no hours saw a different frame from one whose report does.
+func TestBoxAndBorderShareTheirColor(t *testing.T) {
+	t.Parallel()
+	for _, dark := range []bool{true, false} {
+		th := paletteTheme(dark)
+		want := th.Border.GetForeground()
+		for _, side := range []struct {
+			name string
+			got  lipgloss.TerminalColor
+		}{
+			{"top", th.Box.GetBorderTopForeground()},
+			{"right", th.Box.GetBorderRightForeground()},
+			{"bottom", th.Box.GetBorderBottomForeground()},
+			{"left", th.Box.GetBorderLeftForeground()},
+		} {
+			if side.got != want {
+				t.Errorf("dark=%v: Box border %s = %+v, Border = %+v — the two frames must weigh the same",
+					dark, side.name, side.got, want)
+			}
 		}
 	}
 }

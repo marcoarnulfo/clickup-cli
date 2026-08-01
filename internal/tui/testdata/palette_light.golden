@@ -4,8 +4,8 @@ Help    [38;5;240mHelp[0m
 Err     [1;38;5;124mErr[0m
 OK      [38;5;28mOK[0m
 Accent  [38;5;127mAccent[0m
-Box     ╭─────╮
-│ Box │
-╰─────╯
+Box     [38;5;240m╭─────╮[0m
+[38;5;240m│[0m Box [38;5;240m│[0m
+[38;5;240m╰─────╯[0m
 Border  [38;5;240mBorder[0m
 Zebra   [48;5;254mZebra[0m
