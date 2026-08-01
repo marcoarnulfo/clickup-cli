@@ -11,12 +11,13 @@ import (
 // always shipped; Light overrides only the tokens that are illegible on white,
 // measured as WCAG contrast against #FFFFFF:
 //
-//	205 -> 127   205 (#FF5FAF) is ~1.9:1 on white; 127 (#AF00AF) is ~7.5:1
-//	196 -> 124   196 (#FF0000) is ~4:1, under the 4.5:1 floor; 124 (#AF0000) ~8:1
-//	 42 ->  28    42 (#00D787) is ~1.8:1 on white;  28 (#008700) is ~6.5:1
+//	205 -> 127   205 (#FF5FAF) is 2.80:1 on white; 127 (#AF00AF) is 6.10:1
+//	196 -> 124   196 (#FF0000) is 4.00:1, under the 4.5:1 floor; 124 (#AF0000) is 7.44:1
+//	 42 ->  28    42 (#00D787) is 1.90:1 on white;  28 (#008700) is 4.70:1 — over the
+//	              4.5:1 floor, but not by much
 //
-// Muted (240, #585858) is left alone: it already clears 7:1 on white. Adaptive
-// means legible on both backgrounds, not different on both.
+// Muted (240, #585858) is left alone: it already clears 7.11:1 on white.
+// Adaptive means legible on both backgrounds, not different on both.
 //
 // Subtle is a background, judged by a different rule than the five foregrounds:
 // 236 on dark and 254 on light are chosen so the DEFAULT FOREGROUND still
