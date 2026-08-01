@@ -82,7 +82,10 @@ func TestValidColor(t *testing.T) {
 		{"0", true, ""},
 		{"255", true, ""},
 		{"236", true, ""},
-		{"", false, "empty"},
+		// An unquoted #hex is a YAML comment, so it reaches validation as an
+		// empty string. Measured: `muted: #fff` decodes to Value{"",""}. The
+		// message has to say so, or the user hunts for a key they wrote right.
+		{"", false, "quotes"},
 		{"bogus", false, "neither"},
 		{"#GGGGGG", false, "non-hex"},
 		{"#FF00A", false, "#RGB or #RRGGBB"},
@@ -162,8 +165,16 @@ func TestValueMarshalsABareStringBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(pair), "light: \"127\"") {
-		t.Errorf("a genuine pair must stay a pair, got %q", pair)
+	// A real pair stays a pair, AND keeps light before dark. Measured: a
+	// map[string]string marshals its keys alphabetically, so returning a map
+	// would silently reorder what the user wrote.
+	li := strings.Index(string(pair), "light:")
+	di := strings.Index(string(pair), "dark:")
+	if li < 0 || di < 0 {
+		t.Fatalf("a genuine pair must stay a pair, got %q", pair)
+	}
+	if li > di {
+		t.Errorf("marshaled %q — light must come before dark, as the user wrote it", pair)
 	}
 }
 ```
@@ -243,6 +254,15 @@ func (v *Value) UnmarshalYAML(n *yaml.Node) error {
 	return nil
 }
 
+// yamlPair is the marshaled form of a genuine light/dark pair. It is a struct
+// rather than a map because a map[string]string marshals its keys
+// alphabetically — measured — which would silently reorder a user's
+// `{light: …, dark: …}` into `{dark: …, light: …}` on the first save.
+type yamlPair struct {
+	Light string `yaml:"light"`
+	Dark  string `yaml:"dark"`
+}
+
 // MarshalYAML collapses an equal pair back to a bare string. Without it,
 // config.Save would rewrite a user's `muted: "240"` as a light/dark map the
 // first time anything saves the config.
@@ -250,7 +270,7 @@ func (v Value) MarshalYAML() (any, error) {
 	if v.Light == v.Dark {
 		return v.Light, nil
 	}
-	return map[string]string{"light": v.Light, "dark": v.Dark}, nil
+	return yamlPair{Light: v.Light, Dark: v.Dark}, nil
 }
 
 // Spec is one user-written theme: token name -> value. A theme names only the
@@ -267,7 +287,10 @@ type Spec map[string]Value
 // this is the only place a bad color can be caught.
 func validColor(s string) error {
 	if s == "" {
-		return fmt.Errorf("empty color")
+		// Measured: an unquoted #hex is a YAML comment, so `muted: #fff`
+		// arrives here as "". Saying only "empty color" would send the user
+		// looking for a key they wrote correctly.
+		return fmt.Errorf("empty color (an unquoted #hex is a YAML comment: write it in quotes)")
 	}
 	if h, ok := strings.CutPrefix(s, "#"); ok {
 		if len(h) != 3 && len(h) != 6 {
@@ -386,8 +409,8 @@ func TestDefaultKeepsTheShippedValues(t *testing.T) {
 	t.Parallel()
 	p := Default()
 	for _, tc := range []struct {
-		name       string
-		got        lipgloss.AdaptiveColor
+		name        string
+		got         lipgloss.AdaptiveColor
 		light, dark string
 	}{
 		{"Primary", p.Primary, "127", "205"},
@@ -453,6 +476,53 @@ func TestEveryBuiltinTokenRendersAColor(t *testing.T) {
 			} {
 				if out := r.NewStyle().Foreground(c).Render("x"); out == "x" {
 					t.Errorf("%s/%s (dark=%v) rendered no escape at all: %q", name, label, dark, out)
+				}
+			}
+		}
+	}
+}
+
+// The other half of the guard: Default must RENDER exactly like the palette
+// internal/tui carried before this package existed, at every profile and on
+// both backgrounds. Matching values alone would not prove it — a slot the
+// renderer consults could still differ.
+func TestDefaultRendersLikeTheShippedPalette(t *testing.T) {
+	t.Parallel()
+	// The palette as internal/tui/theme.go declared it before the move.
+	shipped := Palette{
+		Primary: lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Accent:  lipgloss.AdaptiveColor{Light: "127", Dark: "205"},
+		Muted:   lipgloss.AdaptiveColor{Light: "240", Dark: "240"},
+		Danger:  lipgloss.AdaptiveColor{Light: "124", Dark: "196"},
+		Success: lipgloss.AdaptiveColor{Light: "28", Dark: "42"},
+		Subtle: lipgloss.CompleteAdaptiveColor{
+			Light: lipgloss.CompleteColor{TrueColor: "254", ANSI256: "254", ANSI: "7"},
+			Dark:  lipgloss.CompleteColor{TrueColor: "236", ANSI256: "236", ANSI: "8"},
+		},
+	}
+	got := Default()
+	profiles := []termenv.Profile{termenv.TrueColor, termenv.ANSI256, termenv.ANSI, termenv.Ascii}
+	for _, profile := range profiles {
+		for _, dark := range []bool{true, false} {
+			r := lipgloss.NewRenderer(io.Discard)
+			r.SetColorProfile(profile)
+			r.SetHasDarkBackground(dark)
+			for _, tc := range []struct {
+				name string
+				a, b lipgloss.TerminalColor
+			}{
+				{"Primary", got.Primary, shipped.Primary},
+				{"Accent", got.Accent, shipped.Accent},
+				{"Muted", got.Muted, shipped.Muted},
+				{"Danger", got.Danger, shipped.Danger},
+				{"Success", got.Success, shipped.Success},
+				{"Subtle", got.Subtle, shipped.Subtle},
+			} {
+				x := r.NewStyle().Foreground(tc.a).Render("x")
+				y := r.NewStyle().Foreground(tc.b).Render("x")
+				if x != y {
+					t.Errorf("profile=%v dark=%v %s: rendered %q, want %q",
+						profile, dark, tc.name, x, y)
 				}
 			}
 		}
@@ -526,27 +596,31 @@ func Default() Palette {
 // warning users get.
 func mono(c string) lipgloss.AdaptiveColor { return adaptive(c, c) }
 
-// Dracula, from draculatheme.com's published palette.
+// Dracula is draculatheme.com's published palette, mapped onto the six tokens
+// as Primary=Purple, Accent=Pink, Muted=Comment, Danger=Red, Success=Green,
+// Subtle=Current Line.
 func Dracula() Palette {
 	return Palette{
-		Primary: mono("#BD93F9"), // Purple
-		Accent:  mono("#FF79C6"), // Pink
-		Muted:   mono("#6272A4"), // Comment
-		Danger:  mono("#FF5555"), // Red
-		Success: mono("#50FA7B"), // Green
-		Subtle:  subtle("#44475A", "#44475A"), // Current Line
+		Primary: mono("#BD93F9"),
+		Accent:  mono("#FF79C6"),
+		Muted:   mono("#6272A4"),
+		Danger:  mono("#FF5555"),
+		Success: mono("#50FA7B"),
+		Subtle:  subtle("#44475A", "#44475A"),
 	}
 }
 
-// Nord, from nordtheme.com's published palette.
+// Nord is nordtheme.com's published palette, mapped onto the six tokens as
+// Primary=nord8, Accent=nord9 (both Frost), Muted=nord3 and Subtle=nord1 (both
+// Polar Night), Danger=nord11 and Success=nord14 (both Aurora).
 func Nord() Palette {
 	return Palette{
-		Primary: mono("#88C0D0"), // nord8, Frost
-		Accent:  mono("#81A1C1"), // nord9, Frost
-		Muted:   mono("#4C566A"), // nord3, Polar Night
-		Danger:  mono("#BF616A"), // nord11, Aurora
-		Success: mono("#A3BE8C"), // nord14, Aurora
-		Subtle:  subtle("#3B4252", "#3B4252"), // nord1, Polar Night
+		Primary: mono("#88C0D0"),
+		Accent:  mono("#81A1C1"),
+		Muted:   mono("#4C566A"),
+		Danger:  mono("#BF616A"),
+		Success: mono("#A3BE8C"),
+		Subtle:  subtle("#3B4252", "#3B4252"),
 	}
 }
 
@@ -566,14 +640,21 @@ func Names() []string {
 - [ ] **Step 4: eseguirli e vederli passare**
 
 Run: `go test ./internal/themes -v`
-Expected: PASS (8 test).
+Expected: PASS (9 test).
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-Cambiare un carattere di un hex di `Dracula` in qualcosa di non valido (per
-esempio `#BD93FG`). `TestEveryBuiltinTokenRendersAColor` **deve** fallire. È la
-mutazione che dimostra che la trappola del §2.1 è davvero coperta. Ripristinare
-e verificare con `git diff`.
+Due mutazioni, con transcript:
+
+1. Cambiare un carattere di un hex di `Dracula` in qualcosa di non valido (per
+   esempio `#BD93FG`). `TestEveryBuiltinTokenRendersAColor` **deve** fallire. È
+   la mutazione che dimostra che la trappola del §2.1 è davvero coperta.
+2. In `Default()`, cambiare `subtle("254", "236")` in `subtle("254", "235")`.
+   **Devono** fallire sia `TestDefaultKeepsTheShippedValues` sia
+   `TestDefaultRendersLikeTheShippedPalette` — se solo il primo cade, il secondo
+   non sta rendendo quello che dice.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
 
 - [ ] **Step 6: gate + commit**
 
@@ -700,10 +781,18 @@ func TestResolveErrors(t *testing.T) {
 			says:   []string{"mine", "accent", "999", "0-255"},
 		},
 		{
-			name:   "an empty half of a pair is rejected",
+			name:   "an empty half of a pair is rejected, and says why",
 			theme:  "mine",
 			custom: map[string]Spec{"mine": {"accent": {Light: "", Dark: "1"}}},
-			says:   []string{"mine", "accent"},
+			says:   []string{"mine", "accent", "quotes"},
+		},
+		{
+			// A typo in a theme you are not using is still a typo. Selecting
+			// "default" here means only the all-themes validation can catch it.
+			name:   "a bad color in a theme that is not selected still fails",
+			theme:  "default",
+			custom: map[string]Spec{"unused": {"accent": {Light: "bogus", Dark: "1"}}},
+			says:   []string{"unused", "accent", "bogus"},
 		},
 	} {
 		_, err := Resolve(tc.theme, tc.custom)
@@ -747,16 +836,23 @@ import (
 // staring at a wrong-looking TUI with nothing to go on. The same rule
 // billing.rounding.increment follows.
 func Resolve(name string, custom map[string]Spec) (Palette, error) {
-	for n := range custom {
+	// EVERY user theme is validated, not only the selected one: a typo in a
+	// theme you are not using today is still a typo, and the day you switch to
+	// it is the worst possible moment to find out. Sorted so that a config with
+	// two broken themes always reports the same one.
+	for _, n := range slices.Sorted(maps.Keys(custom)) {
 		if _, clash := builtins[n]; clash {
 			return Palette{}, fmt.Errorf("theme %q is built-in; choose another name for your own", n)
+		}
+		if err := validateSpec(n, custom[n]); err != nil {
+			return Palette{}, err
 		}
 	}
 	if name == "" {
 		name = "default"
 	}
 	if spec, ok := custom[name]; ok {
-		return applySpec(name, spec)
+		return applySpec(spec), nil
 	}
 	if p, ok := builtins[name]; ok {
 		return p(), nil
@@ -776,19 +872,29 @@ func allNames(custom map[string]Spec) []string {
 	return out
 }
 
-// applySpec starts from Default and overrides only the tokens the spec names.
-func applySpec(name string, spec Spec) (Palette, error) {
-	p := Default()
-	for token, v := range spec {
+// validateSpec checks one user theme's tokens and colors. Separate from
+// applySpec because Resolve validates every theme but applies only one.
+func validateSpec(name string, spec Spec) error {
+	for _, token := range slices.Sorted(maps.Keys(spec)) {
 		if !slices.Contains(TokenNames, token) {
-			return Palette{}, fmt.Errorf("theme %q: unknown token %q; valid tokens: %s",
+			return fmt.Errorf("theme %q: unknown token %q; valid tokens: %s",
 				name, token, strings.Join(TokenNames, ", "))
 		}
+		v := spec[token]
 		for _, side := range []string{v.Light, v.Dark} {
 			if err := validColor(side); err != nil {
-				return Palette{}, fmt.Errorf("theme %q, token %q: %w", name, token, err)
+				return fmt.Errorf("theme %q, token %q, value %q: %w", name, token, side, err)
 			}
 		}
+	}
+	return nil
+}
+
+// applySpec starts from Default and overrides only the tokens the spec names.
+// It assumes validateSpec has already passed.
+func applySpec(spec Spec) Palette {
+	p := Default()
+	for token, v := range spec {
 		switch token {
 		case "primary":
 			p.Primary = adaptive(v.Light, v.Dark)
@@ -804,23 +910,29 @@ func applySpec(name string, spec Spec) (Palette, error) {
 			p.Subtle = subtle(v.Light, v.Dark)
 		}
 	}
-	return p, nil
+	return p
 }
 ```
+
+Il blocco import di `resolve.go` è quindi `fmt`, `maps`, `slices`, `strings`.
 
 - [ ] **Step 4: eseguirli e vederli passare**
 
 Run: `go test ./internal/themes -v`
-Expected: PASS (12 test).
+Expected: PASS (13 test).
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-Due mutazioni, con transcript:
+Tre mutazioni, una alla volta, con transcript:
 
-1. In `applySpec`, togliere il ciclo `validColor`. Il caso «invalid color» e
-   quello «out-of-range» di `TestResolveErrors` **devono** fallire.
+1. In `validateSpec`, togliere il ciclo `validColor`. I casi «invalid color»,
+   «out-of-range» ed «empty half» di `TestResolveErrors` **devono** fallire.
 2. In `applySpec`, far partire `p` da `Palette{}` invece che da `Default()`.
    `TestResolveCustomInheritsTheRest` **deve** fallire.
+3. In `Resolve`, validare solo il tema selezionato invece di tutti (spostare la
+   chiamata a `validateSpec` dentro il ramo `if spec, ok := custom[name]`). Il
+   caso «a bad color in a theme that is not selected» **deve** fallire, e gli
+   altri no.
 
 Ripristinare dopo ognuna e verificare con `git diff`.
 
@@ -963,10 +1075,12 @@ git commit -m "feat(config): add the theme and themes keys (#82)"
 **Files:**
 - Modify: `internal/tui/theme.go` (cancella `palette` e `defaultPalette`)
 - Modify: `internal/tui/app.go` (`New`)
-- Modify: `internal/cli/cli.go` (`runTUI`)
+- Modify: `internal/cli/cli.go` (`runTUI`, più la nuova `resolveTheme`)
 - Modify: `internal/tui/theme_test.go`, `internal/tui/palette_test.go`,
   `internal/tui/app_test.go`, `internal/tui/log_test.go`,
-  `internal/tui/report_test.go`
+  `internal/tui/report_test.go`, `internal/tui/demo_test.go`,
+  `internal/tui/golden_test.go`, `internal/tui/home_test.go`,
+  `internal/tui/palette_demo_test.go`
 - Test: `internal/cli/cli_test.go`
 
 **Interfaces:**
@@ -976,9 +1090,10 @@ git commit -m "feat(config): add the theme and themes keys (#82)"
 
 **Contesto che il brief non può sapere.**
 
-1. `defaultPalette()` è referenziata in **12 punti** (`theme.go:86-87`,
-   `app.go:210`, `palette_test.go:399`, `theme_test.go` ×9). Tutte diventano
-   `themes.Default()`, tranne la definizione che sparisce.
+1. `defaultPalette()` è referenziata in **11 punti**: la definizione
+   (`theme.go:86-87`), `app.go:210`, `palette_test.go:399`, e `theme_test.go` ×8
+   (righe 19, 26, 50, 62, 97, 119, 149, 199). Tutte diventano `themes.Default()`,
+   tranne la definizione che sparisce.
 2. **Due test di `theme_test.go` sono già stati riscritti nel Task 2 dentro
    `internal/themes` e vanno cancellati qui**, non adattati:
    `TestDefaultPaletteKeepsCurrentDarkColors` (riga ~24) è ora
@@ -986,34 +1101,58 @@ git commit -m "feat(config): add the theme and themes keys (#82)"
    `TestDefaultIsAdaptive`. Tenerli in due package è duplicazione, non copertura.
 3. Ogni altro test di `theme_test.go` resta dov'è: verifica come `newTheme`
    costruisce gli **stili**, che è responsabilità di `internal/tui`.
-4. `New` ha 9 call site: `internal/cli/cli.go:41`, `app_test.go` ×4,
-   `log_test.go` ×2, `report_test.go` ×2. Nei test si passa `themes.Default()`.
+4. **`New` ha 44 call site su 8 file**, misurati: `app_test.go` 34,
+   `demo_test.go` 3, `log_test.go` 2, `report_test.go` 2, `golden_test.go` 1,
+   `home_test.go` 1, `palette_demo_test.go` 1, `internal/cli/cli.go:57` 1. Nei
+   test si passa `themes.Default()`.
+
+   **Non cercarli con `grep 'New(cfg)'`**: quella stringa ne trova nove. Le altre
+   chiamate sono `New(config.Config{…})` (34 nel solo `app_test.go`),
+   `New(demoConfig())` e `New(realCfg)`. La prima versione di questo piano diceva
+   «nove», e chi l'avesse seguita avrebbe lasciato `internal/tui` non compilabile
+   a metà del task. Il modo affidabile è compilare: `go build ./... && go vet ./...`
+   dopo il cambio di firma elenca ogni chiamata rimasta.
 
 - [ ] **Step 1: scrivere il test che fallisce**
 
 In `internal/cli/cli_test.go`:
 
 ```go
-// An unresolvable theme must stop the launch with an error the user can act
-// on, not start a TUI with the wrong colors. runTUI cannot be called from a
-// test (it blocks on a terminal), so the check is on the resolution runTUI
-// performs — the same call, with the same arguments.
-func TestUnknownThemeIsAStartupError(t *testing.T) {
+// An unresolvable theme must stop the launch with an error the user can act on,
+// not start a TUI with the wrong colors. The check is on resolveTheme, which is
+// the production code path runTUI takes: runTUI itself blocks on a terminal and
+// cannot be called from a test, the same reason programOptions was extracted.
+func TestResolveThemeRejectsAnUnknownName(t *testing.T) {
 	t.Parallel()
-	_, err := themes.Resolve("nope", nil)
+	_, err := resolveTheme(config.Config{Theme: "nope"})
 	if err == nil {
-		t.Fatal("Resolve of an unknown theme = nil error, want one")
+		t.Fatal("resolveTheme of an unknown theme = nil error, want one")
 	}
 	if !strings.Contains(err.Error(), "nope") {
 		t.Errorf("error %q does not name the theme the user asked for", err)
 	}
+	// The prefix is what tells the user which part of their config is at fault
+	// once Execute prints it as "error: …".
+	if !strings.HasPrefix(err.Error(), "theme:") {
+		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+}
+
+func TestResolveThemeAcceptsABuiltin(t *testing.T) {
+	t.Parallel()
+	if _, err := resolveTheme(config.Config{Theme: "dracula"}); err != nil {
+		t.Errorf("resolveTheme(dracula) = %v, want nil", err)
+	}
+	if _, err := resolveTheme(config.Config{}); err != nil {
+		t.Errorf("resolveTheme with no theme set = %v, want nil (the default)", err)
+	}
 }
 ```
 
-- [ ] **Step 2: eseguirlo e vederlo fallire**
+- [ ] **Step 2: eseguirli e vederli fallire**
 
-Run: `go test ./internal/cli -run TestUnknownTheme -v`
-Expected: FAIL in compilazione, finché l'import di `themes` non c'è.
+Run: `go test ./internal/cli -run TestResolveTheme -v`
+Expected: FAIL in compilazione — `undefined: resolveTheme`.
 
 - [ ] **Step 3: implementare**
 
@@ -1038,15 +1177,32 @@ e alla riga del campo `theme:`
 		theme:  newTheme(lipgloss.DefaultRenderer(), pal),
 ```
 
-In `internal/cli/cli.go`, dentro `runTUI`, subito dopo `config.Load()`:
+In `internal/cli/cli.go`, una funzione nuova accanto a `programOptions`:
 
 ```go
-	// Resolved here, before the program starts, because this is the last place
-	// a configuration error can still reach stderr instead of appearing inside
-	// an already-running TUI.
+// resolveTheme builds the palette the TUI will render with, and refuses to
+// start on a configuration it cannot honor.
+//
+// Extracted from runTUI for the same reason programOptions was: runTUI blocks
+// on a terminal and cannot be called from a test, while the decision it makes
+// can. Called before the program starts because this is the last place a
+// configuration error still reaches stderr — Execute prints it as "error: …" —
+// instead of appearing inside an already-running TUI.
+func resolveTheme(cfg config.Config) (themes.Palette, error) {
 	pal, err := themes.Resolve(cfg.Theme, cfg.Themes)
 	if err != nil {
-		return fmt.Errorf("theme: %w", err)
+		return themes.Palette{}, fmt.Errorf("theme: %w", err)
+	}
+	return pal, nil
+}
+```
+
+e dentro `runTUI`, subito dopo `config.Load()`:
+
+```go
+	pal, err := resolveTheme(cfg)
+	if err != nil {
+		return err
 	}
 	p := tea.NewProgram(tui.New(cfg, pal), programOptions(cfg)...)
 ```
@@ -1065,11 +1221,17 @@ muove, è un difetto: non rigenerarlo.
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-In `runTUI`, ignorare l'errore di `Resolve` (usare `themes.Default()` al suo
-posto). `TestUnknownThemeIsAStartupError` da solo **non** basterebbe a
-accorgersene, perché non chiama `runTUI` — **dichiararlo nel report** come
-limite noto, insieme al motivo (`runTUI` blocca su un terminale). Poi mostrare
-con `git diff` che il ramo d'errore esiste ed è l'unico percorso.
+Due mutazioni, con transcript:
+
+1. In `resolveTheme`, ignorare l'errore e ritornare `themes.Default(), nil`.
+   `TestResolveThemeRejectsAnUnknownName` **deve** fallire.
+2. In `resolveTheme`, togliere il `fmt.Errorf("theme: %w", …)` e ritornare `err`
+   nudo. Il test **deve** fallire sull'asserzione del prefisso — se passa lo
+   stesso, quell'asserzione non serve a niente e va tolta o riscritta.
+
+Un limite da **dichiarare nel report** invece di nasconderlo: nessuno dei due
+test prova che `runTUI` *chiami* `resolveTheme`, perché `runTUI` blocca su un
+terminale. Mostrare con `git diff` che la chiamata c'è e che è l'unico percorso.
 
 - [ ] **Step 6: gate + commit**
 
@@ -1185,7 +1347,11 @@ Dopo il punto elenco `- \`mouse\` (optional): …`:
   `muted`, `danger`, `success` and `subtle` (the report's zebra stripe). A value is
   either one color, used on both backgrounds, or a `{light: …, dark: …}` pair. A
   color is a `#RGB`/`#RRGGBB` hex or a number from 0 to 255. Anything else stops
-  startup with a message naming the theme, the token and the value.
+  startup with a message naming the theme, the token and the value — and every
+  theme you define is checked, not just the one you selected.
+  - **Quote your hex values.** In YAML an unquoted `#` starts a comment, so
+    `muted: #fff` sets `muted` to nothing at all. `muted: "#fff"` is the color.
+    Plain numbers need no quotes.
 
     ```yaml
     theme: mine

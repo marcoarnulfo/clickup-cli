@@ -131,16 +131,39 @@ lasciarlo scoprire.
 la fedeltà: un tema chiamato `dracula` deve essere Dracula. La difesa è il
 README, che porterà questi numeri e non un generico «potrebbero non stare bene».
 
-## 3. Architettura: un package nuovo, e non è una scelta
+## 3. Architettura: un package nuovo, e perché
 
-Il tipo che descrive un tema serve a due package che non possono condividerlo:
+> **Questa sezione è stata riscritta dopo una review.** La prima versione diceva
+> che un package nuovo era *forzato*, perché mettere il tipo in
+> `internal/config` avrebbe creato un ciclo. **È falso**, e la review l'ha
+> dimostrato con il grafo delle dipendenze: `internal/config` non importa
+> **nessun** package interno, e `internal/tui` importa `config`. Un tipo dentro
+> `config` non chiude alcun ciclo. Il ciclo esisterebbe solo mettendolo in `tui`,
+> perché allora `config` dovrebbe importare `tui` per deserializzare. L'errore
+> vale la pena raccontarlo: stava per finire, in inglese, dentro il commento di
+> un package.
 
-- `internal/config` deve deserializzarlo dallo YAML;
-- `internal/tui` deve trasformarlo in stili lipgloss.
+Il tipo che descrive un tema serve a `internal/config`, che lo deserializza
+dallo YAML, e a `internal/tui`, che lo trasforma in stili lipgloss. Sta in un
+terzo package **per scelta**, e le ragioni sono tre:
 
-Ma **`internal/tui` importa già `internal/config`** (`func New(cfg config.Config)`),
-quindi mettere il tipo in `config` creerebbe un ciclo. Il tipo deve stare in un
-terzo package sotto entrambi. L'architettura è forzata, non preferita.
+- **`internal/config` resterebbe altrimenti legato a lipgloss e termenv.** Oggi
+  dipende da `yaml.v3` e dalla stdlib; farne il posto dove vivono i tipi colore
+  significherebbe farci entrare una libreria di rendering per un package il cui
+  lavoro è leggere un file.
+- **La logica dei colori si testa meglio fuori dalla TUI.**
+  `internal/tui/golden_test.go:29` fissa `termenv.Ascii` per **tutto il
+  package**: qualunque test sui colori scritto lì dentro deve costruirsi un
+  renderer proprio per vedere un solo byte di escape. Un package a sé non ha
+  quel vincolo.
+- **`internal/tui` è già il package più grande del repo.** La validazione e la
+  risoluzione dei temi sono un'unità che si tiene in testa da sola; metterla lì
+  la nasconderebbe.
+
+L'alternativa scartata — `Value`/`Spec` in `config` e `Palette`/`Resolve` in
+`tui`, con `cli` che chiama `tui.ResolvePalette` — non ha cicli e non aggiunge
+package. Costa però i tre punti qui sopra, e in più esporterebbe da `tui` due
+identificatori che nessuno dentro `tui` usa.
 
 ### 3.1 `internal/themes`
 
@@ -175,28 +198,48 @@ func Resolve(name string, custom map[string]Spec) (Palette, error)
 
 **Il nome del package è `themes` al plurale per una ragione meccanica**, e va
 scritto o sembrerà arbitrario fra sei mesi: `internal/tui` dichiara già un tipo
-chiamato `theme` (`theme.go:30`), usato in 18 file come `func …view(th theme)`.
+chiamato `theme` (`theme.go:30`), usato in **18 file** come `func …view(th theme)`.
 Il nome di un package importato vive nel *file block* e quello del tipo nel
 *package block*, e il Go spec vieta che lo stesso identificatore stia in
-entrambi: `package theme` non compilerebbe dentro `internal/tui`. Rinominare il
-tipo sarebbe stato l'alternativa, al prezzo di toccare 18 file per una ragione
-che non è quella di questa tranche.
+entrambi — verificato con un package di prova: `import ".../theme"` dentro un
+package che dichiara `type theme` non compila, *«theme already declared through
+import of package theme»*, anche quando import e tipo stanno in file diversi.
+
+Un import con alias compilerebbe, quindi il plurale non è l'unica via: è quella
+che evita di dover scrivere un alias a ogni import. L'altra alternativa,
+rinominare il tipo, costerebbe 18 file per una ragione che non è di questa
+tranche.
 
 ### 3.2 Chi chiama cosa
 
 - `internal/config` guadagna due campi grezzi: `Theme string` e
   `Themes map[string]themes.Spec`. Non valida niente: tiene lo YAML com'è.
-- `internal/cli`, dentro `runTUI`, chiama `themes.Resolve(cfg.Theme, cfg.Themes)`
-  **prima** di costruire il programma, e ritorna l'errore. È l'ultimo punto in
-  cui un errore di configurazione può ancora finire su stderr invece che dentro
-  una TUI già avviata, ed è dove `Execute` lo stampa già come `error: …`.
+- `internal/cli` guadagna `resolveTheme(cfg) (themes.Palette, error)`, estratta
+  da `runTUI` per la stessa ragione per cui `programOptions` lo era già
+  (`cli.go:17-26`): `runTUI` blocca su un terminale e non è chiamabile da un
+  test, mentre la decisione sì. `runTUI` la chiama **prima** di costruire il
+  programma e ritorna l'errore — è l'ultimo punto in cui un errore di
+  configurazione può ancora finire su stderr invece che dentro una TUI già
+  avviata, ed è dove `Execute` lo stampa già come `error: …`.
 - `internal/tui` cambia firma: `New(cfg config.Config, pal themes.Palette) Model`.
-  Nove call site in tutto (uno in `cli.go`, otto nei test).
+
+**I call site di `New` sono 44, su 8 file** — misurati, non stimati: `app_test.go`
+34, `demo_test.go` 3, `log_test.go` 2, `report_test.go` 2, `golden_test.go` 1,
+`home_test.go` 1, `palette_demo_test.go` 1, `internal/cli/cli.go:57` 1, più la
+definizione in `app.go`.
+
+> **Una nota di metodo, perché il numero sbagliato è stato scritto qui prima.**
+> La prima versione di questa sezione diceva «nove call site», perché avevo
+> cercato la stringa letterale `New(cfg)`. Quella cerca non trova
+> `New(config.Config{…})` (34 volte nel solo `app_test.go`), né
+> `New(demoConfig())`, né `New(realCfg)`. Un piano costruito su quel numero
+> avrebbe lasciato `internal/tui` non compilabile a metà esecuzione, con quattro
+> file da toccare fuori dallo scope dichiarato del task.
 
 L'alternativa — lasciare `New(cfg)` e farle risolvere il tema da sola — vorrebbe
 un ramo «non può succedere» per l'errore, dato che `cli` avrebbe già rifiutato di
-partire. Un ramo irraggiungibile che nessun test può esercitare è peggio di nove
-righe di firma.
+partire. Un ramo irraggiungibile che nessun test può esercitare è peggio di una
+firma con un argomento in più.
 
 **Demo mode**: `cli` risolve dal config vero e passa la tavolozza; `New` sostituisce
 solo `cfg` con `demoConfig()`. Quindi `CLICKUP_DEMO=1` **onora il tema
@@ -224,7 +267,10 @@ themes:
   dall'utente tornerebbe su disco come `muted: {light: "240", dark: "240"}` alla
   prima cosa che salva il config. `MarshalYAML` ricollassa a stringa quando i due
   lati coincidono, così un salvataggio non riscrive il file dell'utente in una
-  forma che non ha scelto.
+  forma che non ha scelto. **E per una coppia vera deve ritornare una struct con
+  i tag, non una mappa**: misurato, una `map[string]string` viene serializzata
+  con le chiavi in ordine alfabetico, cioè `dark:` prima di `light:` — un
+  riordino silenzioso di quello che l'utente aveva scritto.
 - **Un tema dichiara solo ciò che cambia.** I token non nominati arrivano da
   `Default()`. Il caso comune — «voglio solo un accento diverso» — sono due
   righe, non sei.
@@ -252,6 +298,21 @@ terminale ignora.
 
 Il messaggio nomina sempre **tema, token e valore**: un errore che dice solo
 «invalid color» costringe a cercarlo a mano in un config con sei temi.
+
+**Si validano tutti i temi dell'utente, non solo quello selezionato.** La prima
+versione della spec non lo diceva, e il piano che ne era uscito controllava le
+collisioni di nome su tutti e i colori solo su quello scelto — un refuso in un
+tema non selezionato sarebbe rimasto invisibile fino al giorno in cui l'utente
+lo avesse selezionato, che è il momento peggiore per scoprirlo. La regola è
+uniforme: un `config.yml` che contiene un tema invalido è un config invalido.
+
+**Un hex non quotato è un commento YAML**, e va detto dentro il messaggio
+d'errore. Misurato: `muted: #fff` non è un colore, è la chiave `muted` con
+valore vuoto seguita da un commento, quindi arriva alla validazione come
+stringa vuota. Un errore che dicesse soltanto «empty color» manderebbe l'utente
+a cercare una chiave che ha scritto benissimo. Il messaggio per il valore vuoto
+deve suggerire le virgolette. (Gli indici numerici non quotati invece
+funzionano: `muted: 240` si decodifica correttamente.)
 
 ## 6. I due temi built-in
 
@@ -300,12 +361,13 @@ dopo.
 
 ## 8. Test
 
-- **Il test che porta il peso**: `Default()` deve produrre una `Palette` che rende
-  **byte per byte** come la `defaultPalette()` di oggi, a tutti e quattro i
-  profili e su entrambi i fondi. È la guardia che dice che spostare il codice non
-  ha cambiato i colori, ed è anche il test che inchioda la derivazione di §2.3 —
-  se la regola di vicinanza cambia, `Subtle` smette di dare `8`/`7` e il test
-  cade.
+- **Il test che porta il peso ha due metà.** La prima confronta i **valori** di
+  `Default()` con quelli che `internal/tui` porta oggi, letterali scritti a mano
+  nel test. La seconda **rende** ogni token a tutti e quattro i profili su
+  entrambi i fondi e confronta con la tavolozza di oggi ricostruita nel test,
+  byte per byte. Le due insieme dicono che spostare il codice non ha cambiato un
+  colore, e inchiodano la derivazione di §2.3: se la regola di vicinanza cambia,
+  `Subtle` smette di dare `8`/`7` e cadono entrambe.
 - **La derivazione** ha una tabella sua, con i valori misurati in §2.3, compresi
   i due dei temi built-in e il punto di scambio.
 - **La validazione** ha una tabella di input cattivi, uno per riga di §5, e ogni
