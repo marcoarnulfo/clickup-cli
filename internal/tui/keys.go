@@ -290,7 +290,7 @@ func (k keyMap) allBindings() []key.Binding {
 // the palette's four keys and empty the list on the first keystroke.
 func keysFor(m Model) keyMap {
 	if m.overlay == overlayPalette {
-		return paletteKeys(defaultKeys())
+		return paletteKeys(m.keys.bindings())
 	}
 	return screenKeys(m)
 }
@@ -302,7 +302,7 @@ func keysFor(m Model) keyMap {
 // unreachable, so enablement is load-bearing for behavior, not just for
 // display.
 func screenKeys(m Model) keyMap {
-	d := defaultKeys()
+	d := m.keys.bindings()
 	switch m.screen {
 	case screenHome:
 		return homeKeys(m, d)

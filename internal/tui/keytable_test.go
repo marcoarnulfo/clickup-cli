@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 // The zero KeyTable is what a Model built by hand in a test carries, and 108
@@ -235,5 +236,26 @@ func TestDefaultsPassTheCollisionRule(t *testing.T) {
 	t.Parallel()
 	if _, err := ResolveKeys(nil); err != nil {
 		t.Fatalf("the built-in defaults do not satisfy the collision rule: %v", err)
+	}
+}
+
+// The end-to-end guard for the zero-means-defaults decision: an override has to
+// survive all the way into Update's routing. If cli ever stopped passing the
+// table, the zero value would quietly fall back to the defaults and only this
+// test would notice.
+func TestAnOverrideReachesUpdate(t *testing.T) {
+	kt, err := ResolveKeys(map[string]config.KeySpec{"log_hours": {"L"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), kt)
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+
+	if got, _ := m.Update(keyMsg("L")); got.(Model).screen != screenLog {
+		t.Errorf("L did not open the log screen; screen = %v", got.(Model).screen)
+	}
+	if got, _ := m.Update(keyMsg("n")); got.(Model).screen == screenLog {
+		t.Error("n still opens the log screen, so the override did not take effect")
 	}
 }

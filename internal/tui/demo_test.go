@@ -7,12 +7,11 @@ import (
 
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
-	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 func TestDemoModeSkipsSetup(t *testing.T) {
 	t.Setenv("CLICKUP_DEMO", "1")
-	m := New(config.Config{}, themes.Default()) // empty config: without demo it would go to setup
+	m := testModel(config.Config{}) // empty config: without demo it would go to setup
 	if !m.demo {
 		t.Fatal("expected m.demo = true with CLICKUP_DEMO set")
 	}
@@ -167,7 +166,7 @@ func TestDemoEntriesHaveBillableMix(t *testing.T) {
 // percentage.
 func TestDemoReportShowsBillingDepth(t *testing.T) {
 	t.Setenv("CLICKUP_DEMO", "1")
-	m := New(config.Config{}, themes.Default())
+	m := testModel(config.Config{})
 	m.year, m.month = 2026, time.July
 
 	msg := m.reloadEntriesCmd(screenHome)()
@@ -228,7 +227,7 @@ func TestDemoModeBillingEditorNeverWritesConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("CLICKUP_DEMO", "1")
 
-	m := New(config.Config{}, themes.Default())
+	m := testModel(config.Config{})
 	m.entries = demoEntries(demoJuly2026())
 	m.ratesScreen = newRates(m.entries, m.cfg)
 	m.screen = screenRates

@@ -95,3 +95,17 @@ func TestResolveThemeAcceptsABuiltin(t *testing.T) {
 		t.Errorf("resolveTheme with no theme set = %v, want nil (the default)", err)
 	}
 }
+
+func TestResolveKeysRejectsAnUnknownBinding(t *testing.T) {
+	t.Parallel()
+	_, err := resolveKeys(config.Config{Keys: map[string]config.KeySpec{"nope": {"x"}}})
+	if err == nil {
+		t.Fatal("resolveKeys of an unknown binding = nil error, want one")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error %q does not name the binding the user asked for", err)
+	}
+	if !strings.HasPrefix(err.Error(), "keys:") {
+		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+}

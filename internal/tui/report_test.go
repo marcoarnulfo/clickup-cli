@@ -11,7 +11,6 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
-	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 // TestReportKeyLabels pins the exact label set report.go's updateReport
@@ -160,7 +159,7 @@ func TestReportViewEmptyReportShowsNoHoursAndSplit(t *testing.T) {
 func TestReportViewShowsSummaryAndBillableSplit(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "1", Rate: 10, Currency: "EUR"}
 	cfg.Billing.Currencies = map[string]string{"eur-list": "EUR", "usd-list": "USD"}
-	m := New(cfg, themes.Default())
+	m := testModel(cfg)
 	m.year, m.month = 2026, 7
 	start := time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC)
 	entries := []report.TimeEntry{
@@ -219,7 +218,7 @@ func TestReportBOpensBudgetView(t *testing.T) {
 	cfg := config.Config{Token: "t", WorkspaceID: "1", Currency: "EUR", Rate: 50}
 	cfg.Billing.Budgets = map[string]float64{"list-1": 100}
 	cfg.Billing.Currencies = map[string]string{"list-1": "EUR"}
-	m := New(cfg, themes.Default())
+	m := testModel(cfg)
 	m.screen = screenReport
 	m.entries = []report.TimeEntry{
 		{ListID: "list-1", ListName: "Website", Start: time.Date(2026, time.July, 1, 9, 0, 0, 0, time.UTC),
