@@ -412,6 +412,7 @@ come i default: i test costruiscono 110 letterali `Model{…}` senza passare da
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -445,15 +446,19 @@ func TestResolveKeysOverridesAndKeepsTheRest(t *testing.T) {
 
 // The help string carries the key inside it, so an overridden binding that kept
 // its old help would lie in the footer and in the ? overlay.
+// The keys are chosen so the override stays collision-free once Task 4's rule
+// lands: "k" is already Up's own, and "ctrl+u" is claimed by nothing. An
+// earlier draft used "w", which toggle_week claims — Task 4 would then have
+// rejected it and this test could never have passed.
 func TestResolveKeysRegeneratesTheHelp(t *testing.T) {
 	t.Parallel()
-	kt, err := ResolveKeys(map[string]config.KeySpec{"up": {"w", "k"}})
+	kt, err := ResolveKeys(map[string]config.KeySpec{"up": {"k", "ctrl+u"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := kt.bindings().Up.Help()
-	if h.Key != "w/k" {
-		t.Errorf("help key = %q, want %q", h.Key, "w/k")
+	if h.Key != "k/ctrl+u" {
+		t.Errorf("help key = %q, want %q", h.Key, "k/ctrl+u")
 	}
 	if want := defaultKeys().Up.Help().Desc; h.Desc != want {
 		t.Errorf("help desc = %q, want the original %q", h.Desc, want)
@@ -487,6 +492,14 @@ func TestResolveKeysErrors(t *testing.T) {
 			in:   map[string]config.KeySpec{"quit": {"Q", ""}},
 			says: []string{"quit", "empty"},
 		},
+		{
+			// Without its own check this reaches the collision rule, which
+			// reports "already claimed by " with an empty list — the only
+			// other claimant being the binding itself.
+			name: "the same key twice in one list is rejected",
+			in:   map[string]config.KeySpec{"quit": {"Q", "Q"}},
+			says: []string{"quit", "\"Q\"", "twice"},
+		},
 	} {
 		_, err := ResolveKeys(tc.in)
 		if err == nil {
@@ -506,8 +519,8 @@ func TestResolveKeysErrors(t *testing.T) {
 //
 // Each binding gets a distinct fN key so the sweep stays collision-free once
 // Task 4's rule lands. Nothing checks that a key string is one a terminal can
-// actually produce — the table is just strings — so f1..f50 serve here purely
-// as fifty names nothing else claims. A sweep built from, say, "ctrl+"+name[:1]
+// actually produce — the table is just strings — so f1..f51 serve here purely
+// as names nothing else claims (f13 goes unused: force_quit is skipped). A sweep built from, say, "ctrl+"+name[:1]
 // would collide (back, budget and browse_list would all want ctrl+b) and this
 // test would quietly turn into one that skips forever.
 func TestForceQuitSurvivesEveryOverride(t *testing.T) {
@@ -547,6 +560,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -602,17 +616,28 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 		}
 		i, ok := index[name]
 		if !ok {
+			// force_quit is filtered out of the suggestion list: offering the
+			// one name that is then rejected would be a message that argues
+			// with itself.
+			valid := slices.DeleteFunc(BindingNames(), func(s string) bool { return s == forceQuitName })
 			return KeyTable{}, fmt.Errorf("unknown binding %q; valid names: %s",
-				name, strings.Join(BindingNames(), ", "))
+				name, strings.Join(valid, ", "))
 		}
 		ks := overrides[name]
 		if len(ks) == 0 {
 			return KeyTable{}, fmt.Errorf("binding %q needs at least one key", name)
 		}
+		seen := map[string]bool{}
 		for _, k := range ks {
 			if k == "" {
 				return KeyTable{}, fmt.Errorf("binding %q has an empty key in its list", name)
 			}
+			// Caught here rather than by the collision rule, which would report
+			// the binding colliding with itself and name no other claimant.
+			if seen[k] {
+				return KeyTable{}, fmt.Errorf("binding %q lists key %q twice", name, k)
+			}
+			seen[k] = true
 		}
 		old := v.Field(i).Interface().(key.Binding)
 		// The help string carries the key inside it, so it has to be rebuilt or
@@ -720,14 +745,25 @@ func TestCollisionRule(t *testing.T) {
 			says: []string{"\"q\"", "export", "quit"},
 		},
 		{
-			// Declared cost, not a defect: the rule cannot know that export
-			// lives on the report screen and list_budget on the rates one, so
-			// it refuses a swap that would in fact be harmless. The user picks
-			// another key; the alternative is a table of every screen state,
-			// kept in sync forever. See the design doc's §2.2.
-			name: "a swap between two bindings is rejected — the declared cost",
-			in:   map[string]config.KeySpec{"export": {"g"}, "group_by": {"e"}},
-			says: []string{"export"},
+			// A clean swap IS allowed, and this case exists to keep anyone
+			// from "fixing" the rule into rejecting it. quit owns "q" and
+			// reload owns "r" outright, so trading them adds no claimant
+			// anywhere. Measured against the real defaults.
+			name: "a clean swap between two bindings is allowed",
+			in:   map[string]config.KeySpec{"quit": {"r"}, "reload": {"q"}},
+			ok:   true,
+		},
+		{
+			// This is the declared cost from the design doc's §2.2, and it is
+			// NOT "swaps are rejected": it is that taking a key someone else
+			// still claims is rejected even when the two never share a screen.
+			// export lives on the report, list_budget on the rates screen, and
+			// the rule cannot know that. The user picks another key; the
+			// alternative is a table of every screen state, kept in sync
+			// forever.
+			name: "taking a key another binding still claims is rejected — the declared cost",
+			in:   map[string]config.KeySpec{"export": {"g"}},
+			says: []string{"export", "\"g\"", "group_by", "list_budget"},
 		},
 	} {
 		_, err := ResolveKeys(tc.in)
@@ -1058,7 +1094,189 @@ git commit -m "feat(tui): route with the configured binding table (#82)"
 
 ---
 
-### Task 6: documentazione
+### Task 6: il footer dice la verità
+
+**Files:**
+- Modify: `internal/tui/keytable.go` (`KeyTable` ricorda i nomi sovrascritti,
+  più `label` e `setHelp`)
+- Modify: `internal/tui/keys.go` (i costruttori per schermata ricevono la
+  `KeyTable`; i 16 `pairHelp` e gli 8 `SetHelp`)
+- Modify: `internal/tui/rates.go`, `internal/tui/rates_view.go` (le due stringhe
+  di prosa che nominano un tasto)
+- Test: `internal/tui/keytable_test.go`
+
+**Interfaces:**
+- Consuma: `KeyTable` dai Task 3-5.
+- Produce: `(KeyTable).label`, `(KeyTable).setHelp`, `(KeyTable).keysOf`.
+
+**Il difetto che questo task chiude, misurato.** Rigenerare l'aiuto dentro
+`ResolveKeys` non basta: i costruttori per schermata riscrivono l'etichetta con
+stringhe letterali in **24 punti** — 16 `pairHelp` e 8 `SetHelp` — perché una
+riga di footer copre spesso una coppia di binding. Con una tabella che rimappa
+`confirm→ctrl+j` e `back→ctrl+q`, il footer della palette resta
+`↑/↓ move · enter run · esc close`. Il test del Task 3 guarda la `KeyTable` e non
+un footer reso, quindi passa mentendo.
+
+**La regola**: l'etichetta letterale si usa finché **nessuno** dei binding che
+copre è stato rimappato. Così il footer di default non cambia di un byte — e
+**nessun golden si muove**, che è la verifica principale di questo task.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+In `internal/tui/keytable_test.go`:
+
+```go
+// The footer is where a remapped binding would lie: the per-screen builders
+// write the key label as a literal, so regenerating it inside ResolveKeys is
+// not enough on its own.
+func TestFooterShowsRemappedKeys(t *testing.T) {
+	kt, err := ResolveKeys(map[string]config.KeySpec{"up": {"ctrl+u"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), kt)
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+	m.width = 120
+
+	foot := m.footerView()
+	if !strings.Contains(foot, "ctrl+u") {
+		t.Errorf("footer does not advertise the remapped key:\n%s", foot)
+	}
+	if strings.Contains(foot, "↑/↓/j/k") {
+		t.Errorf("footer still shows the default label for a remapped binding:\n%s", foot)
+	}
+}
+
+// And the other half: with nothing remapped the label is untouched, which is
+// what keeps every footer golden where it is.
+func TestFooterKeepsItsLabelsWhenNothingIsRemapped(t *testing.T) {
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), DefaultKeyTable())
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+	m.width = 120
+
+	if foot := m.footerView(); !strings.Contains(foot, "↑/↓/j/k") {
+		t.Errorf("footer lost its default label:\n%s", foot)
+	}
+}
+```
+
+**Il nome esatto del metodo che rende il footer va verificato prima di scrivere
+il test** — leggere `internal/tui/footer.go` e usare quello vero, non
+`footerView` se si chiama diversamente.
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/tui -run TestFooter -v`
+Expected: `TestFooterShowsRemappedKeys` FAIL (il footer mostra ancora
+`↑/↓/j/k`), `TestFooterKeepsItsLabelsWhenNothingIsRemapped` PASS — è la guardia.
+
+- [ ] **Step 3: implementare**
+
+In `internal/tui/keytable.go`, la tabella ricorda cosa è stato toccato:
+
+```go
+type KeyTable struct {
+	d    keyDefaults
+	over map[string]bool // names the config remapped
+	set  bool
+}
+```
+
+`ResolveKeys` popola `over[name] = true` a ogni override e lo mette nel valore
+di ritorno. `DefaultKeyTable()` lo lascia nil: niente è stato rimappato.
+
+```go
+// keysOf returns the keys currently bound to a binding, by config name.
+func (kt KeyTable) keysOf(name string) []string { … }
+
+// label returns lit unless one of the named bindings was remapped, in which
+// case it derives the label from the keys actually bound.
+//
+// The literal labels the screens pass carry typography the defaults earned —
+// "↑/↓/j/k", "tab/⇧tab" — and deriving them unconditionally would replace that
+// with something longer and uglier for every user, remapped or not, and move
+// every footer golden. So the literal wins until it would be a lie.
+func (kt KeyTable) label(lit string, names ...string) string {
+	remapped := false
+	var keys []string
+	for _, n := range names {
+		if kt.over[n] {
+			remapped = true
+		}
+		keys = append(keys, kt.keysOf(n)...)
+	}
+	if !remapped {
+		return lit
+	}
+	return strings.Join(keys, "/")
+}
+
+// setHelp is label's counterpart for the single-binding SetHelp call sites.
+func (kt KeyTable) setHelp(b *key.Binding, name, lit, desc string) {
+	b.SetHelp(kt.label(lit, name), desc)
+}
+```
+
+In `internal/tui/keys.go`, i costruttori per schermata ricevono la `KeyTable`
+invece della sola `keyDefaults` — è una **semplificazione** di firma, non una
+crescita, perché `d` si ricava dentro:
+
+```go
+func homeKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
+	…
+}
+```
+
+e i 24 punti diventano:
+
+```go
+pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
+kt.setHelp(&k.ClearValue, "clear_value", "d", "use the default rate")
+```
+
+`pairHelp` **non cambia firma**: cambia solo il terzo argomento nei suoi 16 call
+site.
+
+In `internal/tui/rates.go:618` e `internal/tui/rates_view.go:55`, le due
+stringhe che nominano un tasto vanno costruite dal binding vivo invece che dalla
+lettera — per esempio interpolando `k.ListBudget.Help().Key` e
+`k.BrowseList.Help().Key` al posto di `'g'` e `'b'`.
+
+- [ ] **Step 4: eseguire tutto**
+
+Run: `go test ./... -race`
+Expected: PASS, e **nessun golden modificato**. Verificare con
+`git status --short internal/tui/testdata/`: deve essere vuoto. Se un golden si
+muove, l'etichetta letterale non sta più vincendo quando dovrebbe, ed è un
+difetto: non rigenerarlo.
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Due mutazioni, con transcript:
+
+1. In `label`, ritornare sempre `lit`. `TestFooterShowsRemappedKeys` **deve**
+   fallire.
+2. In `label`, ritornare sempre la forma derivata. `TestFooterKeepsItsLabelsWhenNothingIsRemapped`
+   **deve** fallire, **e con essa i golden dei footer** — è la prova che la
+   guardia protegge davvero il rendering di default. Riportare quanti golden
+   falliscono.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui/
+git commit -m "fix(tui): show remapped keys in the footer and the help (#82)"
+```
+
+---
+
+### Task 7: documentazione
 
 **Files:**
 - Modify: `README.md` (elenco delle chiavi di config, dopo il blocco `themes`)
@@ -1132,9 +1350,14 @@ git commit -m "docs: document the keys map (#82)"
 ## Note per il controllore
 
 - Con questo task **la #82 si chiude**, e con lei la milestone v1.9.
-- Nessun golden deve muoversi in nessun task: non cambia nessun default.
+- Nessun golden deve muoversi in nessun task: non cambia nessun default, e il
+  Task 6 tiene apposta l'etichetta letterale finché niente è rimappato.
 - `TestForceQuitSurvivesEveryOverride` (Task 3) usa una sweep `f1..f51`
   deliberatamente priva di collisioni, così continua a verificare qualcosa anche
   dopo che il Task 4 aggiunge la regola. Al Task 4 va comunque **rieseguito**: se
   cominciasse a fallire, la regola sta rifiutando qualcosa che non dovrebbe.
 - Il Task 3 importa `fmt` anche nel file di test, per la sweep.
+- **Il Task 6 è nato da una review, non dalla prima stesura.** La spec diceva che
+  rigenerare l'aiuto dentro `ResolveKeys` bastava; eseguendo, il footer
+  continuava a mostrare i tasti di default in 24 punti. Se un implementer trova
+  che l'elenco dei 24 non torna, va misurato di nuovo e riportato, non aggirato.
