@@ -541,3 +541,75 @@ func TestUpdateCheckNilIsNotWrittenToDisk(t *testing.T) {
 		t.Fatalf("saved config mentions update_check:\n%s", raw)
 	}
 }
+
+// --- optional mouse key (#74) ---
+
+func TestMouseAbsentIsNil(t *testing.T) {
+	// A config file without the key must load as nil — meaning "enabled".
+	// With a plain bool the absent key would decode as false, and mouse
+	// support would be born disabled in every config written so far.
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mouse != nil {
+		t.Fatalf("Mouse = %v, want nil for an absent key", *cfg.Mouse)
+	}
+}
+
+func TestMouseFalseRoundTrips(t *testing.T) {
+	isolateConfig(t)
+	no := false
+	if err := Save(Config{Token: "t", WorkspaceID: "1", Mouse: &no}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mouse == nil || *got.Mouse {
+		t.Fatalf("Mouse = %v, want an explicit false", got.Mouse)
+	}
+}
+
+func TestMouseNilIsNotWrittenToDisk(t *testing.T) {
+	// omitempty matters: without it Save writes "mouse: null" into every
+	// config file it touches.
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "mouse") {
+		t.Fatalf("saved config mentions mouse:\n%s", raw)
+	}
+}
+
+func TestMouseEnabled(t *testing.T) {
+	t.Parallel()
+	yes, no := true, false
+	for _, tc := range []struct {
+		name string
+		in   *bool
+		want bool
+	}{
+		{"absent", nil, true},
+		{"explicit true", &yes, true},
+		{"explicit false", &no, false},
+	} {
+		if got := (Config{Mouse: tc.in}).MouseEnabled(); got != tc.want {
+			t.Errorf("%s: MouseEnabled() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

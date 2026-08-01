@@ -14,6 +14,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// programOptions builds the bubbletea options for a config. Extracted from
+// runTUI so the mouse decision is reachable from a test: runTUI itself blocks
+// on a terminal.
+//
+// WithMouseCellMotion (DEC mode 1002) and not WithMouseAllMotion (1003): the
+// latter reports pointer motion even with no button held, a stream of messages
+// this TUI would discard. Neither is "wheel only" — no such DEC mode exists —
+// which is why enabling the wheel costs the terminal's native text selection,
+// and why config.Mouse exists to turn it back off.
+func programOptions(cfg config.Config) []tea.ProgramOption {
+	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	if cfg.MouseEnabled() {
+		opts = append(opts, tea.WithMouseCellMotion())
+	}
+	return opts
+}
+
 // rootCmd builds the root command. Unexported so tests can exercise the
 // command wiring directly without going through Execute/os.Exit.
 func rootCmd() *cobra.Command {
@@ -37,7 +54,7 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	p := tea.NewProgram(tui.New(cfg), tea.WithAltScreen())
+	p := tea.NewProgram(tui.New(cfg), programOptions(cfg)...)
 	_, err = p.Run()
 	return err
 }

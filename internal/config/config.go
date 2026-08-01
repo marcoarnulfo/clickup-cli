@@ -79,12 +79,25 @@ type Config struct {
 	// enabled: a plain bool would make an absent key decode as false and
 	// disable the check in every config written before this field existed.
 	UpdateCheck *bool `yaml:"update_check,omitempty"`
+
+	// Mouse enables mouse reporting, which turns the wheel into scrolling.
+	// nil means enabled, for the same reason as UpdateCheck above: a plain
+	// bool would make an absent key decode as false and silently disable a
+	// default-on feature in every config written before this field existed.
+	//
+	// The escape hatch exists because mouse reporting takes the terminal's
+	// native text selection away from the user: with it on, drag-to-select
+	// needs Shift in most terminals.
+	Mouse *bool `yaml:"mouse,omitempty"`
 }
 
 // Valid reports whether the config can be used to query the API.
 func (c Config) Valid() bool {
 	return c.Token != "" && c.WorkspaceID != ""
 }
+
+// MouseEnabled reports whether the TUI should turn on mouse reporting.
+func (c Config) MouseEnabled() bool { return c.Mouse == nil || *c.Mouse }
 
 // configPath and legacyConfigPath are injectable so tests can point them at
 // a t.TempDir() without touching the real user config. They default to

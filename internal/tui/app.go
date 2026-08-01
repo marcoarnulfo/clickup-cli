@@ -685,6 +685,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.routeKey(msg)
 
+	case tea.MouseMsg:
+		k, ok := wheelKey(msg)
+		if !ok {
+			return m, nil
+		}
+		// The global bindings the KeyMsg case checks first — ForceQuit, Quit,
+		// Help, Palette — are all keystrokes, so a wheel notch cannot match
+		// any of them and they are skipped. The overlay check is not optional:
+		// with the palette open the wheel must move its selection, not scroll
+		// the screen behind it. It comes before the gate below because an
+		// overlay owns the wheel the way it owns the keyboard, whatever screen
+		// is underneath.
+		if m.overlay != overlayNone {
+			return m.updateOverlay(k)
+		}
+		if m.anyKeyIsAnAnswer() {
+			return m, nil
+		}
+		return m.routeKey(k)
+
 	case errMsg:
 		m.err = msg.err
 		// Invalid/revoked token: relaunch the setup wizard (spec §8).
