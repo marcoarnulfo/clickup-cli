@@ -169,6 +169,11 @@ The setup, rates, range, list browser, log-hours and time-entries screens have n
 `q`-to-quit, to avoid pressing it by mistake while typing (a token, a rate, a note, a
 task ID, …): use `Ctrl+C`.
 
+The mouse wheel also scrolls every list screen and the command palette; since it
+isn't a key, it can't appear in the table above or the `?` footer. Set `mouse: false`
+in [Configuration](#configuration) to turn mouse reporting off and get the terminal's
+native text selection back.
+
 #### Billing settings screen
 
 From the report screen, pressing `p` opens the **Billing settings** screen, with four
@@ -439,9 +444,9 @@ billing:
   below. Omitting the key (or setting `true`) leaves it enabled.
 - `mouse` (optional): set to `false` to turn off mouse reporting. Omitting the key
   (or setting `true`) leaves it enabled, which makes the wheel scroll lists. Mouse
-  reporting takes the terminal's native text selection away: with it on, hold
-  **Shift** while dragging to select and copy, or set this key to `false` to give
-  the mouse back to the terminal for good.
+  reporting takes the terminal's native text selection away: with it on, in most
+  terminals holding **Shift** while dragging still selects and copies, or set this
+  key to `false` to give the mouse back to the terminal for good.
 
 ### How billed amounts are computed
 

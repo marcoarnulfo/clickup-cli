@@ -173,6 +173,11 @@ Nelle schermate setup, rates, range, browser liste, log ore e voci ore non è pr
 `q` per uscire, per evitare di premerlo per errore mentre si sta scrivendo (un token,
 una tariffa, una nota, un ID task, ...): usa `Ctrl+C`.
 
+La rotella del mouse scorre anche ogni schermata a lista e la command palette; non
+essendo un tasto, non può comparire nella tabella qui sopra né nel footer di `?`.
+Imposta `mouse: false` in [Configurazione](#configurazione) per disattivare il
+supporto mouse e riavere la selezione nativa del testo del terminale.
+
 #### Schermata Impostazioni di fatturazione
 
 Dalla schermata del report, premendo `p` si apre la schermata **Impostazioni di
@@ -470,9 +475,9 @@ billing:
 - `mouse` (opzionale): impostare `false` per disattivare il supporto mouse.
   Omettere la chiave (o impostare `true`) lo lascia attivo, e la rotella scorre le
   liste. Il mouse tracking toglie al terminale la selezione nativa del testo: con
-  il mouse attivo, tenere **Shift** mentre si trascina per selezionare e copiare,
-  oppure impostare questa chiave a `false` per restituire il mouse al terminale
-  una volta per tutte.
+  il mouse attivo, in quasi tutti i terminali tenere **Shift** mentre si trascina
+  seleziona e copia comunque, oppure impostare questa chiave a `false` per
+  restituire il mouse al terminale una volta per tutte.
 
 ### Come vengono calcolati gli importi fatturati
 

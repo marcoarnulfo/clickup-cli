@@ -20,7 +20,7 @@ import tea "github.com/charmbracelet/bubbletea"
 // parser excludes IsWheel() from the release branch (mouse.go:186-191, with
 // the comment "Wheel buttons don't have release events"), and the X10 parser
 // assigns a release only in the ordinary-button branch and never applies the
-// motion bit to a wheel event (mouse.go:249-257).
+// motion bit to a wheel event (mouse.go:249-258).
 //
 // Horizontal wheel and the side buttons are dropped: nothing in the TUI scrolls
 // sideways, and a key that means nothing is worse than no key at all.

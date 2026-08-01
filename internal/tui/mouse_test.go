@@ -19,6 +19,12 @@ func TestWheelKey(t *testing.T) {
 	}{
 		{"wheel up", tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress}, tea.KeyUp, true},
 		{"wheel down", tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress}, tea.KeyDown, true},
+		// Pins the "ignore Action entirely" decision documented on wheelKey:
+		// this row does not describe an event bubbletea actually emits (a
+		// wheel notch always arrives as a press, per the doc comment); it
+		// exists so that adding an Action check back to wheelKey — the exact
+		// inverse of that decision — fails a test instead of passing unnoticed.
+		{"wheel down while moving", tea.MouseMsg{Button: tea.MouseButtonWheelDown, Action: tea.MouseActionMotion}, tea.KeyDown, true},
 		{"wheel left", tea.MouseMsg{Button: tea.MouseButtonWheelLeft, Action: tea.MouseActionPress}, 0, false},
 		{"wheel right", tea.MouseMsg{Button: tea.MouseButtonWheelRight, Action: tea.MouseActionPress}, 0, false},
 		{"left click", tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}, 0, false},

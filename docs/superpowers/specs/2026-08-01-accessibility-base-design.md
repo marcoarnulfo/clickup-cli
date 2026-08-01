@@ -204,9 +204,12 @@ misura in §2.4 dice che il terminale manda già un messaggio per tacca, quindi
 qualunque fattore sarebbe una preferenza travestita da costante.
 
 La conseguenza voluta: la rotella funziona **da subito su ogni schermata che già
-gestisce su/giù** — report, entries, filtri, rates, list browser, members, range,
-e la palette in overlay — senza un modello di geometria e senza modificare una
-sola `updateX`.
+gestisce su/giù** — entries, filtri, rates, list browser, members, range, e la
+palette in overlay — senza un modello di geometria e senza modificare una sola
+`updateX`. Il report resta fuori da questo elenco: `reportModel`
+(`internal/tui/report.go`) non ha né cursore né offset di scroll, e
+`updateReport` non ha un caso su/giù, quindi lì una tacca di rotella oggi non
+fa nulla.
 
 ### 3.2 La chiave `mouse` nel config (#74, cittadinanza)
 
