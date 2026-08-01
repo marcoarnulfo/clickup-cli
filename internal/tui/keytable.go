@@ -35,6 +35,54 @@ func (kt KeyTable) bindings() keyDefaults {
 	return kt.d
 }
 
+// claims maps every physical key to the sorted names of the bindings that want
+// it. The defaults are deliberately overloaded — measured, 20 keys have more
+// than one claimant — because screenKeys enables only a subset per screen.
+func claims(d keyDefaults) map[string][]string {
+	out := map[string][]string{}
+	v := reflect.ValueOf(d)
+	ty := v.Type()
+	for i := range v.NumField() {
+		b := v.Field(i).Interface().(key.Binding)
+		name := bindingName(ty.Field(i).Name)
+		for _, k := range b.Keys() {
+			out[k] = append(out[k], name)
+		}
+	}
+	for k := range out {
+		slices.Sort(out[k])
+	}
+	return out
+}
+
+// checkCollisions rejects a post-override key with multiple claimants unless
+// all of them already claimed that key in the defaults.
+//
+// Detecting real conflicts would mean asking, per screen, which bindings are
+// enabled at once — 14 screens plus the sub-modes of entries, log, rates and
+// setup, a table to keep in sync with every screen ever added. This rule is
+// computed from the key table alone, and is deliberately conservative: it
+// refuses taking a key that another binding still claims, even when those
+// bindings never share a screen. A free key and a clean swap remain allowed.
+func checkCollisions(before, after keyDefaults) error {
+	was, now := claims(before), claims(after)
+	for _, k := range slices.Sorted(maps.Keys(now)) {
+		names := now[k]
+		if len(names) < 2 {
+			continue
+		}
+		for _, n := range names {
+			if slices.Contains(was[k], n) {
+				continue
+			}
+			others := slices.DeleteFunc(slices.Clone(names), func(s string) bool { return s == n })
+			return fmt.Errorf("binding %q cannot take key %q: it is already claimed by %s",
+				n, k, strings.Join(others, ", "))
+		}
+	}
+	return nil
+}
+
 // ResolveKeys applies a config's overrides to the built-in table.
 //
 // Every failure is an error rather than a fallback: a key that cannot be
@@ -91,6 +139,9 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 			key.WithKeys(ks...),
 			key.WithHelp(strings.Join(ks, "/"), old.Help().Desc),
 		)))
+	}
+	if err := checkCollisions(defaultKeys(), d); err != nil {
+		return KeyTable{}, err
 	}
 	return KeyTable{d: d, set: true}, nil
 }

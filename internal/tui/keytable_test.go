@@ -153,3 +153,87 @@ func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 		t.Errorf("Quit = %v, want the swept key — the sweep did not take effect", got)
 	}
 }
+
+// The defaults are heavily overloaded on purpose — measured, 20 physical keys
+// are claimed by more than one binding, because screenKeys enables only a
+// subset per screen. A rule that forbade any sharing would reject what we
+// ship, so the rule is narrower: when a post-override key has multiple
+// claimants, they must all have claimed it before.
+func TestCollisionRule(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		in   map[string]config.KeySpec
+		ok   bool
+		says []string
+	}{
+		{
+			// n is shared by log_hours, new_override, new_tag and no. Moving
+			// log_hours away leaves a subset behind, which is fine.
+			name: "moving a binding off a shared key is allowed",
+			in:   map[string]config.KeySpec{"log_hours": {"L"}},
+			ok:   true,
+		},
+		{
+			name: "taking a free key is allowed",
+			in:   map[string]config.KeySpec{"export": {"ctrl+e"}},
+			ok:   true,
+		},
+		{
+			name: "adding a claimant to a contested key is rejected",
+			in:   map[string]config.KeySpec{"export": {"n"}},
+			says: []string{"\"n\"", "export"},
+		},
+		{
+			name: "adding a claimant to a singly claimed key is rejected",
+			in:   map[string]config.KeySpec{"export": {"q"}},
+			says: []string{"\"q\"", "export", "quit"},
+		},
+		{
+			// A clean swap IS allowed, and this case exists to keep anyone
+			// from "fixing" the rule into rejecting it. quit owns "q" and
+			// reload owns "r" outright, so trading them leaves one claimant
+			// on each key. Measured against the real defaults.
+			name: "a clean swap between two bindings is allowed",
+			in:   map[string]config.KeySpec{"quit": {"r"}, "reload": {"q"}},
+			ok:   true,
+		},
+		{
+			// This is the declared cost from the design doc's section 2.2, and
+			// it is NOT "swaps are rejected": it is that taking a key someone
+			// else still claims is rejected even when the two never share a
+			// screen. export lives on the report, list_budget on the rates
+			// screen, and the rule cannot know that. The user picks another
+			// key; the alternative is a table of every screen state, kept in
+			// sync forever.
+			name: "taking a key another binding still claims is rejected — the declared cost",
+			in:   map[string]config.KeySpec{"export": {"g"}},
+			says: []string{"export", "\"g\"", "group_by", "list_budget"},
+		},
+	} {
+		_, err := ResolveKeys(tc.in)
+		if tc.ok {
+			if err != nil {
+				t.Errorf("%s: ResolveKeys = %v, want nil", tc.name, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%s: ResolveKeys = nil error, want one", tc.name)
+			continue
+		}
+		for _, s := range tc.says {
+			if !strings.Contains(err.Error(), s) {
+				t.Errorf("%s: error %q does not mention %s", tc.name, err, s)
+			}
+		}
+	}
+}
+
+// The rule must never reject the table we ship.
+func TestDefaultsPassTheCollisionRule(t *testing.T) {
+	t.Parallel()
+	if _, err := ResolveKeys(nil); err != nil {
+		t.Fatalf("the built-in defaults do not satisfy the collision rule: %v", err)
+	}
+}
