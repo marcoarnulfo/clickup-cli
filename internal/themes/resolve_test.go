@@ -90,6 +90,14 @@ func TestResolveErrors(t *testing.T) {
 			says:   []string{"mine", "accent", "bogus"},
 		},
 		{
+			// The Light half being valid must not let a bad Dark half slip
+			// through: both sides of a pair are validated independently.
+			name:   "invalid dark half names theme, token and value",
+			theme:  "mine",
+			custom: map[string]Spec{"mine": {"accent": {Light: "1", Dark: "bogus"}}},
+			says:   []string{"mine", "accent", "bogus"},
+		},
+		{
 			name:   "an out-of-range index is rejected",
 			theme:  "mine",
 			custom: map[string]Spec{"mine": {"accent": {Light: "999", Dark: "1"}}},

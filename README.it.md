@@ -484,9 +484,10 @@ billing:
   anziché ricadere in silenzio.
   - **`dracula` e `nord` sono disegnate per un terminale scuro e sono spedite
     fedelmente.** Su uno sfondo chiaro parti della TUI diventano difficili o
-    impossibili da leggere — misurate contro il bianco, il verde di dracula misura
-    1.37:1 e la zebra stripe di nord 2.09:1, entrambe ben sotto il floor di 3:1.
-    `default` è quella adattiva: cambia con lo sfondo del tuo terminale.
+    impossibili da leggere — misurato contro il bianco, il verde di dracula sta a
+    1.37:1; misurata contro il testo scuro di default del terminale dipinto sopra
+    di lei, la zebra stripe di nord sta a 2.09:1. Entrambi ben sotto il floor di
+    3:1. `default` è quella adattiva: cambia con lo sfondo del tuo terminale.
 - `themes` (opzionale): le tue tavolozze, per nome. Un tema nomina solo i token
   che cambia; il resto viene da `default`. I sei token sono `primary`, `accent`,
   `muted`, `danger`, `success` e `subtle` (la zebra stripe del report). Un valore è
@@ -494,7 +495,7 @@ billing:
   Un colore è un hex `#RGB`/`#RRGGBB` oppure un numero da 0 a 255. Qualunque altra
   cosa blocca l'avvio con un messaggio che nomina il tema, il token e il valore —
   e ogni tema che definisci viene controllato, non solo quello che hai selezionato.
-  - **Quotate i vostri valori hex.** In YAML un `#` senza virgolette inizia un
+  - **Quota i tuoi valori hex.** In YAML un `#` senza virgolette inizia un
     commento, così `muted: #fff` imposta `muted` a nulla. `muted: "#fff"` è il colore.
     I numeri nudi non hanno bisogno di virgolette.
 

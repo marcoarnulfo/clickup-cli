@@ -166,9 +166,20 @@ func TestBoxAndBorderShareTheirColor(t *testing.T) {
 	t.Parallel()
 	for _, dark := range []bool{true, false} {
 		th := paletteTheme(dark)
-		if got, want := th.Box.GetBorderTopForeground(), th.Border.GetForeground(); got != want {
-			t.Errorf("dark=%v: Box border = %+v, Border = %+v — the two frames must weigh the same",
-				dark, got, want)
+		want := th.Border.GetForeground()
+		for _, side := range []struct {
+			name string
+			got  lipgloss.TerminalColor
+		}{
+			{"top", th.Box.GetBorderTopForeground()},
+			{"right", th.Box.GetBorderRightForeground()},
+			{"bottom", th.Box.GetBorderBottomForeground()},
+			{"left", th.Box.GetBorderLeftForeground()},
+		} {
+			if side.got != want {
+				t.Errorf("dark=%v: Box border %s = %+v, Border = %+v — the two frames must weigh the same",
+					dark, side.name, side.got, want)
+			}
 		}
 	}
 }

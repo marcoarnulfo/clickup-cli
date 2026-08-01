@@ -453,8 +453,9 @@ billing:
   rather than silently falling back.
   - **`dracula` and `nord` are designed for a dark terminal and are shipped
     faithfully.** On a light background parts of the UI become hard or impossible
-    to read — measured against white, dracula's green sits at 1.37:1 and nord's
-    zebra stripe at 2.09:1, both far below the 3:1 floor. `default` is the
+    to read — measured against white, dracula's green sits at 1.37:1; measured
+    against the terminal's own dark text painted on top of it, nord's zebra
+    stripe sits at 2.09:1. Both are far below the 3:1 floor. `default` is the
     adaptive one: it changes with your terminal background.
 - `themes` (optional): your own palettes, by name. A theme names only the tokens it
   changes; the rest come from `default`. The six tokens are `primary`, `accent`,

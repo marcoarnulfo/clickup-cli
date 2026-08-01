@@ -625,7 +625,7 @@ func TestRatesScreenOpensFromReport(t *testing.T) {
 	u, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
 	m = u.(Model)
 	if m.screen != screenRates {
-		t.Fatalf("p dalla vista report deve aprire screenRates, got %v", m.screen)
+		t.Fatalf("p from the report view should open screenRates, got %v", m.screen)
 	}
 	if len(m.ratesScreen.rows) != 1 || m.ratesScreen.rows[0].name != "Client Z" {
 		t.Fatalf("wrong rate rows: %+v", m.ratesScreen.rows)

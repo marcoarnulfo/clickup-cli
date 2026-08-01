@@ -11,9 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Themes: `theme: dracula` (or `nord`) picks a built-in palette, and `themes:` in
   the config defines your own, naming only the tokens you want to change. An
-  unknown theme or an invalid color stops startup with a message naming the
-  theme, the token and the value, because lipgloss renders a bad color as no
-  color at all and would otherwise fail silently (#82).
+  invalid color stops startup with a message naming the theme, the token and
+  the value, because lipgloss renders a bad color as no color at all and would
+  otherwise fail silently; an unknown theme stops startup with a message
+  naming the theme and listing the ones available (#82).
 - The report screen now draws a per-day sparkline of the selected range, with
   idle days rendered as gaps rather than as low bars (#80).
 - Command palette (`ctrl+p`): a fuzzy action launcher that floats over the current screen,
