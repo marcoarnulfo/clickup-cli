@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 // isolateConfig redirects the config to a temp dir on ALL platforms.
@@ -611,5 +613,74 @@ func TestMouseEnabled(t *testing.T) {
 		if got := (Config{Mouse: tc.in}).MouseEnabled(); got != tc.want {
 			t.Errorf("%s: MouseEnabled() = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+// --- theme keys (#82) ---
+
+func TestThemeKeysRoundTrip(t *testing.T) {
+	isolateConfig(t)
+	in := Config{Token: "t", WorkspaceID: "1", Theme: "mine", Themes: map[string]themes.Spec{
+		"mine": {
+			"muted":  {Light: "240", Dark: "240"},
+			"accent": {Light: "127", Dark: "205"},
+		},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Theme != "mine" {
+		t.Errorf("Theme = %q, want %q", got.Theme, "mine")
+	}
+	if got.Themes["mine"]["muted"] != (themes.Value{Light: "240", Dark: "240"}) {
+		t.Errorf("muted = %+v, want 240 on both sides", got.Themes["mine"]["muted"])
+	}
+	if got.Themes["mine"]["accent"] != (themes.Value{Light: "127", Dark: "205"}) {
+		t.Errorf("accent = %+v, want the pair", got.Themes["mine"]["accent"])
+	}
+}
+
+// A token the user wrote as a bare string must come back as a bare string:
+// Save serializes the whole Config, so without Value.MarshalYAML every save
+// would rewrite their file into a shape they did not choose.
+func TestSaveKeepsABareColorBare(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1", Themes: map[string]themes.Spec{
+		"mine": {"muted": {Light: "240", Dark: "240"}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `muted: "240"`) {
+		t.Fatalf("saved config did not keep the bare form:\n%s", raw)
+	}
+}
+
+func TestThemeKeysAbsentAreZero(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "theme") {
+		t.Fatalf("saved config mentions theme:\n%s", raw)
 	}
 }

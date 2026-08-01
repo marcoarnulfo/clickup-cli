@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,6 +90,15 @@ type Config struct {
 	// native text selection away from the user: with it on, drag-to-select
 	// needs Shift in most terminals.
 	Mouse *bool `yaml:"mouse,omitempty"`
+
+	// Theme names the palette the TUI renders with: a built-in name, or one of
+	// the Themes below. Empty means the built-in default. The names are
+	// resolved by internal/themes, not here — this package holds the YAML as
+	// written and nothing more.
+	Theme string `yaml:"theme,omitempty"`
+	// Themes are the user's own palettes, by name. A theme names only the
+	// tokens it changes; internal/themes fills the rest from the default.
+	Themes map[string]themes.Spec `yaml:"themes,omitempty"`
 }
 
 // Valid reports whether the config can be used to query the API.
