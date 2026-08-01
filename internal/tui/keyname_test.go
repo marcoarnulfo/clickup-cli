@@ -25,6 +25,13 @@ func TestBindingName(t *testing.T) {
 	}
 }
 
+func TestBindingNameTreatsTitlecaseAsCapital(t *testing.T) {
+	t.Parallel()
+	if got, want := bindingName("Log\u01c5name"), "log_\u01c6name"; got != want {
+		t.Errorf("bindingName with a titlecase rune = %q, want %q", got, want)
+	}
+}
+
 // This is the test that matters most in this task. The config keys a user
 // writes are derived from Go field names, so renaming a field silently renames
 // a key in every config file in the wild. Spelling the list out here means the

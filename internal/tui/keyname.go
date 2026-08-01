@@ -19,7 +19,7 @@ func bindingName(field string) string {
 	r := []rune(field)
 	var b strings.Builder
 	for i, c := range r {
-		if !unicode.IsUpper(c) {
+		if !unicode.IsUpper(c) && !unicode.IsTitle(c) {
 			b.WriteRune(c)
 			continue
 		}
@@ -33,7 +33,7 @@ func bindingName(field string) string {
 	return b.String()
 }
 
-// BindingNames lists every binding a config may remap, sorted, for error
+// BindingNames lists every named binding in keyDefaults, sorted, for error
 // messages and for the docs.
 //
 // Derived rather than written out so that a binding added to keyDefaults is
