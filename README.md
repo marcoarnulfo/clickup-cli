@@ -475,6 +475,30 @@ billing:
         accent: {light: "127", dark: "205"}
         muted: "240"
     ```
+- `keys` (optional): remap any TUI binding by name. A value is one key or a list
+  of keys; every binding you do not name keeps its default. Names use snake_case,
+  such as `quit`, `log_hours`, `prev_month` and `palette_up`. If a name is wrong,
+  the startup error lists the valid ones.
+
+    ```yaml
+    keys:
+      log_hours: "L"
+      up: ["up", "w"]
+    ```
+
+  - **`force_quit` cannot be remapped.** `ctrl+c` remains a reliable way out if
+    other bindings are moved somewhere unreachable.
+  - The built-in bindings deliberately share keys when they are active on
+    different screens. The conservative collision check rejects an override only
+    when it adds a new claimant to a key that still has at least two claimants
+    after all overrides. Moving a binding off a shared key, moving to a key whose
+    previous owner also moves away, and clean swaps are allowed. Because the check
+    does not model which bindings share a screen, choose another key if it rejects
+    a combination you know would not be active together.
+  - Unknown names, empty or duplicate keys, empty lists and collisions stop
+    startup with an explanatory error instead of silently falling back.
+  - Remapped keys appear in the footer, the expanded `?` help and inline key
+    guidance.
 
 ### How billed amounts are computed
 

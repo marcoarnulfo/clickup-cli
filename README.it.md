@@ -506,6 +506,33 @@ billing:
         accent: {light: "127", dark: "205"}
         muted: "240"
     ```
+- `keys` (opzionale): rimappa per nome qualsiasi binding della TUI. Il valore può
+  essere un tasto o una lista di tasti; ogni binding che non nomini mantiene il
+  proprio default. I nomi usano lo snake_case, come `quit`, `log_hours`,
+  `prev_month` e `palette_up`. Se sbagli un nome, l'errore all'avvio elenca quelli
+  validi.
+
+    ```yaml
+    keys:
+      log_hours: "L"
+      up: ["up", "w"]
+    ```
+
+  - **`force_quit` non può essere rimappato.** `ctrl+c` resta una via d'uscita
+    affidabile se sposti altri binding su tasti irraggiungibili.
+  - I binding predefiniti condividono deliberatamente alcuni tasti quando sono
+    attivi su schermate diverse. Il controllo conservativo delle collisioni
+    rifiuta un override solo quando aggiunge un nuovo binding a un tasto che, dopo
+    tutti gli override, ha ancora almeno due binding associati. Puoi sempre
+    spostare un binding da un tasto condiviso, spostarlo su un tasto il cui
+    precedente proprietario viene spostato altrove, oppure scambiare in modo pulito
+    due tasti. Poiché il controllo non modella quali binding condividono una
+    schermata, scegli un altro tasto se rifiuta una combinazione che sai non sarebbe
+    mai attiva insieme.
+  - Nomi sconosciuti, tasti vuoti o duplicati, liste vuote e collisioni bloccano
+    l'avvio con un errore esplicativo, senza ricadere silenziosamente sui default.
+  - I tasti rimappati compaiono nel footer, nell'aiuto esteso di `?` e nelle
+    indicazioni contestuali sui tasti.
 
 ### Come vengono calcolati gli importi fatturati
 
