@@ -483,7 +483,7 @@ billing:
     ```yaml
     keys:
       log_hours: "L"
-      up: ["up", "w"]
+      up: ["up", "ctrl+u"]
     ```
 
   - **`force_quit` cannot be remapped.** `ctrl+c` remains a reliable way out if

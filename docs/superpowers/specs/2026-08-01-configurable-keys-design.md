@@ -76,9 +76,9 @@ Cosa permette e cosa no:
   No, Export}`, non è un sottoinsieme → **rifiutato**, nominando `Export`, `n` e
   chi già lo rivendica.
 
-**Il prezzo, misurato e non immaginato.** La prima stesura diceva che uno scambio
-fra due binding viene rifiutato pur essendo innocuo. **È falso**: uno scambio
-pulito passa. Misurato, `{"quit": "r", "reload": "q"}` viene **accettato**, e
+**Il prezzo, misurato e non immaginato.** La prima stesura attribuiva
+erroneamente un costo agli scambi innocui. **È falso**: uno scambio pulito passa.
+Misurato, `{"quit": "r", "reload": "q"}` viene **accettato**, e
 così un ciclo a tre — perché 19 binding hanno un tasto che nessun altro
 rivendica, e scambiarli non aggiunge rivendicanti a nulla.
 
@@ -141,7 +141,7 @@ accanto a ciò che validano.
 ```yaml
 keys:
   log_hours: "L"
-  up: ["up", "w"]
+  up: ["up", "ctrl+u"]
 ```
 
 ```go
@@ -312,9 +312,9 @@ passa se il valore non arriva fino a `Update`.
   campo Go e con esso, in silenzio, una chiave nel config di un utente.
 - **La regola sui conflitti** ha una tabella: uno spostamento che libera un
   tasto (ammesso), un binding che si aggiunge a un tasto già conteso
-  (rifiutato), uno scambio fra due binding (rifiutato, e il test dice **nella
-  propria asserzione** che è il prezzo dichiarato in §2.2, così nessuno lo legge
-  come un bug).
+  (rifiutato), uno scambio pulito fra due binding (ammesso), e un binding che
+  prende un tasto ancora rivendicato da un altro (rifiutato: è il prezzo
+  conservativo dichiarato in §2.2).
 - **La rigenerazione dell'aiuto**: un binding rimappato deve mostrare i tasti
   nuovi nel footer, e la descrizione vecchia.
 - **`force_quit`** rifiutato per nome, e `ctrl+c` che continua a funzionare con

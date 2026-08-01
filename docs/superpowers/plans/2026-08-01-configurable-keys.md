@@ -66,7 +66,7 @@ func TestKeysRoundTrip(t *testing.T) {
 	isolateConfig(t)
 	in := Config{Token: "t", WorkspaceID: "1", Keys: map[string]KeySpec{
 		"log_hours": {"L"},
-		"up":        {"up", "w"},
+		"up":        {"up", "ctrl+u"},
 	}}
 	if err := Save(in); err != nil {
 		t.Fatal(err)
@@ -78,23 +78,23 @@ func TestKeysRoundTrip(t *testing.T) {
 	if len(got.Keys["log_hours"]) != 1 || got.Keys["log_hours"][0] != "L" {
 		t.Errorf("log_hours = %v, want [L]", got.Keys["log_hours"])
 	}
-	if len(got.Keys["up"]) != 2 || got.Keys["up"][1] != "w" {
-		t.Errorf("up = %v, want [up w]", got.Keys["up"])
+	if len(got.Keys["up"]) != 2 || got.Keys["up"][0] != "up" || got.Keys["up"][1] != "ctrl+u" {
+		t.Errorf("up = %v, want [up ctrl+u]", got.Keys["up"])
 	}
 }
 
 func TestKeySpecAcceptsAScalarAndAList(t *testing.T) {
 	t.Parallel()
 	var got map[string]KeySpec
-	src := "log_hours: \"L\"\nup: [up, w]\n"
+	src := "log_hours: \"L\"\nup: [up, ctrl+u]\n"
 	if err := yaml.Unmarshal([]byte(src), &got); err != nil {
 		t.Fatal(err)
 	}
 	if len(got["log_hours"]) != 1 || got["log_hours"][0] != "L" {
 		t.Errorf("scalar form gave %v, want [L]", got["log_hours"])
 	}
-	if len(got["up"]) != 2 {
-		t.Errorf("list form gave %v, want two keys", got["up"])
+	if len(got["up"]) != 2 || got["up"][0] != "up" || got["up"][1] != "ctrl+u" {
+		t.Errorf("list form gave %v, want [up ctrl+u]", got["up"])
 	}
 }
 
@@ -754,9 +754,9 @@ func TestCollisionRule(t *testing.T) {
 			ok:   true,
 		},
 		{
-			// This is the declared cost from the design doc's §2.2, and it is
-			// NOT "swaps are rejected": it is that taking a key someone else
-			// still claims is rejected even when the two never share a screen.
+			// This is the declared cost from the design doc's §2.2. It is not
+			// about swaps: taking a key someone else still claims is rejected
+			// even when the two never share a screen.
 			// export lives on the report, list_budget on the rates screen, and
 			// the rule cannot know that. The user picks another key; the
 			// alternative is a table of every screen state, kept in sync
@@ -831,9 +831,10 @@ func claims(d keyDefaults) map[string][]string {
 // Detecting real conflicts would mean asking, per screen, which bindings are
 // enabled at once — 14 screens plus the sub-modes of entries, log, rates and
 // setup, a table to keep in sync with every screen ever added. This rule is
-// computed from the key table alone, and is deliberately conservative: it also
-// refuses swaps that no screen would ever notice. The user picks another key,
-// and the message says exactly which collision they created.
+// computed from the key table alone, and is deliberately conservative: it
+// refuses taking a key another binding still claims, even when no screen would
+// ever activate both. Clean swaps remain allowed; otherwise the user picks
+// another key, and the message says exactly which collision they created.
 func checkCollisions(before, after keyDefaults) error {
 	was, now := claims(before), claims(after)
 	for _, k := range slices.Sorted(maps.Keys(now)) {
@@ -1298,18 +1299,18 @@ Dopo il punto elenco `themes`:
     ```yaml
     keys:
       log_hours: "L"
-      up: ["up", "w"]
+      up: ["up", "ctrl+u"]
     ```
 
   - **`force_quit` cannot be remapped.** `ctrl+c` is the way out of a TUI whose
     other keys you have moved somewhere you cannot reach.
-  - **A key already claimed by another binding is refused**, and the message names
-    the binding that has it. The built-in bindings deliberately share keys —
-    `n` alone serves four of them, on screens where only one is ever active — so
-    the rule is not "no sharing", it is that your override may not *add* a
-    claimant to a key. Moving a binding off a shared key is always allowed. The
-    check cannot tell which screens two bindings share, so it errs toward refusing:
-    if it rejects something you believe is safe, pick another key.
+  - **An override that adds a claimant to a key that remains shared is refused**,
+    and the message names the binding that has it. The built-in bindings deliberately
+    share keys — `n` alone serves four of them, on screens where only one is ever
+    active — so the rule is not "no sharing". Moving a binding off a shared key and
+    clean swaps are allowed. The check cannot tell which screens two bindings share,
+    so it errs toward refusing: if it rejects something you believe is safe, pick
+    another key.
   - A remapped binding shows its new keys in the footer and in the `?` help.
 ```
 
@@ -1326,8 +1327,9 @@ In `### Added` sotto `## [Unreleased]`:
 ```markdown
 - Keybindings are configurable: `keys:` in the config remaps any binding by name,
   with a single key or a list. `force_quit` (`ctrl+c`) stays fixed so there is
-  always a way out. An unknown name, an empty list, or a key already claimed by
-  another binding stops startup with a message naming what collided (#82).
+  always a way out. An unknown name, an empty list, or adding a claimant to a key
+  that remains shared stops startup with a message naming what collided; clean
+  moves and swaps remain allowed (#82).
 ```
 
 - [ ] **Step 4: rileggere quello che si è scritto**

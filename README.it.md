@@ -515,7 +515,7 @@ billing:
     ```yaml
     keys:
       log_hours: "L"
-      up: ["up", "w"]
+      up: ["up", "ctrl+u"]
     ```
 
   - **`force_quit` non può essere rimappato.** `ctrl+c` resta una via d'uscita
