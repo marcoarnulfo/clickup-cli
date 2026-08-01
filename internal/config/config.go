@@ -46,6 +46,40 @@ type Billing struct {
 	Rounding        Rounding           `yaml:"rounding,omitempty"`
 }
 
+// KeySpec is one binding's keys as written in YAML: a bare key, or a list of
+// them. It lives here rather than in internal/tui because nothing outside this
+// package needs the type — internal/tui takes plain strings.
+type KeySpec []string
+
+// UnmarshalYAML accepts both forms, so the common case is `log_hours: L`
+// rather than `log_hours: [L]`.
+func (k *KeySpec) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		var s string
+		if err := n.Decode(&s); err != nil {
+			return err
+		}
+		*k = KeySpec{s}
+		return nil
+	}
+	var list []string
+	if err := n.Decode(&list); err != nil {
+		return err
+	}
+	*k = list
+	return nil
+}
+
+// MarshalYAML collapses a single key back to a scalar. Without it, Save — which
+// marshals the whole Config — would rewrite a user's `log_hours: L` as a
+// one-element list the first time anything saved the config.
+func (k KeySpec) MarshalYAML() (any, error) {
+	if len(k) == 1 {
+		return k[0], nil
+	}
+	return []string(k), nil
+}
+
 // Config is the persisted CLI configuration.
 type Config struct {
 	SchemaVersion int                `yaml:"schema_version"`
@@ -99,6 +133,10 @@ type Config struct {
 	// Themes are the user's own palettes, by name. A theme names only the
 	// tokens it changes; internal/themes fills the rest from the default.
 	Themes map[string]themes.Spec `yaml:"themes,omitempty"`
+	// Keys remaps the TUI's bindings by name. The names are the ones
+	// internal/tui derives from its binding table; this package holds the YAML
+	// as written and validates nothing.
+	Keys map[string]KeySpec `yaml:"keys,omitempty"`
 }
 
 // Valid reports whether the config can be used to query the API.
