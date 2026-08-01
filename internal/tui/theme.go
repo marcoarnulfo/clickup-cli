@@ -41,7 +41,7 @@ func newTheme(r *lipgloss.Renderer, p themes.Palette) theme {
 		Err:    r.NewStyle().Foreground(p.Danger).Bold(true),
 		OK:     r.NewStyle().Foreground(p.Success),
 		Accent: r.NewStyle().Foreground(p.Accent),
-		Box:    r.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1),
+		Box:    r.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(p.Muted).Padding(0, 1),
 		Header: r.NewStyle().Bold(true),
 		Cell:   r.NewStyle(),
 		Border: r.NewStyle().Foreground(p.Muted),

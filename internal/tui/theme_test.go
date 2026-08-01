@@ -158,6 +158,21 @@ func TestZebraSurvivesSixteenColors(t *testing.T) {
 	}
 }
 
+// The report screen draws its table frame with th.Border and its empty-state
+// box with th.Box. Until th.Box carried a border color the two frames rendered
+// at different weights on the same screen, which is #138's second point: a user
+// whose report has no hours saw a different frame from one whose report does.
+func TestBoxAndBorderShareTheirColor(t *testing.T) {
+	t.Parallel()
+	for _, dark := range []bool{true, false} {
+		th := paletteTheme(dark)
+		if got, want := th.Box.GetBorderTopForeground(), th.Border.GetForeground(); got != want {
+			t.Errorf("dark=%v: Box border = %+v, Border = %+v — the two frames must weigh the same",
+				dark, got, want)
+		}
+	}
+}
+
 // CLICOLOR_FORCE is the force-color variable termenv implements (FORCE_COLOR,
 // the npm convention, is deliberately not supported).
 func TestCliColorForceKeepsColor(t *testing.T) {
