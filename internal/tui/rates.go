@@ -286,10 +286,9 @@ func sortOverrides(o []overrideRow) {
 }
 
 // validRate accepts a finite number >= 0: zero is a deliberate billing outcome
-// ("this list/member bills at zero"), distinct from clearing the value with
-// 'd' (which falls back to the inherited rate). Only a negative number is
-// rejected. The decimal comma is accepted as well as the dot (handy for the
-// Italian keyboard).
+// ("this list/member bills at zero"), distinct from using ClearValue to fall
+// back to the inherited rate. Only a negative number is rejected. The decimal
+// comma is accepted as well as the dot (handy for the Italian keyboard).
 func validRate(s string) (float64, bool) {
 	s = strings.ReplaceAll(s, ",", ".")
 	f, err := strconv.ParseFloat(s, 64)
@@ -302,7 +301,7 @@ func validRate(s string) (float64, bool) {
 // validBudget accepts only a finite number > 0. Unlike a rate, a budget of
 // zero is not a meaningful value — the burn-down bar would divide by zero or
 // show a meaningless 0% — so it stays rejected; to remove a budget, reopen its
-// field ('g') and submit an empty value.
+// field and submit an empty value.
 func validBudget(s string) (float64, bool) {
 	s = strings.ReplaceAll(s, ",", ".")
 	f, err := strconv.ParseFloat(s, 64)
@@ -410,7 +409,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateRatesEditing(rt, msg)
 	}
 	if rt.draft.active {
-		m.ratesScreen = rt.updateDraft(msg, k)
+		m.ratesScreen = rt.updateDraft(msg, k, m.keys)
 		return m, nil
 	}
 
@@ -426,7 +425,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, k.Down):
 		rt = rt.move(+1)
 	case key.Matches(msg, k.Confirm):
-		rt = rt.startEdit()
+		rt = rt.startEdit(m.keys)
 	case key.Matches(msg, k.ListCurrency):
 		rt.editing, rt.edit, rt.msg = true, editListCurrency, ""
 		rt.input = newTextInput("currency (e.g. EUR) — empty: use the default")
@@ -434,7 +433,7 @@ func (m Model) updateRates(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		rt.editing, rt.edit, rt.msg = true, editListBudget, ""
 		rt.input = newNumberInput("budget amount — empty: no budget")
 	case key.Matches(msg, k.NewOverride):
-		rt = rt.startDraft()
+		rt = rt.startDraft(m.keys)
 	case key.Matches(msg, k.ClearValue):
 		rt = rt.clearSelected()
 	case key.Matches(msg, k.BrowseList):
@@ -483,10 +482,10 @@ func (m Model) updateRatesEditing(rt ratesModel, msg tea.KeyMsg) (tea.Model, tea
 	return m, cmd
 }
 
-// updateDraft handles the list/member pickers of a new override. It takes
-// the keyMap as a parameter (rather than calling keysFor itself) because its
-// receiver is ratesModel, not Model — keysFor needs the whole root Model.
-func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap) ratesModel {
+// updateDraft handles the list/member pickers of a new override. It takes the
+// current keyMap for routing and KeyTable for inline labels because its receiver
+// is ratesModel, not Model — keysFor needs the whole root Model.
+func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap, kt KeyTable) ratesModel {
 	n := len(rt.rows)
 	if rt.draft.step == draftPickMember {
 		n = len(rt.members)
@@ -509,7 +508,7 @@ func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap) ratesModel {
 		rt.draft.member = rt.members[rt.draft.idx].id
 		rt.draft.step = draftRate
 		rt.editing, rt.edit, rt.msg = true, editOverrideRate, ""
-		rt.input = newNumberInput("override rate (Esc to cancel)")
+		rt.input = newNumberInput(fmt.Sprintf("override rate (%s to cancel)", kt.label("Esc", "back")))
 	case key.Matches(msg, k.Back):
 		rt.draft = overrideDraft{}
 	}
@@ -517,9 +516,9 @@ func (rt ratesModel) updateDraft(msg tea.KeyMsg, k keyMap) ratesModel {
 }
 
 // startDraft begins a new (list,member) override.
-func (rt ratesModel) startDraft() ratesModel {
+func (rt ratesModel) startDraft(kt KeyTable) ratesModel {
 	if len(rt.rows) == 0 || len(rt.members) == 0 {
-		rt.msg = "No lists or members known yet: browse a list ('b') or run a team report first"
+		rt.msg = fmt.Sprintf("No lists or members known yet: browse a list ('%s') or run a team report first", kt.label("b", "browse_list"))
 		return rt
 	}
 	rt.draft = overrideDraft{active: true, step: draftPickList}
@@ -557,27 +556,28 @@ func (rt ratesModel) move(delta int) ratesModel {
 }
 
 // startEdit opens the input (or applies the toggle) for the selected row.
-func (rt ratesModel) startEdit() ratesModel {
+func (rt ratesModel) startEdit(kt KeyTable) ratesModel {
 	rt.msg = ""
+	cancelKey := kt.label("Esc", "back")
 	switch rt.sec {
 	case secLists:
 		if len(rt.rows) == 0 {
 			return rt
 		}
 		rt.editing, rt.edit = true, editListRate
-		rt.input = newNumberInput("new rate (Esc to cancel)")
+		rt.input = newNumberInput(fmt.Sprintf("new rate (%s to cancel)", cancelKey))
 	case secMembers:
 		if len(rt.members) == 0 {
 			return rt
 		}
 		rt.editing, rt.edit = true, editMemberRate
-		rt.input = newNumberInput("member rate (Esc to cancel)")
+		rt.input = newNumberInput(fmt.Sprintf("member rate (%s to cancel)", cancelKey))
 	case secOverrides:
 		if rt.sel[secOverrides] >= len(rt.overrides) {
-			return rt.startDraft()
+			return rt.startDraft(kt)
 		}
 		rt.editing, rt.edit = true, editOverrideRate
-		rt.input = newNumberInput("override rate (Esc to cancel)")
+		rt.input = newNumberInput(fmt.Sprintf("override rate (%s to cancel)", cancelKey))
 	case secRules:
 		switch rt.sel[secRules] {
 		case ruleDefaultCurrency:
@@ -613,14 +613,14 @@ func (rt ratesModel) commit(v string, kt KeyTable) ratesModel {
 		rt.editing, rt.edit, rt.msg = false, editNone, ""
 		return rt
 	}
-	const badRate = "Invalid rate: enter a number >= 0 (0 bills at zero; 'd' clears the override so the inherited rate applies)"
-	badBudget := fmt.Sprintf("Invalid budget: enter an amount > 0 (press '%s' and submit an empty value to remove the budget)", kt.bindings().ListBudget.Help().Key)
+	badRate := fmt.Sprintf("Invalid rate: enter a number >= 0 (0 bills at zero; '%s' clears the value so the inherited rate applies)", kt.label("d", "clear_value"))
+	badBudget := fmt.Sprintf("Invalid budget: enter an amount > 0 (press '%s' and submit an empty value to remove the budget)", kt.label("g", "list_budget"))
 	const badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
 
 	switch rt.edit {
 	case editListRate:
 		if v == "" {
-			return done() // empty = no change (to clear an override, use 'd')
+			return done() // empty = no change; ClearValue removes the rate
 		}
 		f, ok := validRate(v)
 		if !ok {
@@ -660,7 +660,7 @@ func (rt ratesModel) commit(v string, kt KeyTable) ratesModel {
 
 	case editMemberRate:
 		if v == "" {
-			return done() // empty = no change (to clear, use 'd')
+			return done() // empty = no change; ClearValue removes the rate
 		}
 		f, ok := validRate(v)
 		if !ok {
@@ -742,10 +742,10 @@ func indexOfOverride(list []overrideRow, listID string, member int) int {
 	return 0
 }
 
-// clearSelected ('d') removes the value of the selected row, reverting it to
-// the next level of the precedence (or to "not configured" for the rules). In
-// the Lists section it clears the *rate* only: a per-list currency or budget is
-// cleared by reopening its own field ('c'/'g') and submitting an empty value.
+// clearSelected removes the value of the selected row, reverting it to the next
+// level of the precedence (or to "not configured" for the rules). In the Lists
+// section it clears the rate only: a per-list currency or budget is cleared by
+// reopening its own field and submitting an empty value.
 func (rt ratesModel) clearSelected() ratesModel {
 	rt.msg = ""
 	switch rt.sec {
@@ -879,7 +879,8 @@ func (rt ratesModel) view(th theme, kt KeyTable) string {
 	// what a client is billed, so it belongs on the screen rather than only in
 	// the README. It used to ride along in the key-hint line ("Enter: rate (0:
 	// bill at zero)"); the generated footer names keys, not values.
-	b += "\n" + th.Help.Render("A rate of 0 bills at zero — to unset a value instead, submit an empty field.")
+	clearKey := kt.label("d", "clear_value")
+	b += "\n" + th.Help.Render(fmt.Sprintf("A rate of 0 bills at zero — an empty list/member rate makes no change; press '%s' to unset it.", clearKey))
 	return b
 }
 

@@ -46,7 +46,16 @@ func (kt KeyTable) keysOf(name string) []string {
 			return v.Field(i).Interface().(key.Binding).Keys()
 		}
 	}
-	return nil
+	panic(fmt.Sprintf("unknown binding name %q", name))
+}
+
+func (kt KeyTable) remapped(names ...string) bool {
+	for _, name := range names {
+		if kt.over[name] {
+			return true
+		}
+	}
+	return false
 }
 
 // label returns lit unless one of the named bindings was remapped, in which
@@ -56,15 +65,11 @@ func (kt KeyTable) keysOf(name string) []string {
 // and "tab/⇧tab". Deriving them unconditionally would make the default footer
 // longer and uglier, so the literal wins until it would be a lie.
 func (kt KeyTable) label(lit string, names ...string) string {
-	remapped := false
 	var keys []string
 	for _, name := range names {
-		if kt.over[name] {
-			remapped = true
-		}
 		keys = append(keys, kt.keysOf(name)...)
 	}
-	if !remapped {
+	if !kt.remapped(names...) {
 		return lit
 	}
 	return strings.Join(keys, "/")

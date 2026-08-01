@@ -52,7 +52,7 @@ func (rt ratesModel) listsView(th theme, kt KeyTable) string {
 	// same fix this whole file's non-ASCII columns already use.
 	b := th.Help.Render(fmt.Sprintf("  %-24s %10s %-5s %10s  %s", "List", "Rate", "Cur", "Budget", "Source")) + "\n"
 	if len(rt.rows) == 0 {
-		return b + th.Help.Render(fmt.Sprintf("  No lists in the current report — press '%s' to browse the workspace.", kt.bindings().BrowseList.Help().Key)) + "\n"
+		return b + th.Help.Render(fmt.Sprintf("  No lists in the current report — press '%s' to browse the workspace.", kt.label("b", "browse_list"))) + "\n"
 	}
 	for i, r := range rt.rows {
 		rate, tag := rt.def, "default"

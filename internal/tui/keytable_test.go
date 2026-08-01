@@ -82,6 +82,16 @@ func TestFooterKeepsItsLabelsWhenNothingIsRemapped(t *testing.T) {
 	}
 }
 
+func TestDerivedLabelPanicsOnUnknownBindingName(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if recover() == nil {
+			t.Error("label accepted an unknown binding name; a typo would silently remove keys")
+		}
+	}()
+	DefaultKeyTable().label("typo", "does_not_exist")
+}
+
 func TestResolveKeysDoesNotAliasConfigInput(t *testing.T) {
 	t.Parallel()
 	keys := config.KeySpec{"k", "ctrl+u"}

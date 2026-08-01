@@ -313,7 +313,7 @@ func TestGoldenLog(t *testing.T) {
 	t.Parallel()
 	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
-	golden(t, "log", lg.view(testTheme(true)))
+	golden(t, "log", lg.view(testTheme(true), KeyTable{}))
 }
 
 // The entries browser has no constructor: it is built inline when 'v' is
@@ -342,7 +342,7 @@ func TestGoldenLogForm(t *testing.T) {
 	// depicted a state the app never shows — and left the "Task:" row
 	// unprotected.
 	lg.taskID = "86abc"
-	golden(t, "log_form", lg.view(testTheme(true)))
+	golden(t, "log_form", lg.view(testTheme(true), KeyTable{}))
 }
 
 func TestGoldenEntriesEdit(t *testing.T) {

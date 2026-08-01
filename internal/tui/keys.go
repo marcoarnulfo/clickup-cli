@@ -4,6 +4,8 @@ package tui
 // log_test.go's tea.KeyMsg helper is named keyMsg rather than key: that is what
 // lets bubbles/key keep its own name here and in every handler.
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
 )
@@ -96,9 +98,9 @@ type keyDefaults struct {
 
 	// Entries' browser actions (entries.go's updateEntries switch, migrated
 	// in Task 4). Delete/Edit/Tags are ownership-gated (canEdit); History is
-	// not (it's read-only, allowed on any entry). ConfirmDelete (y/Y, no
-	// enter) is entriesConfirmDelete's own yes, distinct from Yes below
-	// because that step has no enter-means-yes shortcut (entries.go:260).
+	// not (it's read-only, allowed on any entry). ConfirmDelete defaults to
+	// y/Y without enter and is distinct from Yes below because that step has
+	// no enter-means-yes shortcut (entries.go:260).
 	Delete        key.Binding
 	Edit          key.Binding
 	History       key.Binding
@@ -107,9 +109,9 @@ type keyDefaults struct {
 	NewTag        key.Binding
 
 	// Yes/No is the billable-toggle keypress shared verbatim by log.go's
-	// logForm (formField 3) and entries.go's updateEntriesEdit (editStep 4):
-	// both switches accept exactly "n"/"N" for no and "y"/"Y"/"enter" for
-	// yes (log.go:359-362, entries.go:293-296).
+	// logForm (formField 3) and entries.go's updateEntriesEdit (editStep 4).
+	// Their defaults are n/N for no and y/Y/enter for yes; both handlers route
+	// through the resolved bindings (log.go:359-362, entries.go:293-296).
 	Yes key.Binding
 	No  key.Binding
 
@@ -190,6 +192,17 @@ func defaultKeys() keyDefaults {
 		PickTimer:  key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "timer")),
 		StopTimer:  key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "stop timer")),
 	}
+}
+
+// billablePrompt preserves the compact default typography, but expands both
+// bindings when either one was remapped so every accepted key stays visible.
+func billablePrompt(th theme, kt KeyTable) string {
+	if !kt.remapped("yes", "no") {
+		return "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
+	}
+	yes := strings.Join(kt.keysOf("yes"), "/")
+	no := strings.Join(kt.keysOf("no"), "/")
+	return "Billable? " + th.Accent.Render("["+yes+"/"+no+"]")
 }
 
 // keyMap is one screen's active bindings, plus the order the footer (#69)

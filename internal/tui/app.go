@@ -1012,7 +1012,7 @@ func (m Model) screenBody() string {
 		return m.ratesScreen.view(m.theme, m.keys)
 	case screenLog:
 		m.logScreen.now = m.now()
-		return m.logScreen.view(m.theme)
+		return m.logScreen.view(m.theme, m.keys)
 	case screenMembers:
 		return m.membersScreen.view(m.theme)
 	case screenRange:

@@ -76,7 +76,7 @@ type logModel struct {
 }
 
 // newLog builds the screen from the known lists (entries ∪ config.Rates),
-// in deterministic order for a stable view. Esc/done return to whoever pushed
+// in deterministic order for a stable view. Back/done return to whoever pushed
 // screenLog via pop() (Home or Report) — see Model.nav.
 func newLog(entries []report.TimeEntry, cfg config.Config) logModel {
 	names := map[string]string{}
@@ -310,7 +310,7 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m = m.replace(screenLoading)
 			return m, m.timerStopCmd()
 		}
-		// Esc is caught by the outer guard above and pops back to whoever
+		// Back is caught by the outer guard above and pops back to whoever
 		// pushed the log flow; the case that used to live here hardcoded
 		// screenReport instead, which was unreachable dead code (the guard
 		// always ran first) AND a latent wrong-destination bug (it would
@@ -490,18 +490,18 @@ func (m Model) updateLog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (lg logModel) view(th theme) string {
+func (lg logModel) view(th theme, kt KeyTable) string {
 	b := th.Title.Render("Log hours") + "\n\n"
 	switch lg.step {
 	case logModeSelect:
 		b += "Choose the mode:\n\n"
-		b += "  " + th.Accent.Render("1") + ") Guided — pick list and task\n"
-		b += "  " + th.Accent.Render("2") + ") Task ID/URL — straight to the form\n"
-		b += "  " + th.Accent.Render("3") + ") Timer — start/stop stopwatch\n"
+		b += "  " + th.Accent.Render(kt.label("1", "pick_guided")) + ") Guided — pick list and task\n"
+		b += "  " + th.Accent.Render(kt.label("2", "pick_by_id")) + ") Task ID/URL — straight to the form\n"
+		b += "  " + th.Accent.Render(kt.label("3", "pick_timer")) + ") Timer — start/stop stopwatch\n"
 	case logTimerPick:
 		b += "Timer — how do you pick the task?\n\n"
-		b += "  " + th.Accent.Render("1") + ") Guided (list → task)\n"
-		b += "  " + th.Accent.Render("2") + ") Task ID/URL\n"
+		b += "  " + th.Accent.Render(kt.label("1", "pick_guided")) + ") Guided (list → task)\n"
+		b += "  " + th.Accent.Render(kt.label("2", "pick_by_id")) + ") Task ID/URL\n"
 	case logTimerRunning:
 		if lg.timer == nil {
 			b += th.Help.Render("No timer running.") + "\n"
@@ -552,7 +552,7 @@ func (lg logModel) view(th theme) string {
 	case logForm:
 		b += "Task: " + th.Accent.Render(lg.taskID) + "\n\n"
 		if lg.formField == 3 {
-			b += "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
+			b += billablePrompt(th, kt)
 		} else {
 			labels := []string{"Duration", "Date", "Note (optional)"}
 			b += labels[lg.formField] + ":\n\n" + lg.input.View()
