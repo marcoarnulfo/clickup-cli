@@ -1,12 +1,17 @@
 // Package themes owns the six semantic colors the TUI is built from, the
 // built-in palettes, and the resolution of a user-written theme.
 //
-// It is a leaf on purpose. Both internal/config (which decodes a theme from
-// YAML) and internal/tui (which turns one into lipgloss styles) need this type,
-// and internal/tui already imports internal/config — so the type cannot live in
-// either without creating an import cycle. The package name is plural because
-// internal/tui already declares a type called `theme`, and Go forbids the same
-// identifier in a file block (an import) and a package block (that type).
+// It is a leaf by choice, not by necessity: internal/config could hold these
+// types without an import cycle, since it imports no internal package of its
+// own. They live here so that internal/config stays free of a rendering
+// library, so that color tests run without internal/tui's TestMain pinning
+// termenv.Ascii for the whole package, and so that validation stays a unit
+// small enough to hold in one's head.
+//
+// The package name is plural because internal/tui already declares a type
+// called `theme`, and Go forbids the same identifier in a file block (an
+// import) and a package block (that type). An aliased import would compile;
+// the plural avoids needing one at every import site.
 package themes
 
 import (
