@@ -1,0 +1,1140 @@
+# Keybinding configurabili — piano di implementazione
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
+> (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+> Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** chiudere la **#82** — la sua terza casella, gli override delle
+keybinding dal config. Con questa la milestone v1.9 si chiude.
+
+**Architecture:** i nomi delle chiavi YAML si derivano per reflection dai campi
+di `keyDefaults`, quindi ogni binding è rimappabile e nessuno futuro richiede
+lavoro. `internal/config` tiene il grezzo, `internal/tui` risolve e valida
+accanto alla tabella che valida, `internal/cli` fa fallire l'avvio su una
+configurazione che non può onorare.
+
+**Tech Stack:** Go 1.26, bubbles/key v1.0.0, bubbletea v1.3.10, yaml.v3.
+
+**Spec:** `docs/superpowers/specs/2026-08-01-configurable-keys-design.md`
+
+## Global Constraints
+
+- Tutto ciò che vive nel repo è in **inglese**: codice, identificatori,
+  commenti, stringhe UI, nomi e messaggi dei test, messaggi di commit. Eccezioni:
+  `README.it.md`, `CONTRIBUTING.it.md` e i doc di design sotto
+  `docs/superpowers/`.
+- **MAI** un trailer `Co-Authored-By`. Conventional Commits.
+- `internal/report` e `internal/duration` restano **puri**: solo stdlib, nessun
+  I/O, nessun import di `internal/config`, `internal/clickup`, `internal/tui`,
+  `internal/themes`.
+- `internal/themes` resta **foglia**: solo lipgloss, termenv, yaml.v3 e stdlib.
+- **Mai chiamare l'API ClickUp vera.** Non esistono credenziali in questo
+  ambiente. Il comportamento di rete si esercita solo con `httptest`.
+- Nessuna funzione di stile in produzione chiama `lipgloss.NewStyle()`.
+- **Ogni numero scritto in un commento va misurato eseguendo il codice**, mai
+  calcolato a mente.
+- **Un test scritto contro un difetto non vale finché non lo si è visto fallire
+  contro quel difetto**, con il transcript allegato al report.
+- I golden si rigenerano solo con `go test ./internal/tui -update`, mai a mano.
+  **In questa tranche nessun golden deve muoversi**: nessun default cambia.
+- Gate prima di ogni commit, tutti e cinque, tutti puliti:
+  `gofmt -l .` · `go vet ./...` ·
+  `go run honnef.co/go/tools/cmd/staticcheck@latest ./...` · `go build ./...` ·
+  `go test ./... -race`
+
+---
+
+### Task 1: la chiave `keys` nel config
+
+**Files:**
+- Modify: `internal/config/config.go`
+- Test: `internal/config/config_test.go`
+
+**Interfaces:**
+- Consuma: niente.
+- Produce: `config.KeySpec` e `Config.Keys map[string]KeySpec`. Il Task 3 li
+  legge.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+In fondo a `internal/config/config_test.go`:
+
+```go
+// --- optional keys map (#82) ---
+
+func TestKeysRoundTrip(t *testing.T) {
+	isolateConfig(t)
+	in := Config{Token: "t", WorkspaceID: "1", Keys: map[string]KeySpec{
+		"log_hours": {"L"},
+		"up":        {"up", "w"},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Keys["log_hours"]) != 1 || got.Keys["log_hours"][0] != "L" {
+		t.Errorf("log_hours = %v, want [L]", got.Keys["log_hours"])
+	}
+	if len(got.Keys["up"]) != 2 || got.Keys["up"][1] != "w" {
+		t.Errorf("up = %v, want [up w]", got.Keys["up"])
+	}
+}
+
+func TestKeySpecAcceptsAScalarAndAList(t *testing.T) {
+	t.Parallel()
+	var got map[string]KeySpec
+	src := "log_hours: \"L\"\nup: [up, w]\n"
+	if err := yaml.Unmarshal([]byte(src), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got["log_hours"]) != 1 || got["log_hours"][0] != "L" {
+		t.Errorf("scalar form gave %v, want [L]", got["log_hours"])
+	}
+	if len(got["up"]) != 2 {
+		t.Errorf("list form gave %v, want two keys", got["up"])
+	}
+}
+
+// Save serializes the whole Config, so without MarshalYAML a single key written
+// as a scalar would come back as a one-element list the first time anything
+// saves the config. This test is the only thing that would notice.
+func TestSaveKeepsASingleKeyScalar(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1", Keys: map[string]KeySpec{
+		"log_hours": {"L"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `log_hours: L`) {
+		t.Fatalf("saved config did not keep the scalar form:\n%s", raw)
+	}
+}
+
+func TestKeysAbsentIsNotWritten(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "keys:") {
+		t.Fatalf("saved config mentions keys:\n%s", raw)
+	}
+}
+```
+
+`config_test.go` importa già `os` e `strings`; aggiungere `gopkg.in/yaml.v3`.
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/config -run 'TestKey|TestSaveKeepsASingle' -v`
+Expected: FAIL in compilazione — `undefined: KeySpec`.
+
+- [ ] **Step 3: implementare**
+
+In `internal/config/config.go`, accanto agli altri tipi:
+
+```go
+// KeySpec is one binding's keys as written in YAML: a bare key, or a list of
+// them. It lives here rather than in internal/tui because nothing outside this
+// package needs the type — internal/tui takes plain strings.
+type KeySpec []string
+
+// UnmarshalYAML accepts both forms, so the common case is `log_hours: L`
+// rather than `log_hours: [L]`.
+func (k *KeySpec) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		var s string
+		if err := n.Decode(&s); err != nil {
+			return err
+		}
+		*k = KeySpec{s}
+		return nil
+	}
+	var list []string
+	if err := n.Decode(&list); err != nil {
+		return err
+	}
+	*k = list
+	return nil
+}
+
+// MarshalYAML collapses a single key back to a scalar. Without it, Save — which
+// marshals the whole Config — would rewrite a user's `log_hours: L` as a
+// one-element list the first time anything saved the config.
+func (k KeySpec) MarshalYAML() (any, error) {
+	if len(k) == 1 {
+		return k[0], nil
+	}
+	return []string(k), nil
+}
+```
+
+e dentro `Config`, sotto `Themes`:
+
+```go
+	// Keys remaps the TUI's bindings by name. The names are the ones
+	// internal/tui derives from its binding table; this package holds the YAML
+	// as written and validates nothing.
+	Keys map[string]KeySpec `yaml:"keys,omitempty"`
+```
+
+- [ ] **Step 4: eseguirli e vederli passare**
+
+Run: `go test ./internal/config -run 'TestKey|TestSaveKeepsASingle' -v`
+Expected: PASS (4 test).
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Cancellare `MarshalYAML`. `TestSaveKeepsASingleKeyScalar` **deve** fallire, e il
+suo output deve mostrare la forma a lista. Ripristinare e verificare con
+`git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/config/
+git commit -m "feat(config): add the keys map for binding overrides (#82)"
+```
+
+---
+
+### Task 2: i nomi dei binding, derivati e inchiodati
+
+**Files:**
+- Create: `internal/tui/keyname.go`
+- Create: `internal/tui/keyname_test.go`
+
+**Interfaces:**
+- Consuma: `keyDefaults` (già esistente, `keys.go:14`).
+- Produce: `bindingName(field string) string` e `BindingNames() []string`. I
+  Task 3 e 4 li usano.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+`internal/tui/keyname_test.go`:
+
+```go
+package tui
+
+import (
+	"slices"
+	"testing"
+)
+
+func TestBindingName(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ in, want string }{
+		{"Quit", "quit"},
+		{"LogHours", "log_hours"},
+		{"PaletteUp", "palette_up"},
+		{"ForceQuit", "force_quit"},
+		// An acronym run stays together. The naive rule — underscore before
+		// every capital — turns this into "pick_by_i_d", which would have
+		// shipped as a config key.
+		{"PickByID", "pick_by_id"},
+		{"ID", "id"},
+		{"HTTPServer", "http_server"},
+	} {
+		if got := bindingName(tc.in); got != tc.want {
+			t.Errorf("bindingName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// This is the test that matters most in this task. The config keys a user
+// writes are derived from Go field names, so renaming a field silently renames
+// a key in every config file in the wild. Spelling the list out here means the
+// rename fails a test instead of failing a user.
+func TestBindingNamesArePinned(t *testing.T) {
+	t.Parallel()
+	want := []string{
+		"back", "browse_list", "budget", "change_range", "clear_value",
+		"confirm", "confirm_delete", "delete", "down", "edit",
+		"export", "filters", "force_quit", "generate", "group_by",
+		"help", "history", "list_budget", "list_currency", "log_hours",
+		"members", "new_override", "new_tag", "next_field", "next_month",
+		"next_section", "no", "open_entries", "palette", "palette_down",
+		"palette_up", "pick_by_id", "pick_guided", "pick_timer", "prev_field",
+		"prev_month", "prev_section", "quit", "range", "rates",
+		"reload", "save", "select_all", "stop_timer", "tags",
+		"timer", "toggle_item", "toggle_scope", "toggle_week", "up",
+		"yes",
+	}
+	got := BindingNames()
+	if !slices.Equal(got, want) {
+		t.Errorf("BindingNames() = %v\nwant %v", got, want)
+	}
+}
+
+func TestBindingNamesAreUnique(t *testing.T) {
+	t.Parallel()
+	seen := map[string]bool{}
+	for _, n := range BindingNames() {
+		if seen[n] {
+			t.Errorf("duplicate derived name %q — two fields collapse to the same config key", n)
+		}
+		seen[n] = true
+	}
+}
+```
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/tui -run TestBindingName -v`
+Expected: FAIL in compilazione — `undefined: bindingName`, `undefined: BindingNames`.
+
+- [ ] **Step 3: implementare**
+
+`internal/tui/keyname.go`:
+
+```go
+package tui
+
+import (
+	"reflect"
+	"slices"
+	"strings"
+	"unicode"
+)
+
+// bindingName turns a keyDefaults field name into the key a user writes in
+// their config: LogHours -> log_hours.
+//
+// An acronym run stays together — PickByID becomes pick_by_id, not
+// pick_by_i_d — because the underscore goes in only where a case boundary is a
+// word boundary: after a lowercase letter, or before the last capital of a run.
+// Measured against every field in keyDefaults; the naive rule produced
+// "pick_by_i_d", which would have shipped as a config key.
+func bindingName(field string) string {
+	r := []rune(field)
+	var b strings.Builder
+	for i, c := range r {
+		if !unicode.IsUpper(c) {
+			b.WriteRune(c)
+			continue
+		}
+		prevLower := i > 0 && unicode.IsLower(r[i-1])
+		nextLower := i+1 < len(r) && unicode.IsLower(r[i+1])
+		if i > 0 && (prevLower || nextLower) {
+			b.WriteByte('_')
+		}
+		b.WriteRune(unicode.ToLower(c))
+	}
+	return b.String()
+}
+
+// BindingNames lists every binding a config may remap, sorted, for error
+// messages and for the docs.
+//
+// Derived rather than written out so that a binding added to keyDefaults is
+// remappable with no further work — the maintenance multiplier #82 warned about
+// does not exist. The cost is moved instead: renaming a Go field would rename a
+// user's config key, which is what TestBindingNamesArePinned exists to catch.
+func BindingNames() []string {
+	ty := reflect.TypeOf(keyDefaults{})
+	out := make([]string, 0, ty.NumField())
+	for i := range ty.NumField() {
+		out = append(out, bindingName(ty.Field(i).Name))
+	}
+	slices.Sort(out)
+	return out
+}
+```
+
+- [ ] **Step 4: eseguirli e vederli passare**
+
+Run: `go test ./internal/tui -run TestBindingName -v`
+Expected: PASS (3 test).
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Due mutazioni, con transcript:
+
+1. In `bindingName`, togliere la condizione `nextLower` (cioè tornare alla
+   regola ingenua). `TestBindingName` **deve** fallire su `PickByID` e
+   `HTTPServer`, e `TestBindingNamesArePinned` su `pick_by_id`.
+2. Rinominare il campo `Timer` di `keyDefaults` in `TimerToggle`.
+   `TestBindingNamesArePinned` **deve** fallire. È la prova che il test protegge
+   davvero i config degli utenti da un rename.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui/keyname.go internal/tui/keyname_test.go
+git commit -m "feat(tui): derive the config name of every binding (#82)"
+```
+
+---
+
+### Task 3: `KeyTable` e `ResolveKeys`
+
+**Files:**
+- Create: `internal/tui/keytable.go`
+- Create: `internal/tui/keytable_test.go`
+
+**Interfaces:**
+- Consuma: `bindingName`, `BindingNames` dal Task 2; `config.KeySpec` dal Task 1.
+- Produce: `KeyTable`, `(KeyTable).bindings()`, `DefaultKeyTable()`,
+  `ResolveKeys(map[string]config.KeySpec) (KeyTable, error)`. Il Task 4 aggiunge
+  il controllo sulle collisioni dentro `ResolveKeys`; il Task 5 la usa.
+
+**Contesto che il brief non può sapere.** La `KeyTable` zero **deve** valere
+come i default: i test costruiscono 110 letterali `Model{…}` senza passare da
+`New`, misurati, e leggere una tabella zero li disabiliterebbe tutti.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+`internal/tui/keytable_test.go`:
+
+```go
+package tui
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+)
+
+// The zero KeyTable is what a Model built by hand in a test carries, and 110
+// such Models exist. It must behave as the built-in defaults.
+func TestZeroKeyTableIsTheDefaults(t *testing.T) {
+	t.Parallel()
+	var zero KeyTable
+	if got, want := zero.bindings().Quit.Keys(), defaultKeys().Quit.Keys(); len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("zero table Quit = %v, want the default %v", got, want)
+	}
+}
+
+func TestResolveKeysOverridesAndKeepsTheRest(t *testing.T) {
+	t.Parallel()
+	kt, err := ResolveKeys(map[string]config.KeySpec{"log_hours": {"L"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := kt.bindings()
+	if got := d.LogHours.Keys(); len(got) != 1 || got[0] != "L" {
+		t.Errorf("LogHours = %v, want [L]", got)
+	}
+	if got, want := d.Quit.Keys(), defaultKeys().Quit.Keys(); got[0] != want[0] {
+		t.Errorf("Quit = %v, want the untouched default %v", got, want)
+	}
+}
+
+// The help string carries the key inside it, so an overridden binding that kept
+// its old help would lie in the footer and in the ? overlay.
+func TestResolveKeysRegeneratesTheHelp(t *testing.T) {
+	t.Parallel()
+	kt, err := ResolveKeys(map[string]config.KeySpec{"up": {"w", "k"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := kt.bindings().Up.Help()
+	if h.Key != "w/k" {
+		t.Errorf("help key = %q, want %q", h.Key, "w/k")
+	}
+	if want := defaultKeys().Up.Help().Desc; h.Desc != want {
+		t.Errorf("help desc = %q, want the original %q", h.Desc, want)
+	}
+}
+
+func TestResolveKeysErrors(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		in   map[string]config.KeySpec
+		says []string
+	}{
+		{
+			name: "unknown binding lists the valid names",
+			in:   map[string]config.KeySpec{"log_hourz": {"L"}},
+			says: []string{"log_hourz", "log_hours"},
+		},
+		{
+			name: "force_quit is not remappable",
+			in:   map[string]config.KeySpec{"force_quit": {"ctrl+x"}},
+			says: []string{"force_quit", "ctrl+c"},
+		},
+		{
+			name: "an empty list is rejected",
+			in:   map[string]config.KeySpec{"quit": {}},
+			says: []string{"quit", "at least one key"},
+		},
+		{
+			name: "an empty key inside the list is rejected",
+			in:   map[string]config.KeySpec{"quit": {"Q", ""}},
+			says: []string{"quit", "empty"},
+		},
+	} {
+		_, err := ResolveKeys(tc.in)
+		if err == nil {
+			t.Errorf("%s: ResolveKeys = nil error, want one", tc.name)
+			continue
+		}
+		for _, s := range tc.says {
+			if !strings.Contains(err.Error(), s) {
+				t.Errorf("%s: error %q does not mention %q", tc.name, err, s)
+			}
+		}
+	}
+}
+
+// ctrl+c must survive a config that remaps everything else: it is the only way
+// out of a TUI whose Quit the user has moved somewhere they cannot reach.
+//
+// Each binding gets a distinct fN key so the sweep stays collision-free once
+// Task 4's rule lands. Nothing checks that a key string is one a terminal can
+// actually produce — the table is just strings — so f1..f50 serve here purely
+// as fifty names nothing else claims. A sweep built from, say, "ctrl+"+name[:1]
+// would collide (back, budget and browse_list would all want ctrl+b) and this
+// test would quietly turn into one that skips forever.
+func TestForceQuitSurvivesEveryOverride(t *testing.T) {
+	t.Parallel()
+	over := map[string]config.KeySpec{}
+	for i, n := range BindingNames() {
+		if n == forceQuitName {
+			continue
+		}
+		over[n] = config.KeySpec{fmt.Sprintf("f%d", i+1)}
+	}
+	kt, err := ResolveKeys(over)
+	if err != nil {
+		t.Fatalf("a collision-free sweep was rejected: %v", err)
+	}
+	if got, want := kt.bindings().ForceQuit.Keys(), defaultKeys().ForceQuit.Keys(); got[0] != want[0] {
+		t.Errorf("ForceQuit = %v, want %v", got, want)
+	}
+	// And the sweep really did land, so the assertion above is not vacuous.
+	if got := kt.bindings().Quit.Keys(); len(got) != 1 || got[0] == "q" {
+		t.Errorf("Quit = %v, want the swept key — the sweep did not take effect", got)
+	}
+}
+```
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit' -v`
+Expected: FAIL in compilazione — `undefined: KeyTable`, `undefined: ResolveKeys`.
+
+- [ ] **Step 3: implementare**
+
+`internal/tui/keytable.go`:
+
+```go
+package tui
+
+import (
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+)
+
+// forceQuitName is the one binding a config may not remap: ctrl+c is the way
+// out of a TUI whose other keys the user has moved somewhere unreachable.
+const forceQuitName = "force_quit"
+
+// KeyTable is the resolved binding table the TUI routes and renders with.
+//
+// The zero value means the built-in defaults, which is what a Model built by
+// hand carries — the tests construct 110 of those without going through New,
+// and a zero table read literally would leave every binding disabled.
+type KeyTable struct {
+	d   keyDefaults
+	set bool
+}
+
+// DefaultKeyTable is the built-in table, for callers that want it explicitly.
+func DefaultKeyTable() KeyTable { return KeyTable{d: defaultKeys(), set: true} }
+
+func (kt KeyTable) bindings() keyDefaults {
+	if !kt.set {
+		return defaultKeys()
+	}
+	return kt.d
+}
+
+// ResolveKeys applies a config's overrides to the built-in table.
+//
+// Every failure is an error rather than a fallback: a key that cannot be
+// honored would leave the user in front of a TUI where a command simply does
+// not answer, with nothing to go on. Same rule as billing.rounding.increment
+// and as the theme resolution.
+func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
+	d := defaultKeys()
+	v := reflect.ValueOf(&d).Elem()
+	ty := v.Type()
+
+	index := map[string]int{}
+	for i := range ty.NumField() {
+		index[bindingName(ty.Field(i).Name)] = i
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(overrides)) {
+		if name == forceQuitName {
+			return KeyTable{}, fmt.Errorf(
+				"binding %q cannot be remapped: ctrl+c is the way out of a TUI whose other keys have moved", name)
+		}
+		i, ok := index[name]
+		if !ok {
+			return KeyTable{}, fmt.Errorf("unknown binding %q; valid names: %s",
+				name, strings.Join(BindingNames(), ", "))
+		}
+		ks := overrides[name]
+		if len(ks) == 0 {
+			return KeyTable{}, fmt.Errorf("binding %q needs at least one key", name)
+		}
+		for _, k := range ks {
+			if k == "" {
+				return KeyTable{}, fmt.Errorf("binding %q has an empty key in its list", name)
+			}
+		}
+		old := v.Field(i).Interface().(key.Binding)
+		// The help string carries the key inside it, so it has to be rebuilt or
+		// the footer would advertise a key that no longer does anything. The
+		// typographic arrows the defaults use (↑/k, tab/▸) are lost for
+		// remapped bindings: the user chose these keys, and inventing a
+		// prettier rendering for them would be guessing.
+		v.Field(i).Set(reflect.ValueOf(key.NewBinding(
+			key.WithKeys(ks...),
+			key.WithHelp(strings.Join(ks, "/"), old.Help().Desc),
+		)))
+	}
+	return KeyTable{d: d, set: true}, nil
+}
+```
+
+Aggiungere `"maps"` al blocco import.
+
+- [ ] **Step 4: eseguirli e vederli passare**
+
+Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit' -v`
+Expected: PASS (5 test).
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Tre mutazioni, con transcript:
+
+1. Togliere la rigenerazione dell'aiuto (passare `old.Help().Key` invece di
+   `strings.Join(ks, "/")`). `TestResolveKeysRegeneratesTheHelp` **deve**
+   fallire.
+2. Togliere il controllo su `forceQuitName`. Il caso «force_quit is not
+   remappable» **deve** fallire.
+3. Far ritornare `KeyTable{d: d}` senza `set: true`.
+   `TestResolveKeysOverridesAndKeepsTheRest` **deve** fallire, perché la tabella
+   ricadrebbe sui default e `LogHours` tornerebbe `n`.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui/keytable.go internal/tui/keytable_test.go
+git commit -m "feat(tui): resolve binding overrides from the config (#82)"
+```
+
+---
+
+### Task 4: la regola sulle collisioni
+
+**Files:**
+- Modify: `internal/tui/keytable.go` (`ResolveKeys`, più `claims` e `checkCollisions`)
+- Modify: `internal/tui/keytable_test.go`
+
+**Interfaces:**
+- Consuma: `bindingName`, `keyDefaults`.
+- Produce: nessuna API nuova esportata; `ResolveKeys` guadagna un controllo.
+
+**Contesto che il brief non può sapere, e che è il cuore del task.** I default
+contengono **20 tasti rivendicati da più di un binding**, misurati — `n` da
+quattro binding, `enter` da tre, `h` da tre. Convivono perché `screenKeys` ne
+abilita solo un sottoinsieme per schermata. Una regola «due binding non possono
+condividere un tasto» rifiuterebbe quindi i default stessi: **non implementarla**.
+
+La regola è: per ogni tasto, l'insieme dei binding che lo rivendicano **dopo**
+gli override deve essere un sottoinsieme di quello che lo rivendicava **prima**.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+In `internal/tui/keytable_test.go`:
+
+```go
+// The defaults are heavily overloaded on purpose — measured, 20 physical keys
+// are claimed by more than one binding, because screenKeys enables only a
+// subset per screen. A rule that forbade any sharing would reject what we
+// ship, so the rule is narrower: an override may not add a claimant to a key.
+func TestCollisionRule(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		in   map[string]config.KeySpec
+		ok   bool
+		says []string
+	}{
+		{
+			// n is shared by log_hours, new_override, new_tag and no. Moving
+			// log_hours away leaves a subset behind, which is fine.
+			name: "moving a binding off a shared key is allowed",
+			in:   map[string]config.KeySpec{"log_hours": {"L"}},
+			ok:   true,
+		},
+		{
+			name: "taking a free key is allowed",
+			in:   map[string]config.KeySpec{"export": {"ctrl+e"}},
+			ok:   true,
+		},
+		{
+			name: "adding a claimant to a contested key is rejected",
+			in:   map[string]config.KeySpec{"export": {"n"}},
+			says: []string{"\"n\"", "export"},
+		},
+		{
+			name: "adding a claimant to a free key is rejected too",
+			in:   map[string]config.KeySpec{"export": {"q"}},
+			says: []string{"\"q\"", "export", "quit"},
+		},
+		{
+			// Declared cost, not a defect: the rule cannot know that export
+			// lives on the report screen and list_budget on the rates one, so
+			// it refuses a swap that would in fact be harmless. The user picks
+			// another key; the alternative is a table of every screen state,
+			// kept in sync forever. See the design doc's §2.2.
+			name: "a swap between two bindings is rejected — the declared cost",
+			in:   map[string]config.KeySpec{"export": {"g"}, "group_by": {"e"}},
+			says: []string{"export"},
+		},
+	} {
+		_, err := ResolveKeys(tc.in)
+		if tc.ok {
+			if err != nil {
+				t.Errorf("%s: ResolveKeys = %v, want nil", tc.name, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%s: ResolveKeys = nil error, want one", tc.name)
+			continue
+		}
+		for _, s := range tc.says {
+			if !strings.Contains(err.Error(), s) {
+				t.Errorf("%s: error %q does not mention %s", tc.name, err, s)
+			}
+		}
+	}
+}
+
+// The rule must never reject the table we ship.
+func TestDefaultsPassTheCollisionRule(t *testing.T) {
+	t.Parallel()
+	if _, err := ResolveKeys(nil); err != nil {
+		t.Fatalf("the built-in defaults do not satisfy the collision rule: %v", err)
+	}
+}
+```
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/tui -run 'TestCollisionRule|TestDefaultsPass' -v`
+Expected: FAIL sui quattro casi che si aspettano un errore — oggi `ResolveKeys`
+non controlla niente e li accetta tutti. `TestDefaultsPassTheCollisionRule` e i
+due casi `ok: true` passano già: è giusto così, sono la guardia.
+
+- [ ] **Step 3: implementare**
+
+In `internal/tui/keytable.go`:
+
+```go
+// claims maps every physical key to the sorted names of the bindings that want
+// it. The defaults are deliberately overloaded — measured, 20 keys have more
+// than one claimant — because screenKeys enables only a subset per screen.
+func claims(d keyDefaults) map[string][]string {
+	out := map[string][]string{}
+	v := reflect.ValueOf(d)
+	ty := v.Type()
+	for i := range v.NumField() {
+		b := v.Field(i).Interface().(key.Binding)
+		name := bindingName(ty.Field(i).Name)
+		for _, k := range b.Keys() {
+			out[k] = append(out[k], name)
+		}
+	}
+	for k := range out {
+		slices.Sort(out[k])
+	}
+	return out
+}
+
+// checkCollisions rejects an override that adds a claimant to a key.
+//
+// Detecting real conflicts would mean asking, per screen, which bindings are
+// enabled at once — 14 screens plus the sub-modes of entries, log, rates and
+// setup, a table to keep in sync with every screen ever added. This rule is
+// computed from the key table alone, and is deliberately conservative: it also
+// refuses swaps that no screen would ever notice. The user picks another key,
+// and the message says exactly which collision they created.
+func checkCollisions(before, after keyDefaults) error {
+	was, now := claims(before), claims(after)
+	for _, k := range slices.Sorted(maps.Keys(now)) {
+		names := now[k]
+		if len(names) < 2 {
+			continue
+		}
+		for _, n := range names {
+			if slices.Contains(was[k], n) {
+				continue
+			}
+			others := slices.DeleteFunc(slices.Clone(names), func(s string) bool { return s == n })
+			return fmt.Errorf("binding %q cannot take key %q: it is already claimed by %s",
+				n, k, strings.Join(others, ", "))
+		}
+	}
+	return nil
+}
+```
+
+e in `ResolveKeys`, subito prima del `return` finale:
+
+```go
+	if err := checkCollisions(defaultKeys(), d); err != nil {
+		return KeyTable{}, err
+	}
+	return KeyTable{d: d, set: true}, nil
+```
+
+- [ ] **Step 4: eseguirli e vederli passare**
+
+Run: `go test ./internal/tui -run 'TestCollisionRule|TestDefaultsPass|TestResolveKeys|TestForceQuit' -v`
+Expected: PASS.
+
+Poi la suite intera: `go test ./... -race`. Expected: PASS, e **nessun golden
+modificato** (`git status --short internal/tui/testdata/` vuoto).
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Due mutazioni, con transcript:
+
+1. Sostituire il corpo di `checkCollisions` con `return nil`. I quattro casi di
+   `TestCollisionRule` che si aspettano un errore **devono** fallire, e
+   `TestDefaultsPassTheCollisionRule` **no**.
+2. Rendere la regola assoluta: far ritornare errore appena `len(names) >= 2`,
+   senza il confronto con `was[k]`. `TestDefaultsPassTheCollisionRule` **deve**
+   fallire — è la prova che la regola stretta rifiuterebbe i default che
+   spediamo.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui/
+git commit -m "feat(tui): refuse an override that adds a claimant to a key (#82)"
+```
+
+---
+
+### Task 5: la tabella arriva fino a `Update`
+
+**Files:**
+- Modify: `internal/tui/keys.go` (`keysFor`, `screenKeys`)
+- Modify: `internal/tui/app.go` (`Model`, `New`)
+- Modify: `internal/cli/cli.go` (`runTUI`, più `resolveKeys`)
+- Create: `internal/tui/helpers_test.go`
+- Modify: i file di test che chiamano `New` (il compilatore li elenca)
+- Test: `internal/cli/cli_test.go`
+
+**Interfaces:**
+- Consuma: `KeyTable`, `ResolveKeys` dai Task 3-4; `config.Keys` dal Task 1.
+- Produce: `New(cfg config.Config, pal themes.Palette, kt KeyTable) Model`,
+  `Model.keys`, `testModel(cfg) Model`, `cli.resolveKeys`.
+
+**Contesto che il brief non può sapere.**
+
+1. `defaultKeys()` ha **tre** call site in produzione: `keys.go:293`
+   (`keysFor` con la palette aperta), `keys.go:305` (`screenKeys`) e
+   `app.go:663`. I primi due leggono la tabella dal Model; **il terzo non si
+   tocca**, ed è voluto: `ForceQuit` non è rimappabile, quindi il controllo di
+   `ctrl+c` legge dai default non modificabili e nessuna configurazione può
+   toglierlo.
+2. `New` ha **44 call site**, misurati nella tranche precedente: `app_test.go`
+   33, `demo_test.go` 3, `log_test.go` 2, `report_test.go` 2, `golden_test.go` 1,
+   `home_test.go` 1, `palette_demo_test.go` 1, `internal/cli/cli.go` 1.
+   **Non cercarli con un grep letterale**: la stringa `New(cfg` ne trova nove.
+   Cambiare la firma e lasciare che sia `go build ./... && go vet ./...` a
+   elencare quelle rimaste.
+3. I 43 call site dei test vanno convertiti a `testModel(cfg)`, non a
+   `New(cfg, themes.Default(), DefaultKeyTable())`: è la stessa quantità di
+   modifiche oggi e una sola la prossima volta che la firma cresce.
+
+- [ ] **Step 1: scrivere i test che falliscono**
+
+`internal/tui/helpers_test.go`:
+
+```go
+package tui
+
+import (
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
+)
+
+// testModel builds a Model the way production does, with the built-in palette
+// and bindings. It exists so that growing New's signature touches one line
+// instead of forty-three.
+func testModel(cfg config.Config) Model {
+	return New(cfg, themes.Default(), DefaultKeyTable())
+}
+```
+
+In `internal/tui/keytable_test.go`, il test che chiude il giro:
+
+```go
+// The end-to-end guard for the zero-means-defaults decision: an override has to
+// survive all the way into Update's routing. If cli ever stopped passing the
+// table, the zero value would quietly fall back to the defaults and only this
+// test would notice.
+func TestAnOverrideReachesUpdate(t *testing.T) {
+	kt, err := ResolveKeys(map[string]config.KeySpec{"log_hours": {"L"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), kt)
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+
+	if got, _ := m.Update(keyMsg("L")); got.(Model).screen != screenLog {
+		t.Errorf("L did not open the log screen; screen = %v", got.(Model).screen)
+	}
+	if got, _ := m.Update(keyMsg("n")); got.(Model).screen == screenLog {
+		t.Error("n still opens the log screen, so the override did not take effect")
+	}
+}
+```
+
+In `internal/cli/cli_test.go`:
+
+```go
+func TestResolveKeysRejectsAnUnknownBinding(t *testing.T) {
+	t.Parallel()
+	_, err := resolveKeys(config.Config{Keys: map[string]config.KeySpec{"nope": {"x"}}})
+	if err == nil {
+		t.Fatal("resolveKeys of an unknown binding = nil error, want one")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error %q does not name the binding the user asked for", err)
+	}
+	if !strings.HasPrefix(err.Error(), "keys:") {
+		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+}
+```
+
+- [ ] **Step 2: eseguirli e vederli fallire**
+
+Run: `go test ./internal/tui -run TestAnOverrideReachesUpdate -v` e
+`go test ./internal/cli -run TestResolveKeys -v`
+Expected: FAIL in compilazione — `New` prende ancora due argomenti, e
+`resolveKeys` non esiste.
+
+- [ ] **Step 3: implementare**
+
+In `internal/tui/keys.go`:
+
+```go
+func keysFor(m Model) keyMap {
+	if m.overlay == overlayPalette {
+		return paletteKeys(m.keys.bindings())
+	}
+	return screenKeys(m)
+}
+```
+
+e in `screenKeys`, la prima riga del corpo:
+
+```go
+	d := m.keys.bindings()
+```
+
+In `internal/tui/app.go`, il campo nel `Model`:
+
+```go
+	// keys is the resolved binding table. The zero value means the built-in
+	// defaults, so a Model built by hand in a test routes normally.
+	keys KeyTable
+```
+
+e la firma:
+
+```go
+func New(cfg config.Config, pal themes.Palette, kt KeyTable) Model {
+```
+
+con `keys: kt,` nel letterale `Model{…}`. **`app.go:663` non si tocca.**
+
+In `internal/cli/cli.go`, accanto a `resolveTheme`:
+
+```go
+// resolveKeys builds the binding table the TUI will route with, and refuses to
+// start on a configuration it cannot honor. Extracted from runTUI for the same
+// reason resolveTheme and programOptions were: runTUI blocks on a terminal.
+func resolveKeys(cfg config.Config) (tui.KeyTable, error) {
+	kt, err := tui.ResolveKeys(cfg.Keys)
+	if err != nil {
+		return tui.KeyTable{}, fmt.Errorf("keys: %w", err)
+	}
+	return kt, nil
+}
+```
+
+e in `runTUI`:
+
+```go
+	kt, err := resolveKeys(cfg)
+	if err != nil {
+		return err
+	}
+	p := tea.NewProgram(tui.New(cfg, pal, kt), programOptions(cfg)...)
+```
+
+Poi far elencare al compilatore i call site rimasti e convertirli a
+`testModel(cfg)`.
+
+- [ ] **Step 4: eseguire tutto**
+
+Run: `go test ./... -race`
+Expected: PASS, e **nessun golden modificato**. Verificare con
+`git status --short internal/tui/testdata/`: deve essere vuoto.
+
+- [ ] **Step 5: prova per mutazione, obbligatoria**
+
+Tre mutazioni, con transcript:
+
+1. In `screenKeys`, rimettere `d := defaultKeys()`.
+   `TestAnOverrideReachesUpdate` **deve** fallire.
+2. In `resolveKeys`, ignorare l'errore e ritornare `tui.KeyTable{}, nil`.
+   `TestResolveKeysRejectsAnUnknownBinding` **deve** fallire.
+3. In `app.go`, cambiare il controllo di ForceQuit da `defaultKeys().ForceQuit` a
+   `m.keys.bindings().ForceQuit`. **Nessun test deve fallire** — è il caso in cui
+   la mutazione *non* rompe niente, e va **riportato come tale**: oggi le due
+   espressioni coincidono perché `force_quit` non è rimappabile, quindi la riga
+   è protetta dal divieto e non da un test. Dichiararlo nel report invece di
+   fingere una copertura che non c'è.
+
+Ripristinare dopo ognuna e verificare con `git diff`.
+
+- [ ] **Step 6: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add internal/tui/ internal/cli/
+git commit -m "feat(tui): route with the configured binding table (#82)"
+```
+
+---
+
+### Task 6: documentazione
+
+**Files:**
+- Modify: `README.md` (elenco delle chiavi di config, dopo il blocco `themes`)
+- Modify: `README.it.md` (stesso punto)
+- Modify: `CHANGELOG.md` (sezione `## [Unreleased]`)
+
+**Interfaces:** nessuna.
+
+- [ ] **Step 1: `README.md`**
+
+Dopo il punto elenco `themes`:
+
+```markdown
+- `keys` (optional): remap any binding by name. A value is one key or a list of
+  them, and every binding you do not name keeps its default. The names are listed
+  by `clup` in the error it prints when one is wrong; they are the binding names in
+  snake_case — `quit`, `log_hours`, `prev_month`, `palette_up`, and so on.
+
+    ```yaml
+    keys:
+      log_hours: "L"
+      up: ["up", "w"]
+    ```
+
+  - **`force_quit` cannot be remapped.** `ctrl+c` is the way out of a TUI whose
+    other keys you have moved somewhere you cannot reach.
+  - **A key already claimed by another binding is refused**, and the message names
+    the binding that has it. The built-in bindings deliberately share keys —
+    `n` alone serves four of them, on screens where only one is ever active — so
+    the rule is not "no sharing", it is that your override may not *add* a
+    claimant to a key. Moving a binding off a shared key is always allowed. The
+    check cannot tell which screens two bindings share, so it errs toward refusing:
+    if it rejects something you believe is safe, pick another key.
+  - A remapped binding shows its new keys in the footer and in the `?` help.
+```
+
+- [ ] **Step 2: `README.it.md`**
+
+Lo stesso contenuto, in italiano, nella posizione corrispondente. Mantenere i due
+file equivalenti nel significato. Usare il registro informale singolare che il
+file usa altrove ("puoi", "tuo"), non il plurale di cortesia.
+
+- [ ] **Step 3: `CHANGELOG.md`**
+
+In `### Added` sotto `## [Unreleased]`:
+
+```markdown
+- Keybindings are configurable: `keys:` in the config remaps any binding by name,
+  with a single key or a list. `force_quit` (`ctrl+c`) stays fixed so there is
+  always a way out. An unknown name, an empty list, or a key already claimed by
+  another binding stops startup with a message naming what collided (#82).
+```
+
+- [ ] **Step 4: rileggere quello che si è scritto**
+
+Aprire i tre file e **guardare** le sezioni modificate in contesto: che i punti
+elenco stiano nella lista giusta, che i blocchi YAML siano annidati sotto il
+proprio punto, e che la voce di changelog sia sotto `## [Unreleased]`. Riportare
+cosa si è visto.
+
+- [ ] **Step 5: gate + commit**
+
+```bash
+gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
+git add README.md README.it.md CHANGELOG.md
+git commit -m "docs: document the keys map (#82)"
+```
+
+---
+
+## Note per il controllore
+
+- Con questo task **la #82 si chiude**, e con lei la milestone v1.9.
+- Nessun golden deve muoversi in nessun task: non cambia nessun default.
+- `TestForceQuitSurvivesEveryOverride` (Task 3) usa una sweep `f1..f51`
+  deliberatamente priva di collisioni, così continua a verificare qualcosa anche
+  dopo che il Task 4 aggiunge la regola. Al Task 4 va comunque **rieseguito**: se
+  cominciasse a fallire, la regola sta rifiutando qualcosa che non dovrebbe.
+- Il Task 3 importa `fmt` anche nel file di test, per la sweep.
