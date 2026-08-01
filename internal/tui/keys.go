@@ -817,7 +817,7 @@ func paletteKeys(kt KeyTable) keyMap {
 // bury the ones that are.
 //
 // Generate is here despite being Enter rather than a rune: it is the most-used
-// action in the program and keyMsgFor rebuilds it exactly. Confirm is not, even
+// action in the program and parseKeyName rebuilds it exactly. Confirm is not, even
 // though it shares that key — the selection is by field, not by keystroke.
 func (k keyMap) paletteBindings() []key.Binding {
 	return []key.Binding{

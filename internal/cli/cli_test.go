@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -108,6 +109,13 @@ func TestResolveKeysRejectsAnUnknownBinding(t *testing.T) {
 	}
 	if !strings.HasPrefix(err.Error(), "keys:") {
 		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+	_, valid, ok := strings.Cut(err.Error(), "valid names:")
+	if !ok {
+		t.Fatalf("error %q has no valid-name suffix", err)
+	}
+	if names := strings.Split(strings.TrimSpace(valid), ", "); slices.Contains(names, "force_quit") {
+		t.Errorf("valid-name suggestions include non-remappable force_quit: %v", names)
 	}
 }
 

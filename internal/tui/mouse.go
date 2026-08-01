@@ -11,9 +11,9 @@ import tea "github.com/charmbracelet/bubbletea"
 // and the tests that cover it — apply unchanged. actions.go does the same for
 // the command palette.
 //
-// It deliberately does not go through keyMsgFor: that function's key set is
-// closed on purpose for the palette's benefit (see its doc comment), and
-// widening it for a different caller would betray that.
+// It deliberately does not go through parseKeyName: wheel translation has two
+// fixed internal outputs rather than a user-written name to validate, so typed
+// KeyMsgs state that invariant directly.
 //
 // There is no check on msg.Action, and it would be dead code: measured against
 // bubbletea v1.3.10, a wheel notch always arrives as a single press. The SGR

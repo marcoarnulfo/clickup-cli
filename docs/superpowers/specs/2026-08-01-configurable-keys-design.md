@@ -180,6 +180,7 @@ Errori **bloccanti**, con il precedente di `billing.rounding.increment`
 | nome sconosciuto | nomina il nome e elenca quelli validi, **`force_quit` escluso** |
 | `force_quit` | dice che è la via di fuga e non è rimappabile |
 | lista vuota, o un tasto vuoto nella lista | nomina il binding |
+| nome di tasto non canonico o non producibile da un singolo `KeyMsg` | nomina binding e tasto; per gli alias noti suggerisce la forma canonica |
 | **lo stesso tasto due volte nella stessa lista** | nomina il binding e il tasto |
 | un tasto con due o più rivendicanti dopo gli override ne guadagna uno nuovo (§2.2) | nomina il tasto, il binding che lo chiede e chi già lo rivendica |
 
@@ -338,7 +339,9 @@ passa se il valore non arriva fino a `Update`.
   tasto diverso; questa costerebbe a ogni schermata futura una riga.
 - **Rimappare `ForceQuit`**: `ctrl+c` è la via di fuga e resta fissa.
 - **Una schermata per rimappare i tasti dentro la TUI**: si configura dal file.
-- **Sequenze multi-tasto** (`g g`, `<leader> x`): bubbles/key non le modella.
+- **Supporto alle sequenze multi-tasto** (`g g`, `<leader> x`): bubbles/key non
+  le modella. `ResolveKeys` le rifiuta all'avvio invece di accettare un'azione
+  che nessun singolo `KeyMsg` può attivare.
 - **Frecce tipografiche per i tasti rimappati** (§3.4).
 - **Il wizard di setup che cancella `keys:` dal file.** Misurato: `setupModel.tmpCfg`
   parte da un `config.Config` azzerato (`setup.go:34-43`) e `setup.go:124-125` lo

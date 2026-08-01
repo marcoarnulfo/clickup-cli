@@ -174,25 +174,30 @@ func TestResolveKeysErrors(t *testing.T) {
 	}
 }
 
-func TestResolveKeysRejectsNoncanonicalControlAliases(t *testing.T) {
+func TestResolveKeysRejectsUnreachableKeyNamesAtStartup(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		alias, canonical, colliding string
+		key       string
+		canonical string
 	}{
-		{alias: "ctrl+i", canonical: "tab", colliding: "n"},
-		{alias: "ctrl+m", canonical: "enter", colliding: "g"},
+		{key: "g g"},
+		{key: "f21"},
+		{key: "space", canonical: " "},
+		{key: "ctrl+i", canonical: "tab"},
+		{key: "ctrl+m", canonical: "enter"},
+		{key: "ctrl+[", canonical: "esc"},
 	} {
-		t.Run(tc.alias, func(t *testing.T) {
+		t.Run(tc.key, func(t *testing.T) {
 			t.Parallel()
-			// The second key deliberately collides. Alias validation must win
-			// before collision analysis and before the binding help is built.
-			_, err := ResolveKeys(map[string]config.KeySpec{
-				"export": {tc.alias, tc.colliding},
-			})
+			_, err := ResolveKeys(map[string]config.KeySpec{"export": {tc.key}})
 			if err == nil {
 				t.Fatal("ResolveKeys = nil error, want one")
 			}
-			for _, want := range []string{`"export"`, fmt.Sprintf("%q", tc.alias), fmt.Sprintf("%q", tc.canonical)} {
+			wants := []string{`"export"`, fmt.Sprintf("%q", tc.key)}
+			if tc.canonical != "" {
+				wants = append(wants, fmt.Sprintf("%q", tc.canonical))
+			}
+			for _, want := range wants {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q does not mention %s", err, want)
 				}
@@ -204,13 +209,10 @@ func TestResolveKeysRejectsNoncanonicalControlAliases(t *testing.T) {
 // ctrl+c must survive a config that remaps everything else: it is the only way
 // out of a TUI whose Quit the user has moved somewhere they cannot reach.
 //
-// Each binding gets a distinct fN key so the sweep stays collision-free once
-// Task 4's rule lands. Nothing checks that a key string is one a terminal can
-// actually produce — the table is just strings — so f1..f51 serve here purely
-// as names nothing else claims (f13 goes unused: force_quit is skipped). A sweep
-// built from, say, "ctrl+"+name[:1] would collide (back, budget and browse_list
-// would all want ctrl+b) and this test would quietly turn into one that skips
-// forever.
+// Each binding gets a distinct private-use Unicode rune so the sweep is both
+// canonically producible as one KeyMsg and collision-free. A sweep built from,
+// say, "ctrl+"+name[:1] would collide (back, budget and browse_list would all
+// want ctrl+b) and this test would quietly turn into one that skips forever.
 func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 	t.Parallel()
 	over := map[string]config.KeySpec{}
@@ -218,7 +220,7 @@ func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 		if n == forceQuitName {
 			continue
 		}
-		over[n] = config.KeySpec{fmt.Sprintf("f%d", i+1)}
+		over[n] = config.KeySpec{string(rune(0xE000 + i))}
 	}
 	kt, err := ResolveKeys(over)
 	if err != nil {

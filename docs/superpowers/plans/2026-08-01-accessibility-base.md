@@ -192,10 +192,9 @@ git commit -m "feat(config): add the optional mouse key (#74)"
 
 **Contesto che il brief non può sapere.**
 
-1. `keyMsgFor` (`internal/tui/actions.go:149`) esiste già e costruisce `KeyMsg`
-   sintetici, ma **non va usata né allargata**: il suo commento dichiara
-   l'insieme chiuso di proposito, per la command palette. `wheelKey` è una
-   funzione separata con la propria motivazione.
+1. `parseKeyName` (`internal/tui/actions.go`) esiste già e ricostruisce `KeyMsg`
+   da nomi configurabili, ma qui non serve: la rotella ha due output interni
+   fissi e `wheelKey` li esprime direttamente in una funzione separata.
 2. Le fixture dei test esistono già nel package e vanno riusate, non riscritte:
    `filtersScreenFixture()` (`filters_test.go:18`), `newTestModel()`
    (`log_test.go:31`), `newTestModelOnReport()` (`log_test.go:36`),
@@ -362,9 +361,9 @@ import tea "github.com/charmbracelet/bubbletea"
 // and the tests that cover it — apply unchanged. actions.go does the same for
 // the command palette.
 //
-// It deliberately does not go through keyMsgFor: that function's key set is
-// closed on purpose for the palette's benefit (see its doc comment), and
-// widening it for a different caller would betray that.
+// It deliberately does not go through parseKeyName: wheel translation has two
+// fixed internal outputs rather than a user-written name to validate, so typed
+// KeyMsgs state that invariant directly.
 //
 // There is no check on msg.Action, and it would be dead code: measured against
 // bubbletea v1.3.10, a wheel notch always arrives as a single press. The SGR

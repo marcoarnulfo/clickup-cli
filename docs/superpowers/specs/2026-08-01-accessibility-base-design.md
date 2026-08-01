@@ -156,10 +156,9 @@ func wheelKey(msg tea.MouseMsg) (tea.KeyMsg, bool)
 `tea.KeyMsg{Type: tea.KeyDown}`, **tutto il resto** — click, motion, rotella
 orizzontale, pulsanti laterali — → `false`.
 
-Non passa da `keyMsgFor`: quella funzione ha un insieme chiuso di proposito
-(`actions.go:140-148`) perché serve alla palette, e allargarlo per un chiamante
-diverso ne tradirebbe il commento. `wheelKey` costruisce i suoi due messaggi e si
-porta dietro la propria motivazione.
+Non passa da `parseKeyName`: la rotella ha due output interni fissi, non un nome
+scritto dall'utente da validare. `wheelKey` costruisce direttamente i due
+messaggi tipizzati e si porta dietro la propria motivazione.
 
 In `app.go`, dentro il type-switch di `Update`, un caso che ricalca
 l'instradamento dei tasti **meno le scorciatoie globali**:

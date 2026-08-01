@@ -218,8 +218,7 @@ func TestKeysForFollowsTheOverlayAndScreenKeysDoesNot(t *testing.T) {
 }
 
 // Every default binding the palette offers must have a key replayable through
-// routeKey. screenActions tries configured keys in order, so the first one need
-// not be replayable as long as a later one round-trips through keyMsgFor.
+// routeKey. ResolveKeys applies the same parser to overrides at startup.
 func TestEveryPaletteBindingIsReplayable(t *testing.T) {
 	t.Parallel()
 	for _, b := range defaultKeys().paletteDefaults() {
@@ -228,15 +227,10 @@ func TestEveryPaletteBindingIsReplayable(t *testing.T) {
 			t.Errorf("a palette default has no keys: %+v", b.Help())
 			continue
 		}
-		replayable := false
 		for _, configured := range keys {
-			if _, ok := keyMsgFor(configured); ok {
-				replayable = true
-				break
+			if _, err := parseKeyName(configured); err != nil {
+				t.Errorf("binding %v (%s) has invalid key %q: %v", keys, b.Help().Desc, configured, err)
 			}
-		}
-		if !replayable {
-			t.Errorf("binding %v (%s) has no key keyMsgFor can rebuild", keys, b.Help().Desc)
 		}
 	}
 }

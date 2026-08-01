@@ -27,42 +27,110 @@ func hasLabel(as []action, want string) bool {
 	return false
 }
 
-func TestKeyMsgFor(t *testing.T) {
+func TestParseKeyNameAcceptsCanonicalNames(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		in     string
-		wantOK bool
-		want   string
+		name  string
+		type_ tea.KeyType
+		alt   bool
+		runes string
 	}{
-		{"g", true, "g"},
-		{"enter", true, "enter"},
-		// PrevMonth and NextMonth are "left"/"h" and "right"/"l", so their
-		// first key is not a rune. Without these two the palette would silently
-		// drop both month-navigation actions on Home.
-		{"left", true, "left"},
-		{"right", true, "right"},
-		{"ctrl+a", true, "ctrl+a"},
-		{"ctrl+e", true, "ctrl+e"},
-		{"ctrl+z", true, "ctrl+z"},
-		// Bubble Tea canonicalizes these control codes as tab and enter. Returning
-		// their KeyTypes for ctrl+i/ctrl+m would not faithfully replay the config.
-		{"ctrl+i", false, ""},
-		{"ctrl+m", false, ""},
-		{"tab", false, ""},
-		{"shift+tab", false, ""},
-		{"up", false, ""},
-		{"", false, ""},
+		{name: "g", type_: tea.KeyRunes, runes: "g"},
+		{name: "界", type_: tea.KeyRunes, runes: "界"},
+		{name: "alt+é", type_: tea.KeyRunes, alt: true, runes: "é"},
+		{name: " ", type_: tea.KeySpace, runes: " "},
+		{name: "alt+ ", type_: tea.KeySpace, alt: true, runes: " "},
+		{name: "ctrl+@", type_: tea.KeyCtrlAt},
+		{name: "ctrl+a", type_: tea.KeyCtrlA},
+		{name: "ctrl+h", type_: tea.KeyCtrlH},
+		{name: "tab", type_: tea.KeyTab},
+		{name: "ctrl+j", type_: tea.KeyCtrlJ},
+		{name: "ctrl+l", type_: tea.KeyCtrlL},
+		{name: "enter", type_: tea.KeyEnter},
+		{name: "ctrl+n", type_: tea.KeyCtrlN},
+		{name: "ctrl+z", type_: tea.KeyCtrlZ},
+		{name: "esc", type_: tea.KeyEsc},
+		{name: "ctrl+\\", type_: tea.KeyCtrlBackslash},
+		{name: "ctrl+]", type_: tea.KeyCtrlCloseBracket},
+		{name: "ctrl+^", type_: tea.KeyCtrlCaret},
+		{name: "ctrl+_", type_: tea.KeyCtrlUnderscore},
+		{name: "backspace", type_: tea.KeyBackspace},
+		{name: "alt+ctrl+a", type_: tea.KeyCtrlA, alt: true},
+		{name: "alt+enter", type_: tea.KeyEnter, alt: true},
 	} {
-		t.Run(tc.in, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			msg, ok := keyMsgFor(tc.in)
-			if ok != tc.wantOK {
-				t.Fatalf("keyMsgFor(%q) ok = %v, want %v", tc.in, ok, tc.wantOK)
+			msg, err := parseKeyName(tc.name)
+			if err != nil {
+				t.Fatalf("parseKeyName(%q) = %v", tc.name, err)
 			}
-			// The round trip is the whole point: key.Matches compares
-			// msg.String() against the binding's key strings.
-			if ok && msg.String() != tc.want {
-				t.Errorf("keyMsgFor(%q).String() = %q, want %q", tc.in, msg.String(), tc.want)
+			if msg.Type != tc.type_ || msg.Alt != tc.alt || string(msg.Runes) != tc.runes {
+				t.Errorf("parseKeyName(%q) = %+v, want type=%v alt=%v runes=%q", tc.name, msg, tc.type_, tc.alt, tc.runes)
+			}
+			if got := msg.String(); got != tc.name {
+				t.Errorf("parseKeyName(%q).String() = %q", tc.name, got)
+			}
+		})
+	}
+}
+
+func TestParseKeyNameAcceptsEveryCanonicalSpecialKey(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{
+		"up", "down", "right", "left", "shift+tab",
+		"home", "end", "pgup", "pgdown", "ctrl+pgup", "ctrl+pgdown",
+		"delete", "insert", "ctrl+up", "ctrl+down", "ctrl+right", "ctrl+left",
+		"ctrl+home", "ctrl+end", "shift+up", "shift+down", "shift+right", "shift+left",
+		"shift+home", "shift+end", "ctrl+shift+up", "ctrl+shift+down",
+		"ctrl+shift+right", "ctrl+shift+left", "ctrl+shift+home", "ctrl+shift+end",
+		"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10",
+		"f11", "f12", "f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, prefix := range []string{"", "alt+"} {
+				full := prefix + name
+				msg, err := parseKeyName(full)
+				if err != nil {
+					t.Errorf("parseKeyName(%q) = %v", full, err)
+					continue
+				}
+				if got := msg.String(); got != full {
+					t.Errorf("parseKeyName(%q).String() = %q", full, got)
+				}
+			}
+		})
+	}
+}
+
+func TestParseKeyNameRejectsAliasesAndUnreachableNames(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		canonical string
+	}{
+		{name: ""},
+		{name: "g g"},
+		{name: "gg"},
+		{name: "f21"},
+		{name: "runes"},
+		{name: "alt+"},
+		{name: "space", canonical: " "},
+		{name: "ctrl+`", canonical: "ctrl+@"},
+		{name: "ctrl+i", canonical: "tab"},
+		{name: "ctrl+m", canonical: "enter"},
+		{name: "ctrl+[", canonical: "esc"},
+		{name: "ctrl+?", canonical: "backspace"},
+		{name: "alt+ctrl+i", canonical: "alt+tab"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := parseKeyName(tc.name)
+			if err == nil {
+				t.Fatalf("parseKeyName(%q) = nil error", tc.name)
+			}
+			if tc.canonical != "" && !strings.Contains(err.Error(), tc.canonical) {
+				t.Errorf("parseKeyName(%q) error %q does not suggest %q", tc.name, err, tc.canonical)
 			}
 		})
 	}
@@ -104,28 +172,34 @@ func TestScreenActionsReplayAControlKeyOverride(t *testing.T) {
 	}
 }
 
-func TestScreenActionsUseTheFirstReplayableConfiguredKey(t *testing.T) {
+func TestScreenActionsReplaySpecialKeyOverrides(t *testing.T) {
 	t.Parallel()
-	m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {"g g", "ctrl+e"}})
-
-	for _, a := range screenActions(m) {
-		if a.label != "Export" {
-			continue
-		}
-		got, _ := a.run(m)
-		if got.(Model).screen != screenExport {
-			t.Errorf("Export action landed on %v, want screenExport", got.(Model).screen)
-		}
-		return
-	}
-	t.Fatal("Export disappeared instead of falling through to its replayable ctrl+e key")
-}
-
-func TestScreenActionsDropABindingWithNoReplayableKey(t *testing.T) {
-	t.Parallel()
-	m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {"g g"}})
-	if hasLabel(screenActions(m), "Export") {
-		t.Error("Export was offered even though none of its configured keys can be replayed")
+	for _, tc := range []struct {
+		name string
+		msg  tea.KeyMsg
+	}{
+		{name: "f1", msg: tea.KeyMsg{Type: tea.KeyF1}},
+		{name: "home", msg: tea.KeyMsg{Type: tea.KeyHome}},
+		{name: "delete", msg: tea.KeyMsg{Type: tea.KeyDelete}},
+		{name: "ctrl+shift+up", msg: tea.KeyMsg{Type: tea.KeyCtrlShiftUp}},
+		{name: "alt+f20", msg: tea.KeyMsg{Type: tea.KeyF20, Alt: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {tc.name}})
+			for _, a := range screenActions(m) {
+				if a.label != "Export" {
+					continue
+				}
+				viaAction, _ := a.run(m)
+				viaKey, _ := m.Update(tc.msg)
+				if got, want := viaAction.(Model).screen, viaKey.(Model).screen; got != want || got != screenExport {
+					t.Errorf("action screen = %v, physical %s screen = %v, want %v", got, tc.name, want, screenExport)
+				}
+				return
+			}
+			t.Fatal("Export disappeared from screenActions")
+		})
 	}
 }
 

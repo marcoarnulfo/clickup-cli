@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -45,17 +47,12 @@ func screenActions(m Model) []action {
 		if !b.Enabled() {
 			continue
 		}
-		var msg tea.KeyMsg
-		var ok bool
-		for _, configured := range b.Keys() {
-			msg, ok = keyMsgFor(configured)
-			if ok {
-				break
-			}
-		}
-		if !ok {
-			// Dropping beats firing a KeyMsg that matches nothing.
-			continue
+		configured := b.Keys()[0]
+		msg, err := parseKeyName(configured)
+		if err != nil {
+			// Overrides are parsed by ResolveKeys before Model construction, and
+			// defaults are covered by TestEveryPaletteBindingIsReplayable.
+			panic(fmt.Sprintf("invalid key %q reached the command palette: %v", configured, err))
 		}
 		out = append(out, action{
 			label: capitalize(b.Help().Desc),
@@ -139,40 +136,84 @@ func globalActions(m Model) []action {
 	}})
 }
 
-// keyMsgFor rebuilds the tea.KeyMsg a configured key would produce.
+// canonicalKeyTypes is the exported Bubble Tea v1.3.10 key set whose String
+// forms represent one terminal key. KeyRunes is handled separately so a config
+// can contain any single rune without treating a multi-rune sequence as a key.
+var canonicalKeyTypes = []tea.KeyType{
+	// Canonical control-code names. Several values also have aliases; only the
+	// spelling returned by KeyMsg.String is listed here.
+	tea.KeyCtrlAt,
+	tea.KeyCtrlA, tea.KeyCtrlB, tea.KeyCtrlC, tea.KeyCtrlD, tea.KeyCtrlE,
+	tea.KeyCtrlF, tea.KeyCtrlG, tea.KeyCtrlH, tea.KeyTab, tea.KeyCtrlJ,
+	tea.KeyCtrlK, tea.KeyCtrlL, tea.KeyEnter, tea.KeyCtrlN, tea.KeyCtrlO,
+	tea.KeyCtrlP, tea.KeyCtrlQ, tea.KeyCtrlR, tea.KeyCtrlS, tea.KeyCtrlT,
+	tea.KeyCtrlU, tea.KeyCtrlV, tea.KeyCtrlW, tea.KeyCtrlX, tea.KeyCtrlY,
+	tea.KeyCtrlZ, tea.KeyEsc, tea.KeyCtrlBackslash, tea.KeyCtrlCloseBracket,
+	tea.KeyCtrlCaret, tea.KeyCtrlUnderscore, tea.KeyBackspace,
+
+	// Other keys recognized by Bubble Tea's terminal input parser.
+	tea.KeyUp, tea.KeyDown, tea.KeyRight, tea.KeyLeft, tea.KeyShiftTab,
+	tea.KeyHome, tea.KeyEnd, tea.KeyPgUp, tea.KeyPgDown,
+	tea.KeyCtrlPgUp, tea.KeyCtrlPgDown, tea.KeyDelete, tea.KeyInsert, tea.KeySpace,
+	tea.KeyCtrlUp, tea.KeyCtrlDown, tea.KeyCtrlRight, tea.KeyCtrlLeft,
+	tea.KeyCtrlHome, tea.KeyCtrlEnd,
+	tea.KeyShiftUp, tea.KeyShiftDown, tea.KeyShiftRight, tea.KeyShiftLeft,
+	tea.KeyShiftHome, tea.KeyShiftEnd,
+	tea.KeyCtrlShiftUp, tea.KeyCtrlShiftDown, tea.KeyCtrlShiftRight, tea.KeyCtrlShiftLeft,
+	tea.KeyCtrlShiftHome, tea.KeyCtrlShiftEnd,
+	tea.KeyF1, tea.KeyF2, tea.KeyF3, tea.KeyF4, tea.KeyF5,
+	tea.KeyF6, tea.KeyF7, tea.KeyF8, tea.KeyF9, tea.KeyF10,
+	tea.KeyF11, tea.KeyF12, tea.KeyF13, tea.KeyF14, tea.KeyF15,
+	tea.KeyF16, tea.KeyF17, tea.KeyF18, tea.KeyF19, tea.KeyF20,
+}
+
+var keyNameAliases = map[string]string{
+	"space":  " ",
+	"ctrl+`": "ctrl+@",
+	"ctrl+i": "tab",
+	"ctrl+m": "enter",
+	"ctrl+[": "esc",
+	"ctrl+?": "backspace",
+}
+
+// parseKeyName validates a canonical key name and rebuilds the exact tea.KeyMsg
+// a terminal sends. ResolveKeys and command-palette replay both use it, so a
+// binding accepted at startup cannot later disappear from the palette.
 //
-// The set is closed on purpose. key.Matches compares msg.String() against the
-// binding's key strings, and every accepted message round-trips exactly. A
-// KeyRunes message carrying "tab" would round-trip too, but every handler that
-// reads msg.Type rather than key.Matches would then see the wrong thing — so the
-// palette leaves those bindings out instead of forging their messages. ok is
-// false for anything else, so an action with no faithfully replayable key is
-// dropped rather than mis-fired.
-func keyMsgFor(s string) (tea.KeyMsg, bool) {
-	switch s {
-	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}, true
-	// The built-in PrevMonth and NextMonth bindings lead with "left" and "right",
-	// so the palette needs their real message types rather than forged runes.
-	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}, true
-	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}, true
+// The exact String round trip is load-bearing: key.Matches compares strings,
+// while handlers may also inspect Type. Reconstructing a special name as runes
+// would pass the former and violate the latter.
+func parseKeyName(name string) (tea.KeyMsg, error) {
+	base := name
+	alt := strings.HasPrefix(base, "alt+")
+	if alt {
+		base = strings.TrimPrefix(base, "alt+")
 	}
-	// Bubble Tea's ctrl+letter KeyTypes are contiguous. Validate the rendered
-	// name because ctrl+i and ctrl+m are canonically "tab" and "enter"; accepting
-	// those would forge a message whose type is real but whose key does not match
-	// the configured string.
-	if len(s) == len("ctrl+a") && s[:len("ctrl+")] == "ctrl+" && s[len("ctrl+")] >= 'a' && s[len("ctrl+")] <= 'z' {
-		msg := tea.KeyMsg{Type: tea.KeyCtrlA + tea.KeyType(s[len("ctrl+")]-'a')}
-		if msg.String() == s {
-			return msg, true
+	if canonical, ok := keyNameAliases[base]; ok {
+		if alt {
+			canonical = "alt+" + canonical
+		}
+		return tea.KeyMsg{}, fmt.Errorf("noncanonical key %q; use %q instead", name, canonical)
+	}
+
+	for _, typ := range canonicalKeyTypes {
+		msg := tea.KeyMsg{Type: typ, Alt: alt}
+		if typ == tea.KeySpace {
+			msg.Runes = []rune{' '}
+		}
+		if msg.String() == name {
+			return msg, nil
 		}
 	}
-	if r := []rune(s); len(r) == 1 {
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: r}, true
+
+	runes := []rune(base)
+	if len(runes) == 1 && (runes[0] > 0x1f && runes[0] != 0x7f) {
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: runes, Alt: alt}
+		if msg.String() == name {
+			return msg, nil
+		}
 	}
-	return tea.KeyMsg{}, false
+	return tea.KeyMsg{}, fmt.Errorf("key %q is not a canonical single Bubble Tea key", name)
 }
 
 // capitalize upper-cases the first rune. strings.ToUpper on s[:1] would corrupt

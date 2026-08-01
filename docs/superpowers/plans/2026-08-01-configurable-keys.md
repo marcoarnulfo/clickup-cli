@@ -519,12 +519,10 @@ func TestResolveKeysErrors(t *testing.T) {
 // ctrl+c must survive a config that remaps everything else: it is the only way
 // out of a TUI whose Quit the user has moved somewhere they cannot reach.
 //
-// Each binding gets a distinct fN key so the sweep stays collision-free once
-// Task 4's rule lands. Nothing checks that a key string is one a terminal can
-// actually produce — the table is just strings — so f1..f51 serve here purely
-// as names nothing else claims (f13 goes unused: force_quit is skipped). A sweep built from, say, "ctrl+"+name[:1]
-// would collide (back, budget and browse_list would all want ctrl+b) and this
-// test would quietly turn into one that skips forever.
+// Each binding gets a distinct private-use Unicode rune so the sweep is both
+// canonically producible as one KeyMsg and collision-free. A sweep built from,
+// say, "ctrl+"+name[:1] would collide (back, budget and browse_list would all
+// want ctrl+b) and this test would quietly turn into one that skips forever.
 func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 	t.Parallel()
 	over := map[string]config.KeySpec{}
@@ -532,7 +530,7 @@ func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 		if n == forceQuitName {
 			continue
 		}
-		over[n] = config.KeySpec{fmt.Sprintf("f%d", i+1)}
+		over[n] = config.KeySpec{string(rune(0xE000 + i))}
 	}
 	kt, err := ResolveKeys(over)
 	if err != nil {
@@ -1364,11 +1362,10 @@ git commit -m "docs: document the keys map (#82)"
 - Con questo task **la #82 si chiude**, e con lei la milestone v1.9.
 - Nessun golden deve muoversi in nessun task: non cambia nessun default, e il
   Task 6 tiene apposta l'etichetta letterale finché niente è rimappato.
-- `TestForceQuitSurvivesEveryOverride` (Task 3) usa una sweep `f1..f51`
-  deliberatamente priva di collisioni, così continua a verificare qualcosa anche
-  dopo che il Task 4 aggiunge la regola. Al Task 4 va comunque **rieseguito**: se
-  cominciasse a fallire, la regola sta rifiutando qualcosa che non dovrebbe.
-- Il Task 3 importa `fmt` anche nel file di test, per la sweep.
+- `TestForceQuitSurvivesEveryOverride` (Task 3) usa una sweep di rune Unicode
+  private-use, tutte producibili come singoli `KeyMsg` e deliberatamente prive di
+  collisioni. Al Task 4 va comunque **rieseguito**: se cominciasse a fallire, la
+  regola sta rifiutando qualcosa che non dovrebbe.
 - **Il Task 6 è nato da una review, non dalla prima stesura.** La spec diceva che
   rigenerare l'aiuto dentro `ResolveKeys` bastava; eseguendo, il footer
   continuava a mostrare i tasti di default in 24 punti. Se un implementer trova
