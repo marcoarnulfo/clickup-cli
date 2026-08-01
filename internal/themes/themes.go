@@ -151,7 +151,7 @@ func adaptive(light, dark string) lipgloss.AdaptiveColor {
 // 256-color index sits in the TrueColor slot on purpose, so that only the
 // 16-color profile differs from what the automatic conversion would produce.
 //
-//lint:ignore U1000 not called yet: task 3 wires it into the built-in palettes
+//lint:ignore U1000 not called yet: task 2 wires it into the built-in palettes
 func subtle(light, dark string) lipgloss.CompleteAdaptiveColor {
 	return lipgloss.CompleteAdaptiveColor{
 		Light: lipgloss.CompleteColor{TrueColor: light, ANSI256: light, ANSI: shadeFor(light)},
