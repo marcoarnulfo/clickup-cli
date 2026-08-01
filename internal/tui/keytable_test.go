@@ -123,6 +123,33 @@ func TestResolveKeysErrors(t *testing.T) {
 	}
 }
 
+func TestResolveKeysRejectsNoncanonicalControlAliases(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		alias, canonical, colliding string
+	}{
+		{alias: "ctrl+i", canonical: "tab", colliding: "n"},
+		{alias: "ctrl+m", canonical: "enter", colliding: "g"},
+	} {
+		t.Run(tc.alias, func(t *testing.T) {
+			t.Parallel()
+			// The second key deliberately collides. Alias validation must win
+			// before collision analysis and before the binding help is built.
+			_, err := ResolveKeys(map[string]config.KeySpec{
+				"export": {tc.alias, tc.colliding},
+			})
+			if err == nil {
+				t.Fatal("ResolveKeys = nil error, want one")
+			}
+			for _, want := range []string{`"export"`, fmt.Sprintf("%q", tc.alias), fmt.Sprintf("%q", tc.canonical)} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not mention %s", err, want)
+				}
+			}
+		})
+	}
+}
+
 // ctrl+c must survive a config that remaps everything else: it is the only way
 // out of a TUI whose Quit the user has moved somewhere they cannot reach.
 //

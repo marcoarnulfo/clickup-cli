@@ -122,6 +122,16 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 			if k == "" {
 				return KeyTable{}, fmt.Errorf("binding %q has an empty key in its list", name)
 			}
+			canonical := ""
+			switch k {
+			case "ctrl+i":
+				canonical = "tab"
+			case "ctrl+m":
+				canonical = "enter"
+			}
+			if canonical != "" {
+				return KeyTable{}, fmt.Errorf("binding %q uses noncanonical key %q; use %q instead", name, k, canonical)
+			}
 			// Caught here rather than by the collision rule, which would report
 			// the binding colliding with itself and name no other claimant.
 			if seen[k] {
