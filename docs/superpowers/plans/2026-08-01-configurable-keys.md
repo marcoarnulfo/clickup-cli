@@ -395,12 +395,17 @@ git commit -m "feat(tui): derive the config name of every binding (#82)"
 **Files:**
 - Create: `internal/tui/keytable.go`
 - Create: `internal/tui/keytable_test.go`
+- Modify: `internal/tui/actions.go` (`canonicalKeyTypes`, `keyNameAliases`,
+  `parseKeyName`)
+- Test: `internal/tui/actions_test.go`
 
 **Interfaces:**
 - Consuma: `bindingName`, `BindingNames` dal Task 2; `config.KeySpec` dal Task 1.
 - Produce: `KeyTable`, `(KeyTable).bindings()`, `DefaultKeyTable()`,
-  `ResolveKeys(map[string]config.KeySpec) (KeyTable, error)`. Il Task 4 aggiunge
-  il controllo sulle collisioni dentro `ResolveKeys`; il Task 5 la usa.
+  `ResolveKeys(map[string]config.KeySpec) (KeyTable, error)`,
+  `parseKeyName(string) (tea.KeyMsg, error)` e `keyLabel([]string) string`. Il
+  Task 4 aggiunge il controllo sulle collisioni dentro `ResolveKeys`; il Task 5
+  riusa lo stesso parser per la command palette.
 
 **Contesto che il brief non può sapere.** La `KeyTable` zero **deve** valere
 come i default: i test costruiscono 108 letterali `Model{…}` senza passare da
@@ -546,10 +551,36 @@ func TestForceQuitSurvivesEveryOverride(t *testing.T) {
 }
 ```
 
+In `internal/tui/actions_test.go`, aggiungere tre test table-driven:
+
+- `TestParseKeyNameAcceptsCanonicalNames`: rune singole ASCII/Unicode, spazio
+  letterale, `alt+ `, control key canoniche e relative forme `alt+`; ogni
+  `tea.KeyMsg` deve fare round-trip esatto con `String()`;
+- `TestParseKeyNameAcceptsEveryCanonicalSpecialKey`: tutte le special key
+  esportate da Bubble Tea che rappresentano un singolo input terminale — frecce,
+  home/end, page, insert/delete, modificatori e `f1`..`f20` — sia normali sia
+  `alt+`;
+- `TestParseKeyNameRejectsAliasesAndUnreachableNames`: stringa vuota, sequenze
+  multi-runa (`g g`, `gg`), nomi inesistenti (`f21`, `runes`, `alt+`) e alias
+  non canonici. Gli alias devono suggerire la forma di `KeyMsg.String()`:
+  `space` → spazio letterale, control-backtick → `ctrl+@`, `ctrl+i` → `tab`,
+  `ctrl+m` → `enter`, `ctrl+[` → `esc`, `ctrl+?` → `backspace`, inclusa la
+  forma `alt+`.
+
+In `internal/tui/keytable_test.go`, aggiungere
+`TestResolveKeysRejectsUnreachableKeyNamesAtStartup`: `ResolveKeys` deve
+rifiutare sequenze, nomi fuori insieme e alias, nominando binding, valore e,
+quando esiste, spelling canonico. Iniziare inoltre
+`TestLiteralSpaceOverrideRoutesAndRendersAsSpace` con le asserzioni disponibili
+in questo task: il tasto grezzo resta `" "`, mentre help e label mostrano
+`space`; `alt+ ` mostra `alt+space`. Il Task 5 completa lo stesso test con routing
+e palette.
+
 - [ ] **Step 2: eseguirli e vederli fallire**
 
-Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit' -v`
-Expected: FAIL in compilazione — `undefined: KeyTable`, `undefined: ResolveKeys`.
+Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit|TestParseKeyName|TestLiteralSpace|TestAltSpace' -v`
+Expected: FAIL in compilazione — `undefined: KeyTable`, `undefined: ResolveKeys`,
+`undefined: parseKeyName` e `undefined: keyLabel`.
 
 - [ ] **Step 3: implementare**
 
@@ -593,6 +624,21 @@ func (kt KeyTable) bindings() keyDefaults {
 	return kt.d
 }
 
+// keyLabel renders the canonical literal-space names visibly without changing
+// the raw strings used by key.Matches and collision claims.
+func keyLabel(keys []string) string {
+	labels := slices.Clone(keys)
+	for i, k := range labels {
+		switch k {
+		case " ":
+			labels[i] = "space"
+		case "alt+ ":
+			labels[i] = "alt+space"
+		}
+	}
+	return strings.Join(labels, "/")
+}
+
 // ResolveKeys applies a config's overrides to the built-in table.
 //
 // Every failure is an error rather than a fallback: a key that cannot be
@@ -632,6 +678,9 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 			if k == "" {
 				return KeyTable{}, fmt.Errorf("binding %q has an empty key in its list", name)
 			}
+			if _, err := parseKeyName(k); err != nil {
+				return KeyTable{}, fmt.Errorf("binding %q uses invalid key %q: %w", name, k, err)
+			}
 			// Caught here rather than by the collision rule, which would report
 			// the binding colliding with itself and name no other claimant.
 			if seen[k] {
@@ -647,32 +696,54 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 		// prettier rendering for them would be guessing.
 		v.Field(i).Set(reflect.ValueOf(key.NewBinding(
 			key.WithKeys(ks...),
-			key.WithHelp(strings.Join(ks, "/"), old.Help().Desc),
+			key.WithHelp(keyLabel(ks), old.Help().Desc),
 		)))
 	}
 	return KeyTable{d: d, set: true}, nil
 }
 ```
 
-Aggiungere `"maps"` al blocco import.
+In `internal/tui/actions.go`, implementare un solo parser canonico:
+
+- `canonicalKeyTypes` enumera le `tea.KeyType` che Bubble Tea può produrre come
+  singolo input, senza affidarsi a range numerici non contigui;
+- `parseKeyName` separa l'eventuale prefisso `alt+`, rifiuta gli alias sopra con
+  il suggerimento canonico, prova le special key e poi una sola runa stampabile.
+  Per `tea.KeySpace` imposta anche `Runes: []rune{' '}`, come fa il parser del
+  terminale;
+- accetta un nome solo se il `tea.KeyMsg` ricostruito restituisce **esattamente**
+  quel nome da `String()`. Non normalizza e non accetta sequenze che nessun
+  singolo `KeyMsg` può produrre.
+
+`ResolveKeys` chiama il parser prima di costruire il binding, così una chiave
+irraggiungibile ferma l'avvio invece di diventare un comando morto. Aggiungere
+`"maps"` al blocco import di `keytable.go`.
 
 - [ ] **Step 4: eseguirli e vederli passare**
 
-Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit' -v`
-Expected: PASS (5 test).
+Run: `go test ./internal/tui -run 'TestZeroKeyTable|TestResolveKeys|TestForceQuit|TestParseKeyName|TestLiteralSpace|TestAltSpace' -v`
+Expected: PASS per tutti i test e sottotest selezionati.
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-Tre mutazioni, con transcript:
+Sei mutazioni, con transcript:
 
 1. Togliere la rigenerazione dell'aiuto (passare `old.Help().Key` invece di
-   `strings.Join(ks, "/")`). `TestResolveKeysRegeneratesTheHelp` **deve**
+   `keyLabel(ks)`). `TestResolveKeysRegeneratesTheHelp` **deve**
    fallire.
 2. Togliere il controllo su `forceQuitName`. Il caso «force_quit is not
    remappable» **deve** fallire.
 3. Far ritornare `KeyTable{d: d}` senza `set: true`.
    `TestResolveKeysOverridesAndKeepsTheRest` **deve** fallire, perché la tabella
    ricadrebbe sui default e `LogHours` tornerebbe `n`.
+4. Permettere più di una runa nel fallback di `parseKeyName`.
+   `TestParseKeyNameRejectsAliasesAndUnreachableNames` **deve** fallire su `gg`
+   e `g g`.
+5. Togliere `keyNameAliases` e lasciare che gli alias passino o cadano nell'errore
+   generico. I sottotest su `space`, `ctrl+i`, `ctrl+m`, `ctrl+[` e `ctrl+?`
+   **devono** fallire perché manca il rifiuto con suggerimento canonico.
+6. In `keyLabel`, ritornare `strings.Join(keys, "/")` senza rendere gli spazi.
+   I test su spazio e alt-spazio **devono** fallire mostrando label invisibili.
 
 Ripristinare dopo ognuna e verificare con `git diff`.
 
@@ -680,7 +751,7 @@ Ripristinare dopo ognuna e verificare con `git diff`.
 
 ```bash
 gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
-git add internal/tui/keytable.go internal/tui/keytable_test.go
+git add internal/tui/keytable.go internal/tui/keytable_test.go internal/tui/actions.go internal/tui/actions_test.go
 git commit -m "feat(tui): resolve binding overrides from the config (#82)"
 ```
 
@@ -907,15 +978,20 @@ git commit -m "feat(tui): enforce the conservative key collision rule (#82)"
 **Files:**
 - Modify: `internal/tui/keys.go` (`keysFor`, `screenKeys`)
 - Modify: `internal/tui/app.go` (`Model`, `New`)
+- Modify: `internal/tui/actions.go` (`screenActions` usa `parseKeyName`)
 - Modify: `internal/cli/cli.go` (`runTUI`, più `resolveKeys`)
 - Create: `internal/tui/helpers_test.go`
 - Modify: i file di test che chiamano `New` (il compilatore li elenca)
+- Test: `internal/tui/actions_test.go`, `internal/tui/keys_test.go`,
+  `internal/tui/keytable_test.go`
 - Test: `internal/cli/cli_test.go`
 
 **Interfaces:**
-- Consuma: `KeyTable`, `ResolveKeys` dai Task 3-4; `config.Keys` dal Task 1.
+- Consuma: `KeyTable`, `ResolveKeys` e `parseKeyName` dai Task 3-4;
+  `config.Keys` dal Task 1.
 - Produce: `New(cfg config.Config, pal themes.Palette, kt KeyTable) Model`,
-  `Model.keys`, `testModel(cfg) Model`, `cli.resolveKeys`.
+  `Model.keys`, `testModel(cfg) Model`, `cli.resolveKeys`; la command palette
+  può riprodurre ogni chiave canonica accettata all'avvio.
 
 **Contesto che il brief non può sapere.**
 
@@ -998,12 +1074,31 @@ func TestResolveKeysRejectsAnUnknownBinding(t *testing.T) {
 }
 ```
 
+In `internal/tui/actions_test.go`:
+
+- `TestScreenActionsReplayAControlKeyOverride` rimappa Export sul solo `ctrl+e`
+  e confronta il risultato dell'azione con il `tea.KeyMsg` fisico;
+- `TestScreenActionsReplaySpecialKeyOverrides` fa lo stesso per rappresentanti
+  delle famiglie speciali (`f1`, `home`, `delete`, `ctrl+shift+up`, `alt+f20`).
+  Il parser esaustivo del Task 3 e il suo riuso diretto in `screenActions` fanno
+  valere lo stesso contratto per tutte le special key accettate, non solo per i
+  rappresentanti.
+
+In `internal/tui/keys_test.go`, aggiungere
+`TestEveryPaletteBindingIsReplayable`, che passa ogni tasto di ogni binding in
+`defaultKeys().paletteDefaults()` a `parseKeyName`: anche i default devono
+rispettare il contratto imposto agli override. Completare infine
+`TestLiteralSpaceOverrideRoutesAndRendersAsSpace` in `keytable_test.go`: la hint
+della palette e il footer mostrano `space`, e l'azione produce lo stesso routing
+di `tea.KeySpace`.
+
 - [ ] **Step 2: eseguirli e vederli fallire**
 
-Run: `go test ./internal/tui -run TestAnOverrideReachesUpdate -v` e
-`go test ./internal/cli -run TestResolveKeys -v`
-Expected: FAIL in compilazione — `New` prende ancora due argomenti, e
-`resolveKeys` non esiste.
+Run: `go test ./internal/tui -run 'TestAnOverrideReachesUpdate|TestScreenActionsReplay|TestEveryPaletteBindingIsReplayable|TestLiteralSpace' -v`
+e `go test ./internal/cli -run TestResolveKeys -v`.
+Expected: i test di wiring non compilano — `New` prende ancora due argomenti e
+`resolveKeys` non esiste — mentre i test della palette espongono il replay
+limitato del vecchio helper sulle special key.
 
 - [ ] **Step 3: implementare**
 
@@ -1039,6 +1134,29 @@ func New(cfg config.Config, pal themes.Palette, kt KeyTable) Model {
 ```
 
 con `keys: kt,` nel letterale `Model{…}`. **`app.go:663` non si tocca.**
+
+In `internal/tui/actions.go`, `screenActions` non ricostruisce più il primo tasto
+come runa né mantiene un secondo elenco parziale di control/special key. Usa il
+parser del Task 3:
+
+```go
+configured := b.Keys()[0]
+msg, err := parseKeyName(configured)
+if err != nil {
+	// ResolveKeys validates overrides; TestEveryPaletteBindingIsReplayable
+	// validates defaults. Reaching this point is an internal invariant failure.
+	panic(fmt.Sprintf("invalid key %q reached the command palette: %v", configured, err))
+}
+out = append(out, action{
+	label: capitalize(b.Help().Desc),
+	hint:  b.Help().Key,
+	run:   func(m Model) (tea.Model, tea.Cmd) { return m.routeKey(msg) },
+})
+```
+
+Lo stesso `tea.KeyMsg` canonico usato per validare viene così riprodotto
+dall'azione: nessuna chiave accettata da `ResolveKeys` può sparire dalla palette
+o perdere `Type`/`Alt` durante il replay.
 
 In `internal/cli/cli.go`, accanto a `resolveTheme`:
 
@@ -1076,7 +1194,7 @@ Expected: PASS, e **nessun golden modificato**. Verificare con
 
 - [ ] **Step 5: prova per mutazione, obbligatoria**
 
-Tre mutazioni, con transcript:
+Quattro mutazioni, con transcript:
 
 1. In `screenKeys`, rimettere `d := defaultKeys()`.
    `TestAnOverrideReachesUpdate` **deve** fallire.
@@ -1088,6 +1206,9 @@ Tre mutazioni, con transcript:
    espressioni coincidono perché `force_quit` non è rimappabile, quindi la riga
    è protetta dal divieto e non da un test. Dichiararlo nel report invece di
    fingere una copertura che non c'è.
+4. In `screenActions`, ripristinare un helper che accetta solo una runa e
+   `ctrl+a`..`ctrl+z`, saltando gli altri nomi. I casi speciali devono fallire
+   perché Export scompare dalla palette.
 
 Ripristinare dopo ognuna e verificare con `git diff`.
 
@@ -1217,7 +1338,7 @@ func (kt KeyTable) label(lit string, names ...string) string {
 	if !remapped {
 		return lit
 	}
-	return strings.Join(keys, "/")
+	return keyLabel(keys)
 }
 
 // setHelp is label's counterpart for the single-binding SetHelp call sites.
