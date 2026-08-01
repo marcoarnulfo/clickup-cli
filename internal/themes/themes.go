@@ -141,8 +141,6 @@ func shadeFor(c string) string {
 }
 
 // adaptive builds an ordinary two-background color.
-//
-//lint:ignore U1000 not called yet: task 2 wires it into the built-in palettes
 func adaptive(light, dark string) lipgloss.AdaptiveColor {
 	return lipgloss.AdaptiveColor{Light: light, Dark: dark}
 }
@@ -150,8 +148,6 @@ func adaptive(light, dark string) lipgloss.AdaptiveColor {
 // subtle builds the zebra background, naming its 16-color value per side. The
 // 256-color index sits in the TrueColor slot on purpose, so that only the
 // 16-color profile differs from what the automatic conversion would produce.
-//
-//lint:ignore U1000 not called yet: task 2 wires it into the built-in palettes
 func subtle(light, dark string) lipgloss.CompleteAdaptiveColor {
 	return lipgloss.CompleteAdaptiveColor{
 		Light: lipgloss.CompleteColor{TrueColor: light, ANSI256: light, ANSI: shadeFor(light)},
