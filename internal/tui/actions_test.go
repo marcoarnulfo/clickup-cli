@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
+	"github.com/marcoarnulfo/clickup-cli/internal/config"
+	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 func labels(as []action) []string {
@@ -39,6 +41,13 @@ func TestKeyMsgFor(t *testing.T) {
 		// drop both month-navigation actions on Home.
 		{"left", true, "left"},
 		{"right", true, "right"},
+		{"ctrl+a", true, "ctrl+a"},
+		{"ctrl+e", true, "ctrl+e"},
+		{"ctrl+z", true, "ctrl+z"},
+		// Bubble Tea canonicalizes these control codes as tab and enter. Returning
+		// their KeyTypes for ctrl+i/ctrl+m would not faithfully replay the config.
+		{"ctrl+i", false, ""},
+		{"ctrl+m", false, ""},
 		{"tab", false, ""},
 		{"shift+tab", false, ""},
 		{"up", false, ""},
@@ -56,6 +65,67 @@ func TestKeyMsgFor(t *testing.T) {
 				t.Errorf("keyMsgFor(%q).String() = %q, want %q", tc.in, msg.String(), tc.want)
 			}
 		})
+	}
+}
+
+func reportModelWithOverrides(t *testing.T, overrides map[string]config.KeySpec) Model {
+	t.Helper()
+	kt, err := ResolveKeys(overrides)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := New(config.Config{Token: "t", WorkspaceID: "team1"}, themes.Default(), kt)
+	m.screen = screenReport
+	m.nav = []screen{screenHome}
+	m.report = goldenReport()
+	return m
+}
+
+func TestScreenActionsReplayAControlKeyOverride(t *testing.T) {
+	t.Parallel()
+	m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {"ctrl+e"}})
+
+	var run func(Model) (tea.Model, tea.Cmd)
+	for _, a := range screenActions(m) {
+		if a.label == "Export" {
+			run = a.run
+		}
+	}
+	if run == nil {
+		t.Fatal("a ctrl+e-only Export binding disappeared from screenActions")
+	}
+	viaAction, _ := run(m)
+	viaKey, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	if got, want := viaAction.(Model).screen, viaKey.(Model).screen; got != want {
+		t.Errorf("action landed on %v, configured ctrl+e keypress landed on %v", got, want)
+	}
+	if viaAction.(Model).screen != screenExport {
+		t.Errorf("screen = %v, want screenExport", viaAction.(Model).screen)
+	}
+}
+
+func TestScreenActionsUseTheFirstReplayableConfiguredKey(t *testing.T) {
+	t.Parallel()
+	m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {"g g", "ctrl+e"}})
+
+	for _, a := range screenActions(m) {
+		if a.label != "Export" {
+			continue
+		}
+		got, _ := a.run(m)
+		if got.(Model).screen != screenExport {
+			t.Errorf("Export action landed on %v, want screenExport", got.(Model).screen)
+		}
+		return
+	}
+	t.Fatal("Export disappeared instead of falling through to its replayable ctrl+e key")
+}
+
+func TestScreenActionsDropABindingWithNoReplayableKey(t *testing.T) {
+	t.Parallel()
+	m := reportModelWithOverrides(t, map[string]config.KeySpec{"export": {"g g"}})
+	if hasLabel(screenActions(m), "Export") {
+		t.Error("Export was offered even though none of its configured keys can be replayed")
 	}
 }
 

@@ -59,6 +59,21 @@ func resolveKeys(cfg config.Config) (tui.KeyTable, error) {
 	return kt, nil
 }
 
+// buildModel resolves the user-configurable inputs and threads both into the
+// TUI model. Keeping this outside runTUI makes the production construction path
+// observable without launching a terminal.
+func buildModel(cfg config.Config) (tui.Model, error) {
+	pal, err := resolveTheme(cfg)
+	if err != nil {
+		return tui.Model{}, err
+	}
+	kt, err := resolveKeys(cfg)
+	if err != nil {
+		return tui.Model{}, err
+	}
+	return tui.New(cfg, pal, kt), nil
+}
+
 // rootCmd builds the root command. Unexported so tests can exercise the
 // command wiring directly without going through Execute/os.Exit.
 func rootCmd() *cobra.Command {
@@ -82,15 +97,11 @@ func runTUI(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	pal, err := resolveTheme(cfg)
+	m, err := buildModel(cfg)
 	if err != nil {
 		return err
 	}
-	kt, err := resolveKeys(cfg)
-	if err != nil {
-		return err
-	}
-	p := tea.NewProgram(tui.New(cfg, pal, kt), programOptions(cfg)...)
+	p := tea.NewProgram(m, programOptions(cfg)...)
 	_, err = p.Run()
 	return err
 }

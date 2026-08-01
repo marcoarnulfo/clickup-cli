@@ -45,13 +45,15 @@ func screenActions(m Model) []action {
 		if !b.Enabled() {
 			continue
 		}
-		keys := b.Keys()
-		if len(keys) == 0 {
-			continue
+		var msg tea.KeyMsg
+		var ok bool
+		for _, configured := range b.Keys() {
+			msg, ok = keyMsgFor(configured)
+			if ok {
+				break
+			}
 		}
-		msg, ok := keyMsgFor(keys[0])
 		if !ok {
-			// Unreachable today, pinned by TestEveryPaletteBindingIsReplayable.
 			// Dropping beats firing a KeyMsg that matches nothing.
 			continue
 		}
@@ -137,25 +139,35 @@ func globalActions(m Model) []action {
 	}})
 }
 
-// keyMsgFor rebuilds the tea.KeyMsg a binding's first key would produce.
+// keyMsgFor rebuilds the tea.KeyMsg a configured key would produce.
 //
 // The set is closed on purpose. key.Matches compares msg.String() against the
-// binding's key strings, and these four round-trip exactly. A KeyRunes message
-// carrying "tab" would round-trip too, but every handler that reads msg.Type
-// rather than key.Matches would then see the wrong thing — so the palette
-// leaves those bindings out instead of forging their messages. ok is false for
-// anything else, so an action that cannot be executed faithfully is dropped
-// rather than mis-fired.
+// binding's key strings, and every accepted message round-trips exactly. A
+// KeyRunes message carrying "tab" would round-trip too, but every handler that
+// reads msg.Type rather than key.Matches would then see the wrong thing — so the
+// palette leaves those bindings out instead of forging their messages. ok is
+// false for anything else, so an action with no faithfully replayable key is
+// dropped rather than mis-fired.
 func keyMsgFor(s string) (tea.KeyMsg, bool) {
 	switch s {
 	case "enter":
 		return tea.KeyMsg{Type: tea.KeyEnter}, true
-	// PrevMonth and NextMonth lead with "left" and "right" (keys.go:124-125),
-	// and they are the only two palette bindings whose first key is not a rune.
+	// The built-in PrevMonth and NextMonth bindings lead with "left" and "right",
+	// so the palette needs their real message types rather than forged runes.
 	case "left":
 		return tea.KeyMsg{Type: tea.KeyLeft}, true
 	case "right":
 		return tea.KeyMsg{Type: tea.KeyRight}, true
+	}
+	// Bubble Tea's ctrl+letter KeyTypes are contiguous. Validate the rendered
+	// name because ctrl+i and ctrl+m are canonically "tab" and "enter"; accepting
+	// those would forge a message whose type is real but whose key does not match
+	// the configured string.
+	if len(s) == len("ctrl+a") && s[:len("ctrl+")] == "ctrl+" && s[len("ctrl+")] >= 'a' && s[len("ctrl+")] <= 'z' {
+		msg := tea.KeyMsg{Type: tea.KeyCtrlA + tea.KeyType(s[len("ctrl+")]-'a')}
+		if msg.String() == s {
+			return msg, true
+		}
 	}
 	if r := []rune(s); len(r) == 1 {
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: r}, true
