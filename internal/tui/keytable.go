@@ -65,7 +65,7 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 			return KeyTable{}, fmt.Errorf("unknown binding %q; valid names: %s",
 				name, strings.Join(valid, ", "))
 		}
-		ks := overrides[name]
+		ks := slices.Clone(overrides[name])
 		if len(ks) == 0 {
 			return KeyTable{}, fmt.Errorf("binding %q needs at least one key", name)
 		}

@@ -54,6 +54,25 @@ func TestResolveKeysRegeneratesTheHelp(t *testing.T) {
 	}
 }
 
+func TestResolveKeysDoesNotAliasConfigInput(t *testing.T) {
+	t.Parallel()
+	keys := config.KeySpec{"k", "ctrl+u"}
+	kt, err := ResolveKeys(map[string]config.KeySpec{"up": keys})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keys[0] = "x"
+	keys[1] = "ctrl+x"
+	b := kt.bindings().Up
+	if got := b.Keys(); len(got) != 2 || got[0] != "k" || got[1] != "ctrl+u" {
+		t.Errorf("keys after mutating config input = %v, want [k ctrl+u]", got)
+	}
+	if got := b.Help().Key; got != "k/ctrl+u" {
+		t.Errorf("help after mutating config input = %q, want %q", got, "k/ctrl+u")
+	}
+}
+
 func TestResolveKeysErrors(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
