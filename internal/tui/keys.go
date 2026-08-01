@@ -290,7 +290,7 @@ func (k keyMap) allBindings() []key.Binding {
 // the palette's four keys and empty the list on the first keystroke.
 func keysFor(m Model) keyMap {
 	if m.overlay == overlayPalette {
-		return paletteKeys(m.keys.bindings())
+		return paletteKeys(m.keys)
 	}
 	return screenKeys(m)
 }
@@ -302,10 +302,11 @@ func keysFor(m Model) keyMap {
 // unreachable, so enablement is load-bearing for behavior, not just for
 // display.
 func screenKeys(m Model) keyMap {
-	d := m.keys.bindings()
+	kt := m.keys
+	d := kt.bindings()
 	switch m.screen {
 	case screenHome:
-		return homeKeys(m, d)
+		return homeKeys(m, kt)
 	case screenLoading:
 		k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help}
 		k.short = []key.Binding{k.Help, k.Quit}
@@ -318,27 +319,27 @@ func screenKeys(m Model) keyMap {
 		k.short = []key.Binding{k.Quit}
 		return k
 	case screenSetup:
-		return setupKeys(m, d)
+		return setupKeys(m, kt)
 	case screenReport:
-		return reportKeys(d)
+		return reportKeys(kt)
 	case screenExport:
-		return exportKeys(d)
+		return exportKeys(kt)
 	case screenRates:
-		return ratesKeys(m, d)
+		return ratesKeys(m, kt)
 	case screenLog:
-		return logKeys(m, d)
+		return logKeys(m, kt)
 	case screenMembers:
-		return membersKeys(d)
+		return membersKeys(kt)
 	case screenRange:
-		return rangeKeys(m, d)
+		return rangeKeys(m, kt)
 	case screenFilters:
-		return filtersKeys(d)
+		return filtersKeys(kt)
 	case screenListBrowser:
-		return listBrowserKeys(d)
+		return listBrowserKeys(kt)
 	case screenBudget:
-		return budgetKeys(d)
+		return budgetKeys(kt)
 	case screenEntries:
-		return entriesKeys(m, d)
+		return entriesKeys(m, kt)
 	}
 	return keyMap{}
 }
@@ -354,7 +355,8 @@ func screenKeys(m Model) keyMap {
 // for all three used to live inline in the handler and now lives here
 // instead (see TestHomeMembersKeyIsTeamScopeOnly, TestHomeTimerKeyMatchesGuard
 // and TestHomeMonthNavKeysMatchGuard).
-func homeKeys(m Model, d keyDefaults) keyMap {
+func homeKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{
 		Quit:        d.Quit,
 		ForceQuit:   d.ForceQuit,
@@ -377,7 +379,7 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 	monthNav := m.preset == report.PresetThisMonth && m.periodMode != periodModeWeek
 	k.PrevMonth.SetEnabled(monthNav)
 	k.NextMonth.SetEnabled(monthNav)
-	monthPair := pairHelp(k.PrevMonth, k.NextMonth, "◂/▸/h/l", "change month")
+	monthPair := pairHelp(k.PrevMonth, k.NextMonth, kt.label("◂/▸/h/l", "prev_month", "next_month"), "change month")
 	// Timer is in short, not only in full: the home view renders a live
 	// "running on <task>" line whenever it is enabled, and a status line that
 	// says a timer is running while nothing says how to reach it is worse than
@@ -397,13 +399,14 @@ func homeKeys(m Model, d keyDefaults) keyMap {
 // generic bindings are live. stepToken and stepRate/stepCurrency only ever
 // react to Confirm (everything else is forwarded to the focused textinput);
 // stepWorkspace also has a list to move through.
-func setupKeys(m Model, d keyDefaults) keyMap {
+func setupKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{Confirm: d.Confirm, ForceQuit: d.ForceQuit}
 	if m.setup.step == stepWorkspace {
 		k.Up = d.Up
 		k.Down = d.Down
 		k.Help = d.Help
-		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 		k.short = []key.Binding{pair, k.Confirm, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.ForceQuit}}
 		return k
@@ -428,7 +431,8 @@ func setupKeys(m Model, d keyDefaults) keyMap {
 // handle Back internally with a DIFFERENT destination (one step back within
 // the flow, not out of it), but the accepted LABEL is identical either way,
 // which is all this function models.
-func logKeys(m Model, d keyDefaults) keyMap {
+func logKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	lg := m.logScreen
 	switch lg.step {
 	case logModeSelect:
@@ -445,7 +449,7 @@ func logKeys(m Model, d keyDefaults) keyMap {
 
 	case logListPick, logTaskPick:
 		k := keyMap{Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, Confirm: d.Confirm}
-		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
@@ -501,7 +505,8 @@ func logKeys(m Model, d keyDefaults) keyMap {
 // different label set (Yes/No instead of Confirm); entriesTags forwards to
 // a textinput while tagNewMode is set, same shape as rates'/setup's
 // free-text steps.
-func entriesKeys(m Model, d keyDefaults) keyMap {
+func entriesKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	es := m.entriesScreen
 
 	switch es.mode {
@@ -549,7 +554,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 			NewTag: d.NewTag, Confirm: d.Confirm, Back: d.Back,
 			ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette,
 		}
-		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 		k.short = []key.Binding{k.ToggleItem, k.NewTag, k.Confirm, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{
 			{pair, k.ToggleItem},
@@ -570,7 +575,7 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 		k.Edit.SetEnabled(editable)
 		k.Tags.SetEnabled(editable)
 		k.History.SetEnabled(hasEntries)
-		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 		k.short = []key.Binding{k.Edit, k.Delete, k.Tags, k.History, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{
 			{pair},
@@ -594,7 +599,8 @@ func entriesKeys(m Model, d keyDefaults) keyMap {
 // ListCurrency/ListBudget it has no row-count requirement (rates.go:443,
 // TestRatesBIsGatedToListsSection already pins this asymmetry at the handler
 // level). ClearValue and Save are unconditional.
-func ratesKeys(m Model, d keyDefaults) keyMap {
+func ratesKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	rt := m.ratesScreen
 
 	if rt.editing {
@@ -608,7 +614,7 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 	}
 	if rt.draft.active {
 		k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
-		pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+		pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
 		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 		return k
@@ -633,16 +639,16 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 	// dangerously vague on Overrides, so each section names its own.
 	switch rt.sec {
 	case secLists:
-		k.ClearValue.SetHelp("d", "use the default rate")
-		k.ListCurrency.SetHelp("c", "currency (empty clears)")
-		k.ListBudget.SetHelp("g", "budget (empty clears)")
+		kt.setHelp(&k.ClearValue, "clear_value", "d", "use the default rate")
+		kt.setHelp(&k.ListCurrency, "list_currency", "c", "currency (empty clears)")
+		kt.setHelp(&k.ListBudget, "list_budget", "g", "budget (empty clears)")
 	case secMembers:
-		k.ClearValue.SetHelp("d", "use the default rate")
+		kt.setHelp(&k.ClearValue, "clear_value", "d", "use the default rate")
 	case secOverrides:
-		k.ClearValue.SetHelp("d", "delete this override")
+		kt.setHelp(&k.ClearValue, "clear_value", "d", "delete this override")
 	}
-	sectionPair := pairHelp(k.NextSection, k.PrevSection, "tab/⇧tab", "section")
-	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	sectionPair := pairHelp(k.NextSection, k.PrevSection, kt.label("tab/⇧tab", "next_section", "prev_section"), "section")
+	movePair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{movePair, k.Confirm, k.Save, k.Back, k.Help, k.ForceQuit}
 	k.full = [][]key.Binding{
 		{sectionPair, movePair, k.Confirm},
@@ -656,14 +662,15 @@ func ratesKeys(m Model, d keyDefaults) keyMap {
 // list of presets and the custom-date editor accept different label sets, so
 // the active mode (rangeScreen.editing) decides which are live. Quit stays
 // off in both modes (q does not quit this screen today).
-func rangeKeys(m Model, d keyDefaults) keyMap {
+func rangeKeys(m Model, kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Palette: d.Palette}
 	if m.rangeScreen.editing {
 		// Both fromInput and toInput are focused textinputs here, so Help
 		// stays unassigned — one keysFor branch covers both fields.
 		k.NextField = d.NextField
 		k.PrevField = d.PrevField
-		pair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "next/prev field")
+		pair := pairHelp(k.NextField, k.PrevField, kt.label("tab/⇧tab", "next_field", "prev_field"), "next/prev field")
 		k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}
 		k.full = [][]key.Binding{{pair, k.Confirm}, {k.Back, k.ForceQuit, k.Palette}}
 		return k
@@ -671,7 +678,7 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 	k.Up = d.Up
 	k.Down = d.Down
 	k.Help = d.Help
-	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
 	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 	return k
@@ -683,9 +690,10 @@ func rangeKeys(m Model, d keyDefaults) keyMap {
 // screen is loading the handler's own guard ignores all of them anyway — so
 // there is no separate loading state to model here. Quit stays off (q does
 // not quit this screen today).
-func listBrowserKeys(d keyDefaults) keyMap {
+func listBrowserKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette}
-	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.ForceQuit}
 	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.ForceQuit, k.Palette}}
 	return k
@@ -694,7 +702,8 @@ func listBrowserKeys(d keyDefaults) keyMap {
 // reportKeys, exportKeys, membersKeys, filtersKeys and budgetKeys are the
 // binding sets for their screens (report.go, export.go, members.go,
 // filters.go, budget.go); q DOES quit these screens today.
-func reportKeys(d keyDefaults) keyMap {
+func reportKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{
 		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Back: d.Back, GroupBy: d.GroupBy, ChangeRange: d.ChangeRange, Reload: d.Reload,
 		Export: d.Export, Rates: d.Rates, LogHours: d.LogHours, Filters: d.Filters,
@@ -709,20 +718,22 @@ func reportKeys(d keyDefaults) keyMap {
 	return k
 }
 
-func exportKeys(d keyDefaults) keyMap {
+func exportKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, Confirm: d.Confirm, Back: d.Back}
-	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{{pair, k.Confirm}, {k.Help, k.Back, k.Quit, k.Palette}}
 	return k
 }
 
-func membersKeys(d keyDefaults) keyMap {
+func membersKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{
 		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Up: d.Up, Down: d.Down, ToggleItem: d.ToggleItem,
 		SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
 	}
-	pair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	pair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{k.ToggleItem, k.SelectAll, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{pair, k.ToggleItem, k.SelectAll},
@@ -732,7 +743,8 @@ func membersKeys(d keyDefaults) keyMap {
 	return k
 }
 
-func filtersKeys(d keyDefaults) keyMap {
+func filtersKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{
 		Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, NextField: d.NextField, PrevField: d.PrevField, Up: d.Up, Down: d.Down,
 		ToggleItem: d.ToggleItem, SelectAll: d.SelectAll, Confirm: d.Confirm, Back: d.Back,
@@ -740,8 +752,8 @@ func filtersKeys(d keyDefaults) keyMap {
 	// "section", not "field": on this screen tab cycles the four filter
 	// sections (filters.go's NextField/PrevField arms move fs.sec), which is
 	// what the hand-written line it replaced said too.
-	sectionPair := pairHelp(k.NextField, k.PrevField, "tab/⇧tab", "section")
-	movePair := pairHelp(k.Up, k.Down, "↑/↓/j/k", "move")
+	sectionPair := pairHelp(k.NextField, k.PrevField, kt.label("tab/⇧tab", "next_field", "prev_field"), "section")
+	movePair := pairHelp(k.Up, k.Down, kt.label("↑/↓/j/k", "up", "down"), "move")
 	k.short = []key.Binding{sectionPair, k.ToggleItem, k.Confirm, k.Back, k.Help, k.Quit}
 	k.full = [][]key.Binding{
 		{sectionPair, movePair, k.ToggleItem, k.SelectAll},
@@ -751,11 +763,12 @@ func filtersKeys(d keyDefaults) keyMap {
 	return k
 }
 
-func budgetKeys(d keyDefaults) keyMap {
+func budgetKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{Quit: d.Quit, ForceQuit: d.ForceQuit, Help: d.Help, Palette: d.Palette, Back: d.Back, Budget: d.Budget}
 	// The default help text ("budgets") describes b from the report, where it
 	// opens this screen. Here the same key closes it.
-	k.Budget.SetHelp("b", "close budgets")
+	kt.setHelp(&k.Budget, "budget", "b", "close budgets")
 	k.short = []key.Binding{k.Back, k.Budget, k.Help, k.Quit}
 	k.full = [][]key.Binding{{k.Budget}, {k.Help, k.Back, k.Quit, k.Palette}}
 	return k
@@ -768,15 +781,16 @@ func budgetKeys(d keyDefaults) keyMap {
 // Quit and Help stay unassigned, which is the second, independent guard on top
 // of Update's ordering: even if the overlay check were moved below them, q and
 // ? could not fire while the user is typing a query.
-func paletteKeys(d keyDefaults) keyMap {
+func paletteKeys(kt KeyTable) keyMap {
+	d := kt.bindings()
 	k := keyMap{
 		Up: d.PaletteUp, Down: d.PaletteDown,
 		Confirm: d.Confirm, Back: d.Back,
 		Palette: d.Palette, ForceQuit: d.ForceQuit,
 	}
-	k.Confirm.SetHelp("enter", "run")
-	k.Back.SetHelp("esc", "close")
-	pair := pairHelp(k.Up, k.Down, "↑/↓", "move")
+	kt.setHelp(&k.Confirm, "confirm", "enter", "run")
+	kt.setHelp(&k.Back, "back", "esc", "close")
+	pair := pairHelp(k.Up, k.Down, kt.label("↑/↓", "palette_up", "palette_down"), "move")
 	// ctrl+p closes as well as opens, but esc is the close every other screen
 	// already teaches, so only esc is advertised.
 	k.short = []key.Binding{pair, k.Confirm, k.Back, k.ForceQuit}

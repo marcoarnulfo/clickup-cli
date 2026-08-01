@@ -21,8 +21,9 @@ const forceQuitName = "force_quit"
 // hand carries — the tests construct 108 of those without going through New,
 // and a zero table read literally would leave every binding disabled.
 type KeyTable struct {
-	d   keyDefaults
-	set bool
+	d    keyDefaults
+	over map[string]bool
+	set  bool
 }
 
 // DefaultKeyTable is the built-in table, for callers that want it explicitly.
@@ -33,6 +34,45 @@ func (kt KeyTable) bindings() keyDefaults {
 		return defaultKeys()
 	}
 	return kt.d
+}
+
+// keysOf returns the keys currently bound to a binding, by config name.
+func (kt KeyTable) keysOf(name string) []string {
+	d := kt.bindings()
+	v := reflect.ValueOf(d)
+	ty := v.Type()
+	for i := range v.NumField() {
+		if bindingName(ty.Field(i).Name) == name {
+			return v.Field(i).Interface().(key.Binding).Keys()
+		}
+	}
+	return nil
+}
+
+// label returns lit unless one of the named bindings was remapped, in which
+// case it derives the label from the keys actually bound.
+//
+// The literal labels carry typography the defaults earned, such as "↑/↓/j/k"
+// and "tab/⇧tab". Deriving them unconditionally would make the default footer
+// longer and uglier, so the literal wins until it would be a lie.
+func (kt KeyTable) label(lit string, names ...string) string {
+	remapped := false
+	var keys []string
+	for _, name := range names {
+		if kt.over[name] {
+			remapped = true
+		}
+		keys = append(keys, kt.keysOf(name)...)
+	}
+	if !remapped {
+		return lit
+	}
+	return strings.Join(keys, "/")
+}
+
+// setHelp is label's counterpart for single-binding SetHelp call sites.
+func (kt KeyTable) setHelp(b *key.Binding, name, lit, desc string) {
+	b.SetHelp(kt.label(lit, name), desc)
 }
 
 // claims maps every physical key to the sorted names of the bindings that want
@@ -93,6 +133,7 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 	d := defaultKeys()
 	v := reflect.ValueOf(&d).Elem()
 	ty := v.Type()
+	over := map[string]bool{}
 
 	index := map[string]int{}
 	for i := range ty.NumField() {
@@ -149,9 +190,10 @@ func ResolveKeys(overrides map[string]config.KeySpec) (KeyTable, error) {
 			key.WithKeys(ks...),
 			key.WithHelp(strings.Join(ks, "/"), old.Help().Desc),
 		)))
+		over[name] = true
 	}
 	if err := checkCollisions(defaultKeys(), d); err != nil {
 		return KeyTable{}, err
 	}
-	return KeyTable{d: d, set: true}, nil
+	return KeyTable{d: d, over: over, set: true}, nil
 }

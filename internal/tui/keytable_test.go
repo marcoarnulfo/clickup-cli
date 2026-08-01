@@ -55,6 +55,33 @@ func TestResolveKeysRegeneratesTheHelp(t *testing.T) {
 	}
 }
 
+// The footer is where a remapped binding would lie: the per-screen builders
+// write the key label as a literal, so regenerating it inside ResolveKeys is
+// not enough on its own.
+func TestFooterShowsRemappedKeys(t *testing.T) {
+	kt, err := ResolveKeys(map[string]config.KeySpec{"up": {"ctrl+u"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := Model{screen: screenExport, keys: kt, width: 120}
+
+	foot := footerView(testTheme(true), m.width, false, keysFor(m))
+	if !strings.Contains(foot, "ctrl+u") {
+		t.Errorf("footer does not advertise the remapped key:\n%s", foot)
+	}
+	if strings.Contains(foot, "↑/↓/j/k") {
+		t.Errorf("footer still shows the default label for a remapped binding:\n%s", foot)
+	}
+}
+
+// A zero KeyTable means defaults, including the typography in literal labels.
+func TestFooterKeepsItsLabelsWhenNothingIsRemapped(t *testing.T) {
+	m := Model{screen: screenExport, width: 120}
+	if foot := footerView(testTheme(true), m.width, false, keysFor(m)); !strings.Contains(foot, "↑/↓/j/k") {
+		t.Errorf("footer lost its default label:\n%s", foot)
+	}
+}
+
 func TestResolveKeysDoesNotAliasConfigInput(t *testing.T) {
 	t.Parallel()
 	keys := config.KeySpec{"k", "ctrl+u"}

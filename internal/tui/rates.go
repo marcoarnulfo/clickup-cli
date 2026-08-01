@@ -456,7 +456,7 @@ func (m Model) updateRatesEditing(rt ratesModel, msg tea.KeyMsg) (tea.Model, tea
 	k := keysFor(m)
 	switch {
 	case key.Matches(msg, k.Confirm):
-		rt = rt.commit(strings.TrimSpace(rt.input.Value()))
+		rt = rt.commit(strings.TrimSpace(rt.input.Value()), m.keys)
 		m.ratesScreen = rt
 		return m, nil
 	case key.Matches(msg, k.Back):
@@ -608,16 +608,14 @@ func (rt ratesModel) startEdit() ratesModel {
 
 // commit validates and applies the typed value. On a rejected value the field
 // stays open with an inline message, so nothing else the user has edited is lost.
-func (rt ratesModel) commit(v string) ratesModel {
+func (rt ratesModel) commit(v string, kt KeyTable) ratesModel {
 	done := func() ratesModel {
 		rt.editing, rt.edit, rt.msg = false, editNone, ""
 		return rt
 	}
-	const (
-		badRate     = "Invalid rate: enter a number >= 0 (0 bills at zero; 'd' clears the override so the inherited rate applies)"
-		badBudget   = "Invalid budget: enter an amount > 0 (press 'g' and submit an empty value to remove the budget)"
-		badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
-	)
+	const badRate = "Invalid rate: enter a number >= 0 (0 bills at zero; 'd' clears the override so the inherited rate applies)"
+	badBudget := fmt.Sprintf("Invalid budget: enter an amount > 0 (press '%s' and submit an empty value to remove the budget)", kt.bindings().ListBudget.Help().Key)
+	const badCurrency = "Invalid currency: use a 3-letter ISO code like EUR (submit an empty value to clear)"
 
 	switch rt.edit {
 	case editListRate:
@@ -853,7 +851,7 @@ func (m Model) saveRates(rt ratesModel) (tea.Model, tea.Cmd) {
 
 // ------------------------------------------------------------------- view --
 
-func (rt ratesModel) view(th theme) string {
+func (rt ratesModel) view(th theme, kt KeyTable) string {
 	b := th.Title.Render("Billing settings") + "\n" + rt.tabs(th) + "\n\n"
 
 	if rt.draft.active && rt.draft.step != draftRate {
@@ -861,7 +859,7 @@ func (rt ratesModel) view(th theme) string {
 	} else {
 		switch rt.sec {
 		case secLists:
-			b += rt.listsView(th)
+			b += rt.listsView(th, kt)
 		case secMembers:
 			b += rt.membersView(th)
 		case secOverrides:

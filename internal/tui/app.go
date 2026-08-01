@@ -1009,7 +1009,7 @@ func (m Model) screenBody() string {
 	case screenExport:
 		return m.export.view(m.theme)
 	case screenRates:
-		return m.ratesScreen.view(m.theme)
+		return m.ratesScreen.view(m.theme, m.keys)
 	case screenLog:
 		m.logScreen.now = m.now()
 		return m.logScreen.view(m.theme)

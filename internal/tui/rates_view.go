@@ -38,7 +38,7 @@ func billingRow(th theme, sel bool, line string) string {
 	return "  " + line + "\n"
 }
 
-func (rt ratesModel) listsView(th theme) string {
+func (rt ratesModel) listsView(th theme, kt KeyTable) string {
 	// "List", "Rate", "Cur", "Budget" and "Source" are ASCII literals, where
 	// runes and columns coincide by construction, so the %-Ns verbs in the
 	// header stay aligned with the data rows' cell(...,N) columns below.
@@ -52,7 +52,7 @@ func (rt ratesModel) listsView(th theme) string {
 	// same fix this whole file's non-ASCII columns already use.
 	b := th.Help.Render(fmt.Sprintf("  %-24s %10s %-5s %10s  %s", "List", "Rate", "Cur", "Budget", "Source")) + "\n"
 	if len(rt.rows) == 0 {
-		return b + th.Help.Render("  No lists in the current report — press 'b' to browse the workspace.") + "\n"
+		return b + th.Help.Render(fmt.Sprintf("  No lists in the current report — press '%s' to browse the workspace.", kt.bindings().BrowseList.Help().Key)) + "\n"
 	}
 	for i, r := range rt.rows {
 		rate, tag := rt.def, "default"

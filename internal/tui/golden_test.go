@@ -304,7 +304,7 @@ func TestGoldenRatesTabs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := newRates(goldenEntries(), cfg)
 			rt.sec = tc.sec
-			golden(t, tc.name, rt.view(testTheme(true)))
+			golden(t, tc.name, rt.view(testTheme(true), KeyTable{}))
 		})
 	}
 }

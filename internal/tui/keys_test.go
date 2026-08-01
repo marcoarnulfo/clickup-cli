@@ -169,7 +169,7 @@ func TestAllBindingsCoversEveryField(t *testing.T) {
 // letter. paletteKeys uses the arrow-only PaletteUp/PaletteDown defaults.
 func TestPaletteKeysAreArrowOnly(t *testing.T) {
 	t.Parallel()
-	k := paletteKeys(defaultKeys())
+	k := paletteKeys(DefaultKeyTable())
 	for _, tc := range []struct {
 		name    string
 		binding key.Binding
@@ -190,7 +190,7 @@ func TestPaletteKeysAreArrowOnly(t *testing.T) {
 // false and key.Matches never fires on.
 func TestPaletteKeysLeaveQuitAndHelpUnassigned(t *testing.T) {
 	t.Parallel()
-	k := paletteKeys(defaultKeys())
+	k := paletteKeys(DefaultKeyTable())
 	if k.Quit.Enabled() {
 		t.Error("the palette assigned Quit; q would close the program while typing")
 	}
