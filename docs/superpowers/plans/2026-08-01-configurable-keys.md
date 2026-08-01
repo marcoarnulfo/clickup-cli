@@ -8,10 +8,10 @@
 keybinding dal config. Con questa la milestone v1.9 si chiude.
 
 **Architecture:** i nomi delle chiavi YAML si derivano per reflection dai campi
-di `keyDefaults`, quindi ogni binding è rimappabile e nessuno futuro richiede
-lavoro. `internal/config` tiene il grezzo, `internal/tui` risolve e valida
-accanto alla tabella che valida, `internal/cli` fa fallire l'avvio su una
-configurazione che non può onorare.
+di `keyDefaults`, quindi ogni binding tranne `force_quit` è rimappabile e nessuno
+futuro richiede lavoro. `internal/config` tiene il grezzo, `internal/tui` risolve
+e valida accanto alla tabella che valida, `internal/cli` fa fallire l'avvio su
+una configurazione che non può onorare.
 
 **Tech Stack:** Go 1.26, bubbles/key v1.0.0, bubbletea v1.3.10, yaml.v3.
 
@@ -342,13 +342,15 @@ func bindingName(field string) string {
 	return b.String()
 }
 
-// BindingNames lists every binding a config may remap, sorted, for error
-// messages and for the docs.
+// BindingNames lists every binding name, sorted, for validation errors and for
+// the docs. It includes force_quit so the pinned list covers every field, even
+// though ResolveKeys rejects that one explicitly.
 //
 // Derived rather than written out so that a binding added to keyDefaults is
-// remappable with no further work — the maintenance multiplier #82 warned about
-// does not exist. The cost is moved instead: renaming a Go field would rename a
-// user's config key, which is what TestBindingNamesArePinned exists to catch.
+// remappable with no further work unless it is explicitly fixed like force_quit
+// — the maintenance multiplier #82 warned about does not exist. The cost is
+// moved instead: renaming a Go field would rename a user's config key, which is
+// what TestBindingNamesArePinned exists to catch.
 func BindingNames() []string {
 	ty := reflect.TypeOf(keyDefaults{})
 	out := make([]string, 0, ty.NumField())
@@ -401,7 +403,7 @@ git commit -m "feat(tui): derive the config name of every binding (#82)"
   il controllo sulle collisioni dentro `ResolveKeys`; il Task 5 la usa.
 
 **Contesto che il brief non può sapere.** La `KeyTable` zero **deve** valere
-come i default: i test costruiscono 110 letterali `Model{…}` senza passare da
+come i default: i test costruiscono 108 letterali `Model{…}` senza passare da
 `New`, misurati, e leggere una tabella zero li disabiliterebbe tutti.
 
 - [ ] **Step 1: scrivere i test che falliscono**
@@ -419,7 +421,7 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 )
 
-// The zero KeyTable is what a Model built by hand in a test carries, and 110
+// The zero KeyTable is what a Model built by hand in a test carries, and 108
 // such Models exist. It must behave as the built-in defaults.
 func TestZeroKeyTableIsTheDefaults(t *testing.T) {
 	t.Parallel()
@@ -576,7 +578,7 @@ const forceQuitName = "force_quit"
 // KeyTable is the resolved binding table the TUI routes and renders with.
 //
 // The zero value means the built-in defaults, which is what a Model built by
-// hand carries — the tests construct 110 of those without going through New,
+// hand carries — the tests construct 108 of those without going through New,
 // and a zero table read literally would leave every binding disabled.
 type KeyTable struct {
 	d   keyDefaults
@@ -702,8 +704,10 @@ quattro binding, `enter` da tre, `h` da tre. Convivono perché `screenKeys` ne
 abilita solo un sottoinsieme per schermata. Una regola «due binding non possono
 condividere un tasto» rifiuterebbe quindi i default stessi: **non implementarla**.
 
-La regola è: per ogni tasto, l'insieme dei binding che lo rivendicano **dopo**
-gli override deve essere un sottoinsieme di quello che lo rivendicava **prima**.
+La regola è: per ogni tasto rivendicato da **due o più binding dopo gli
+override**, l'insieme dei binding che lo rivendicano dopo deve essere un
+sottoinsieme di quello che lo rivendicava prima. Un tasto con un solo
+rivendicante dopo gli override non è soggetto al controllo.
 
 - [ ] **Step 1: scrivere i test che falliscono**
 
@@ -713,7 +717,8 @@ In `internal/tui/keytable_test.go`:
 // The defaults are heavily overloaded on purpose — measured, 20 physical keys
 // are claimed by more than one binding, because screenKeys enables only a
 // subset per screen. A rule that forbade any sharing would reject what we
-// ship, so the rule is narrower: an override may not add a claimant to a key.
+// ship, so the rule is narrower: for a key with two or more post-override
+// claimants, those claimants must be a subset of the defaults' claimants.
 func TestCollisionRule(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -740,15 +745,17 @@ func TestCollisionRule(t *testing.T) {
 			says: []string{"\"n\"", "export"},
 		},
 		{
-			name: "adding a claimant to a free key is rejected too",
+			name: "adding a claimant to a singly claimed key is rejected too",
 			in:   map[string]config.KeySpec{"export": {"q"}},
 			says: []string{"\"q\"", "export", "quit"},
 		},
 		{
 			// A clean swap IS allowed, and this case exists to keep anyone
 			// from "fixing" the rule into rejecting it. quit owns "q" and
-			// reload owns "r" outright, so trading them adds no claimant
-			// anywhere. Measured against the real defaults.
+			// reload owns "r" outright. After trading them, each destination
+			// still has exactly one claimant, so the two-or-more clause never
+			// applies even though the claimant at each key changed. Measured
+			// against the real defaults.
 			name: "a clean swap between two bindings is allowed",
 			in:   map[string]config.KeySpec{"quit": {"r"}, "reload": {"q"}},
 			ok:   true,
@@ -797,9 +804,9 @@ func TestDefaultsPassTheCollisionRule(t *testing.T) {
 - [ ] **Step 2: eseguirli e vederli fallire**
 
 Run: `go test ./internal/tui -run 'TestCollisionRule|TestDefaultsPass' -v`
-Expected: FAIL sui quattro casi che si aspettano un errore — oggi `ResolveKeys`
-non controlla niente e li accetta tutti. `TestDefaultsPassTheCollisionRule` e i
-due casi `ok: true` passano già: è giusto così, sono la guardia.
+Expected: FAIL sui tre casi che si aspettano un errore — oggi `ResolveKeys` non
+controlla niente e li accetta tutti. `TestDefaultsPassTheCollisionRule` e i tre
+casi `ok: true` passano già: è giusto così, sono la guardia.
 
 - [ ] **Step 3: implementare**
 
@@ -826,7 +833,8 @@ func claims(d keyDefaults) map[string][]string {
 	return out
 }
 
-// checkCollisions rejects an override that adds a claimant to a key.
+// checkCollisions rejects a post-override key with two or more claimants unless
+// all of them already claimed that key in the defaults.
 //
 // Detecting real conflicts would mean asking, per screen, which bindings are
 // enabled at once — 14 screens plus the sub-modes of entries, log, rates and
@@ -876,7 +884,7 @@ modificato** (`git status --short internal/tui/testdata/` vuoto).
 
 Due mutazioni, con transcript:
 
-1. Sostituire il corpo di `checkCollisions` con `return nil`. I quattro casi di
+1. Sostituire il corpo di `checkCollisions` con `return nil`. I tre casi di
    `TestCollisionRule` che si aspettano un errore **devono** fallire, e
    `TestDefaultsPassTheCollisionRule` **no**.
 2. Rendere la regola assoluta: far ritornare errore appena `len(names) >= 2`,
@@ -891,7 +899,7 @@ Ripristinare dopo ognuna e verificare con `git diff`.
 ```bash
 gofmt -l . && go vet ./... && go run honnef.co/go/tools/cmd/staticcheck@latest ./... && go build ./... && go test ./... -race
 git add internal/tui/
-git commit -m "feat(tui): refuse an override that adds a claimant to a key (#82)"
+git commit -m "feat(tui): enforce the conservative key collision rule (#82)"
 ```
 
 ---
@@ -1291,10 +1299,11 @@ git commit -m "fix(tui): show remapped keys in the footer and the help (#82)"
 Dopo il punto elenco `themes`:
 
 ```markdown
-- `keys` (optional): remap any binding by name. A value is one key or a list of
-  them, and every binding you do not name keeps its default. The names are listed
-  by `clup` in the error it prints when one is wrong; they are the binding names in
-  snake_case — `quit`, `log_hours`, `prev_month`, `palette_up`, and so on.
+- `keys` (optional): remap any binding except `force_quit` by name. A value is one
+  key or a list of them, and every binding you do not name keeps its default. The
+  names are listed by `clup` in the error it prints when one is wrong; they are the
+  binding names in snake_case — `quit`, `log_hours`, `prev_month`, `palette_up`,
+  and so on.
 
     ```yaml
     keys:
@@ -1304,13 +1313,13 @@ Dopo il punto elenco `themes`:
 
   - **`force_quit` cannot be remapped.** `ctrl+c` is the way out of a TUI whose
     other keys you have moved somewhere you cannot reach.
-  - **An override that adds a claimant to a key that remains shared is refused**,
-    and the message names the binding that has it. The built-in bindings deliberately
-    share keys — `n` alone serves four of them, on screens where only one is ever
-    active — so the rule is not "no sharing". Moving a binding off a shared key and
-    clean swaps are allowed. The check cannot tell which screens two bindings share,
-    so it errs toward refusing: if it rejects something you believe is safe, pick
-    another key.
+  - **An override is refused when it adds a claimant to a key that still has two
+    or more claimants after all overrides**, and the message names the binding that
+    has it. The built-in bindings deliberately share keys — `n` alone serves four
+    of them, on screens where only one is ever active — so the rule is not "no
+    sharing". Moving a binding off a shared key and clean swaps are allowed. The
+    check cannot tell which screens two bindings share, so it errs toward refusing:
+    if it rejects something you believe is safe, pick another key.
   - A remapped binding shows its new keys in the footer and in the `?` help.
 ```
 
@@ -1325,11 +1334,12 @@ file usa altrove ("puoi", "tuo"), non il plurale di cortesia.
 In `### Added` sotto `## [Unreleased]`:
 
 ```markdown
-- Keybindings are configurable: `keys:` in the config remaps any binding by name,
-  with a single key or a list. `force_quit` (`ctrl+c`) stays fixed so there is
-  always a way out. An unknown name, an empty list, or adding a claimant to a key
-  that remains shared stops startup with a message naming what collided; clean
-  moves and swaps remain allowed (#82).
+- Keybindings are configurable: `keys:` in the config remaps any binding except
+  `force_quit` by name, with a single key or a list. `force_quit` (`ctrl+c`) stays
+  fixed so there is always a way out. An unknown name, an empty list, or adding a
+  claimant to a key that still has two or more claimants after all overrides stops
+  startup with a message naming what collided; clean moves and swaps remain allowed
+  (#82).
 ```
 
 - [ ] **Step 4: rileggere quello che si è scritto**

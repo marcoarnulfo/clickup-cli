@@ -78,9 +78,10 @@ Cosa permette e cosa no:
 
 **Il prezzo, misurato e non immaginato.** La prima stesura attribuiva
 erroneamente un costo agli scambi innocui. **È falso**: uno scambio pulito passa.
-Misurato, `{"quit": "r", "reload": "q"}` viene **accettato**, e
-così un ciclo a tre — perché 19 binding hanno un tasto che nessun altro
-rivendica, e scambiarli non aggiunge rivendicanti a nulla.
+Misurato, `{"quit": "r", "reload": "q"}` viene **accettato**: dopo gli
+override `q` ha il solo rivendicante `Reload` e `r` il solo `Quit`, quindi la
+clausola «due o più» non si applica. I rivendicanti cambiano, ma ogni destinazione
+resta a rivendicante singolo. Per lo stesso motivo passa anche un ciclo a tre.
 
 Il prezzo vero è un altro: **prendere un tasto che un altro binding rivendica
 ancora viene rifiutato, anche se i due non convivono su nessuna schermata.** Se
@@ -118,10 +119,11 @@ sopravvive fino al `keyMap` di schermata senza che nessun costruttore per
 schermata debba saperne nulla.
 
 **Questo elimina il moltiplicatore di manutenzione invece di accettarlo**: un
-binding aggiunto in futuro a `keyDefaults` diventa rimappabile da solo. Il
-rischio si sposta altrove — rinominare un campo Go rinominerebbe in silenzio una
-chiave del config di qualcuno — e va inchiodato con un test che fissa l'elenco
-completo dei 51 nomi.
+binding aggiunto in futuro a `keyDefaults` diventa rimappabile da solo;
+`force_quit` è l'unica eccezione esplicita e resta fisso. Il rischio si sposta
+altrove — rinominare un campo Go rinominerebbe in silenzio una chiave del config
+di qualcuno — e va inchiodato con un test che fissa l'elenco completo dei 51
+nomi.
 
 ## 3. Gli interventi
 
@@ -179,7 +181,7 @@ Errori **bloccanti**, con il precedente di `billing.rounding.increment`
 | `force_quit` | dice che è la via di fuga e non è rimappabile |
 | lista vuota, o un tasto vuoto nella lista | nomina il binding |
 | **lo stesso tasto due volte nella stessa lista** | nomina il binding e il tasto |
-| collisione nuova (§2.2) | nomina il tasto, il binding che lo chiede e chi già lo rivendica |
+| un tasto con due o più rivendicanti dopo gli override ne guadagna uno nuovo (§2.2) | nomina il tasto, il binding che lo chiede e chi già lo rivendica |
 
 Due dettagli che la review ha trovato eseguendo, e che sarebbero passati:
 
@@ -273,7 +275,7 @@ da quei Model, ogni binding risulterebbe disabilitato e i 108 andrebbero
 modificati insieme ai 44 call site: oltre 150 punti per una feature che ne
 richiede tre.
 
-> **Il numero era 110, e veniva da un grep.** La prima stesura contava con
+> **Il grep originale sovrastimava di due.** La prima stesura contava con
 > `grep -oE '(^|[^A-Za-z0-9_.])Model\{'`, che include due occorrenze dentro
 > **commenti** (`app_test.go:337`, `footer_golden_test.go:71`). Contati sull'AST
 > sono 108. È la quarta volta in tre tranche che un mio numero preso col grep si
@@ -310,11 +312,13 @@ passa se il valore non arriva fino a `Update`.
 - **Il test che porta il peso** fissa i **51 nomi** derivati per reflection,
   scritti per esteso. È l'unica cosa che si accorge se qualcuno rinomina un
   campo Go e con esso, in silenzio, una chiave nel config di un utente.
-- **La regola sui conflitti** ha una tabella: uno spostamento che libera un
-  tasto (ammesso), un binding che si aggiunge a un tasto già conteso
-  (rifiutato), uno scambio pulito fra due binding (ammesso), e un binding che
-  prende un tasto ancora rivendicato da un altro (rifiutato: è il prezzo
-  conservativo dichiarato in §2.2).
+- **La regola sui conflitti** ha una tabella per la clausola post-override: solo
+  un tasto con due o più rivendicanti deve conservare un sottoinsieme dei
+  rivendicanti di default. Copre uno spostamento che libera un tasto (ammesso),
+  un binding che si aggiunge a un tasto già conteso (rifiutato), uno scambio
+  pulito fra due binding (ammesso perché ogni destinazione resta a rivendicante
+  singolo), e un binding che prende un tasto ancora rivendicato da un altro
+  (rifiutato: è il prezzo conservativo dichiarato in §2.2).
 - **La rigenerazione dell'aiuto**: un binding rimappato deve mostrare i tasti
   nuovi nel footer, e la descrizione vecchia.
 - **`force_quit`** rifiutato per nome, e `ctrl+c` che continua a funzionare con
