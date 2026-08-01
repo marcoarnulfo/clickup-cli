@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Themes: `theme: dracula` (or `nord`) picks a built-in palette, and `themes:` in
+  the config defines your own, naming only the tokens you want to change. An
+  unknown theme or an invalid color stops startup with a message naming the
+  theme, the token and the value, because lipgloss renders a bad color as no
+  color at all and would otherwise fail silently (#82).
 - The report screen now draws a per-day sparkline of the selected range, with
   idle days rendered as gaps rather than as low bars (#80).
 - Command palette (`ctrl+p`): a fuzzy action launcher that floats over the current screen,
@@ -30,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The report's empty-state box is drawn with the same border color as the table
+  frame, so a report with no hours no longer shows a differently-weighted frame
+  from one with hours (#138).
 - The report header ("Report <period> — scope …") is now truncated when it no
   longer fits the terminal width instead of wrapping to a second line, with an
   ellipsis marking where it was cut (#143).

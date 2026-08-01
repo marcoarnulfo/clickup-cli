@@ -478,6 +478,33 @@ billing:
   il mouse attivo, in quasi tutti i terminali tenere **Shift** mentre si trascina
   seleziona e copia comunque, oppure impostare questa chiave a `false` per
   restituire il mouse al terminale una volta per tutte.
+- `theme` (opzionale): la tavolozza con cui la TUI si disegna. I nomi built-in sono
+  `default`, `dracula` e `nord`; puoi anche nominarne una tua tra le `themes` sotto.
+  Omettere la chiave usa `default`. Un nome sconosciuto ferma `clup` all'avvio
+  anziché ricadere in silenzio.
+  - **`dracula` e `nord` sono disegnate per un terminale scuro e sono spedite
+    fedelmente.** Su uno sfondo chiaro parti della TUI diventano difficili o
+    impossibili da leggere — misurate contro il bianco, il verde di dracula misura
+    1.37:1 e la zebra stripe di nord 2.09:1, entrambe ben sotto il floor di 3:1.
+    `default` è quella adattiva: cambia con lo sfondo del tuo terminale.
+- `themes` (opzionale): le tue tavolozze, per nome. Un tema nomina solo i token
+  che cambia; il resto viene da `default`. I sei token sono `primary`, `accent`,
+  `muted`, `danger`, `success` e `subtle` (la zebra stripe del report). Un valore è
+  un colore singolo, usato su entrambi gli sfondi, oppure una coppia `{light: …, dark: …}`.
+  Un colore è un hex `#RGB`/`#RRGGBB` oppure un numero da 0 a 255. Qualunque altra
+  cosa blocca l'avvio con un messaggio che nomina il tema, il token e il valore —
+  e ogni tema che definisci viene controllato, non solo quello che hai selezionato.
+  - **Quotate i vostri valori hex.** In YAML un `#` senza virgolette inizia un
+    commento, così `muted: #fff` imposta `muted` a nulla. `muted: "#fff"` è il colore.
+    I numeri nudi non hanno bisogno di virgolette.
+
+    ```yaml
+    theme: mine
+    themes:
+      mine:
+        accent: {light: "127", dark: "205"}
+        muted: "240"
+    ```
 
 ### Come vengono calcolati gli importi fatturati
 
