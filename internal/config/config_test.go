@@ -701,11 +701,8 @@ func TestKeysRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Keys["log_hours"]) != 1 || got.Keys["log_hours"][0] != "L" {
-		t.Errorf("log_hours = %v, want [L]", got.Keys["log_hours"])
-	}
-	if len(got.Keys["up"]) != 2 || got.Keys["up"][1] != "w" {
-		t.Errorf("up = %v, want [up w]", got.Keys["up"])
+	if !reflect.DeepEqual(got.Keys, in.Keys) {
+		t.Errorf("Keys = %v, want %v", got.Keys, in.Keys)
 	}
 }
 
@@ -716,11 +713,12 @@ func TestKeySpecAcceptsAScalarAndAList(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(src), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got["log_hours"]) != 1 || got["log_hours"][0] != "L" {
-		t.Errorf("scalar form gave %v, want [L]", got["log_hours"])
+	want := map[string]KeySpec{
+		"log_hours": {"L"},
+		"up":        {"up", "w"},
 	}
-	if len(got["up"]) != 2 {
-		t.Errorf("list form gave %v, want two keys", got["up"])
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("decoded keys = %v, want %v", got, want)
 	}
 }
 

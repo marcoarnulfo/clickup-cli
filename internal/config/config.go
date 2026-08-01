@@ -46,9 +46,8 @@ type Billing struct {
 	Rounding        Rounding           `yaml:"rounding,omitempty"`
 }
 
-// KeySpec is one binding's keys as written in YAML: a bare key, or a list of
-// them. It lives here rather than in internal/tui because nothing outside this
-// package needs the type — internal/tui takes plain strings.
+// KeySpec is one binding's ordered keys as written in YAML: a bare key or a
+// list. The TUI consumes it when resolving configured binding overrides.
 type KeySpec []string
 
 // UnmarshalYAML accepts both forms, so the common case is `log_hours: L`
