@@ -169,7 +169,7 @@ func TestAllBindingsCoversEveryField(t *testing.T) {
 // letter. paletteKeys uses the arrow-only PaletteUp/PaletteDown defaults.
 func TestPaletteKeysAreArrowOnly(t *testing.T) {
 	t.Parallel()
-	k := paletteKeys(defaultKeys())
+	k := paletteKeys(DefaultKeyTable())
 	for _, tc := range []struct {
 		name    string
 		binding key.Binding
@@ -190,7 +190,7 @@ func TestPaletteKeysAreArrowOnly(t *testing.T) {
 // false and key.Matches never fires on.
 func TestPaletteKeysLeaveQuitAndHelpUnassigned(t *testing.T) {
 	t.Parallel()
-	k := paletteKeys(defaultKeys())
+	k := paletteKeys(DefaultKeyTable())
 	if k.Quit.Enabled() {
 		t.Error("the palette assigned Quit; q would close the program while typing")
 	}
@@ -217,10 +217,8 @@ func TestKeysForFollowsTheOverlayAndScreenKeysDoesNot(t *testing.T) {
 	}
 }
 
-// Every binding the palette offers must be replayable through routeKey, which
-// means its first key round-trips through keyMsgFor. Anything else would build
-// a KeyMsg whose String() does not match the binding, and the action would
-// silently do nothing.
+// Every default binding the palette offers must have a key replayable through
+// routeKey. ResolveKeys applies the same parser to overrides at startup.
 func TestEveryPaletteBindingIsReplayable(t *testing.T) {
 	t.Parallel()
 	for _, b := range defaultKeys().paletteDefaults() {
@@ -229,8 +227,10 @@ func TestEveryPaletteBindingIsReplayable(t *testing.T) {
 			t.Errorf("a palette default has no keys: %+v", b.Help())
 			continue
 		}
-		if _, ok := keyMsgFor(keys[0]); !ok {
-			t.Errorf("binding %q (%s) has a first key keyMsgFor cannot rebuild", keys[0], b.Help().Desc)
+		for _, configured := range keys {
+			if _, err := parseKeyName(configured); err != nil {
+				t.Errorf("binding %v (%s) has invalid key %q: %v", keys, b.Help().Desc, configured, err)
+			}
 		}
 	}
 }

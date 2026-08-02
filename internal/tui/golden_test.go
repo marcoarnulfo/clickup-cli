@@ -15,7 +15,6 @@ import (
 	"github.com/marcoarnulfo/clickup-cli/internal/clickup"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 	"github.com/marcoarnulfo/clickup-cli/internal/report"
-	"github.com/marcoarnulfo/clickup-cli/internal/themes"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/*.golden files")
@@ -60,7 +59,7 @@ var goldenFixedTime = time.Date(2026, time.July, 15, 10, 30, 0, 0, time.UTC)
 
 // goldenModel is a Model with a frozen clock and a fixed configuration.
 func goldenModel() Model {
-	m := New(config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 50}, themes.Default())
+	m := testModel(config.Config{Token: "t", WorkspaceID: "team1", Currency: "EUR", Rate: 50})
 	m.now = func() time.Time { return goldenFixedTime }
 	m.loc = time.UTC
 	m.year, m.month = 2026, time.July
@@ -305,7 +304,7 @@ func TestGoldenRatesTabs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rt := newRates(goldenEntries(), cfg)
 			rt.sec = tc.sec
-			golden(t, tc.name, rt.view(testTheme(true)))
+			golden(t, tc.name, rt.view(testTheme(true), KeyTable{}))
 		})
 	}
 }
@@ -314,7 +313,7 @@ func TestGoldenLog(t *testing.T) {
 	t.Parallel()
 	lg := newLog(goldenEntries(), config.Config{Token: "t", WorkspaceID: "team1"})
 	lg.now = goldenFixedTime
-	golden(t, "log", lg.view(testTheme(true)))
+	golden(t, "log", lg.view(testTheme(true), KeyTable{}))
 }
 
 // The entries browser has no constructor: it is built inline when 'v' is
@@ -343,7 +342,7 @@ func TestGoldenLogForm(t *testing.T) {
 	// depicted a state the app never shows — and left the "Task:" row
 	// unprotected.
 	lg.taskID = "86abc"
-	golden(t, "log_form", lg.view(testTheme(true)))
+	golden(t, "log_form", lg.view(testTheme(true), KeyTable{}))
 }
 
 func TestGoldenEntriesEdit(t *testing.T) {

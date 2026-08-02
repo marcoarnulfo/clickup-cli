@@ -106,6 +106,9 @@ type Model struct {
 	// explicitly to each view rather than read from package state, so a view
 	// can never render with an unset theme.
 	theme theme
+	// keys is the resolved binding table. The zero value means the built-in
+	// defaults, so a Model built by hand in a test routes normally.
+	keys KeyTable
 
 	// latestVersion is the newer published release, "" when up to date or
 	// unknown (the check hasn't returned yet, is disabled, or failed silently).
@@ -196,10 +199,10 @@ type Model struct {
 }
 
 // New builds the root model from the config and the already-resolved palette
-// it renders with. Resolving the palette is the caller's job (internal/cli's
-// resolveTheme): by the time New runs, a bad theme name or color has already
-// been turned into a startup error, so New itself never fails on it.
-func New(cfg config.Config, pal themes.Palette) Model {
+// and bindings it uses. Resolving them is the caller's job (internal/cli's
+// resolveTheme and resolveKeys): by the time New runs, invalid configuration
+// has already been turned into a startup error, so New itself never fails on it.
+func New(cfg config.Config, pal themes.Palette, kt KeyTable) Model {
 	demo := demoEnabled()
 	if demo {
 		cfg = demoConfig()
@@ -212,6 +215,7 @@ func New(cfg config.Config, pal themes.Palette) Model {
 		client: clickup.New(cfg.Token),
 		now:    time.Now,
 		theme:  newTheme(lipgloss.DefaultRenderer(), pal),
+		keys:   kt,
 	}
 	// Best-effort default so range/label display works before the first report
 	// build; a genuinely invalid configured zone is caught and surfaced by
@@ -1005,10 +1009,10 @@ func (m Model) screenBody() string {
 	case screenExport:
 		return m.export.view(m.theme)
 	case screenRates:
-		return m.ratesScreen.view(m.theme)
+		return m.ratesScreen.view(m.theme, m.keys)
 	case screenLog:
 		m.logScreen.now = m.now()
-		return m.logScreen.view(m.theme)
+		return m.logScreen.view(m.theme, m.keys)
 	case screenMembers:
 		return m.membersScreen.view(m.theme)
 	case screenRange:

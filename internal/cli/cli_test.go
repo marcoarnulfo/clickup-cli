@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/marcoarnulfo/clickup-cli/internal/config"
 )
 
@@ -93,5 +95,53 @@ func TestResolveThemeAcceptsABuiltin(t *testing.T) {
 	}
 	if _, err := resolveTheme(config.Config{}); err != nil {
 		t.Errorf("resolveTheme with no theme set = %v, want nil (the default)", err)
+	}
+}
+
+func TestResolveKeysRejectsAnUnknownBinding(t *testing.T) {
+	t.Parallel()
+	_, err := resolveKeys(config.Config{Keys: map[string]config.KeySpec{"nope": {"x"}}})
+	if err == nil {
+		t.Fatal("resolveKeys of an unknown binding = nil error, want one")
+	}
+	if !strings.Contains(err.Error(), "nope") {
+		t.Errorf("error %q does not name the binding the user asked for", err)
+	}
+	if !strings.HasPrefix(err.Error(), "keys:") {
+		t.Errorf("error %q is not prefixed with the config section it comes from", err)
+	}
+	_, valid, ok := strings.Cut(err.Error(), "valid names:")
+	if !ok {
+		t.Fatalf("error %q has no valid-name suffix", err)
+	}
+	if names := strings.Split(strings.TrimSpace(valid), ", "); slices.Contains(names, "force_quit") {
+		t.Errorf("valid-name suggestions include non-remappable force_quit: %v", names)
+	}
+}
+
+func TestBuildModelRoutesWithTheResolvedKeyTable(t *testing.T) {
+	t.Parallel()
+	cfg := config.Config{
+		Token:       "t",
+		WorkspaceID: "team1",
+		Keys:        map[string]config.KeySpec{"log_hours": {"L"}},
+	}
+
+	m, err := buildModel(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	if view := got.View(); !strings.Contains(view, "Choose the mode:") {
+		t.Errorf("configured L did not open Log hours:\n%s", view)
+	}
+
+	m, err = buildModel(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if view := got.View(); strings.Contains(view, "Choose the mode:") {
+		t.Errorf("default n still opened Log hours after the override:\n%s", view)
 	}
 }

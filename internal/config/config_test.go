@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/marcoarnulfo/clickup-cli/internal/themes"
+	"gopkg.in/yaml.v3"
 )
 
 // isolateConfig redirects the config to a temp dir on ALL platforms.
@@ -682,5 +683,82 @@ func TestThemeKeysAbsentAreZero(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "theme") {
 		t.Fatalf("saved config mentions theme:\n%s", raw)
+	}
+}
+
+// --- optional keys map (#82) ---
+
+func TestKeysRoundTrip(t *testing.T) {
+	isolateConfig(t)
+	in := Config{Token: "t", WorkspaceID: "1", Keys: map[string]KeySpec{
+		"log_hours": {"L"},
+		"up":        {"up", "w"},
+	}}
+	if err := Save(in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Keys, in.Keys) {
+		t.Errorf("Keys = %v, want %v", got.Keys, in.Keys)
+	}
+}
+
+func TestKeySpecAcceptsAScalarAndAList(t *testing.T) {
+	t.Parallel()
+	var got map[string]KeySpec
+	src := "log_hours: \"L\"\nup: [up, w]\n"
+	if err := yaml.Unmarshal([]byte(src), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]KeySpec{
+		"log_hours": {"L"},
+		"up":        {"up", "w"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("decoded keys = %v, want %v", got, want)
+	}
+}
+
+// Save serializes the whole Config, so without MarshalYAML a single key written
+// as a scalar would come back as a one-element list the first time anything
+// saves the config. This test is the only thing that would notice.
+func TestSaveKeepsASingleKeyScalar(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1", Keys: map[string]KeySpec{
+		"log_hours": {"L"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `log_hours: L`) {
+		t.Fatalf("saved config did not keep the scalar form:\n%s", raw)
+	}
+}
+
+func TestKeysAbsentIsNotWritten(t *testing.T) {
+	isolateConfig(t)
+	if err := Save(Config{Token: "t", WorkspaceID: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "keys:") {
+		t.Fatalf("saved config mentions keys:\n%s", raw)
 	}
 }

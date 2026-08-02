@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Keybindings are configurable: `keys:` in the config remaps any snake_case
+  binding name with a single key or a list, and the footer and `?` help show the
+  result. `force_quit` (`ctrl+c`) stays fixed so there is always a way out.
+  Invalid definitions stop startup with an explanatory error; the conservative
+  collision rule rejects a new claimant when the key remains shared, while still
+  allowing clean moves and swaps (#82).
 - Themes: `theme: dracula` (or `nord`) picks a built-in palette, and `themes:` in
   the config defines your own, naming only the tokens you want to change. An
   invalid color stops startup with a message naming the theme, the token and

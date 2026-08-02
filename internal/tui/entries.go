@@ -285,7 +285,7 @@ func (m Model) updateEntries(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // updateEntriesEdit drives the multi-field edit form, mirroring logModel's
 // logForm step handling in updateLog: Duration → Date → Time → Note →
-// Billable, each step validating on Enter before advancing.
+// Billable, each text step validating on Confirm before advancing.
 func (m Model) updateEntriesEdit(es entriesModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	k := keysFor(m)
 	if key.Matches(msg, k.Back) {
@@ -586,7 +586,7 @@ func (m Model) entriesView(th theme) string {
 			duration.FormatHours(e.Duration) + ")?"
 	}
 	if es.mode == entriesEdit {
-		return entriesEditView(th, es)
+		return entriesEditView(th, es, m.keys)
 	}
 	if es.mode == entriesHistory {
 		return entriesHistoryView(th, es, m.loc)
@@ -666,10 +666,10 @@ func (m Model) entriesView(th theme) string {
 
 // entriesEditView renders the multi-field edit form, mirroring logModel's
 // logForm rendering (see log.go view()).
-func entriesEditView(th theme, es entriesModel) string {
+func entriesEditView(th theme, es entriesModel, kt KeyTable) string {
 	b := th.Title.Render("Edit entry") + "\n\n"
 	if es.editStep == 4 {
-		b += "Billable? " + th.Accent.Render("[Y/n]") + "   (Enter = yes)"
+		b += billablePrompt(th, kt)
 	} else {
 		labels := []string{"Duration", "Date (YYYY-MM-DD)", "Time (HH:MM)", "Note (optional)"}
 		b += labels[es.editStep] + ":\n\n" + es.input.View()

@@ -252,21 +252,21 @@ func TestRatesReentryShowsPersistedValues(t *testing.T) {
 		t.Fatalf("'p' should reopen the billing editor, got %v", m.screen)
 	}
 
-	lists := m.ratesScreen.view(testTheme(true))
+	lists := m.ratesScreen.view(testTheme(true), m.keys)
 	for _, want := range []string{"45.00", "USD", "2000.00"} {
 		if !strings.Contains(lists, want) {
 			t.Errorf("Lists section should show %q, got:\n%s", want, lists)
 		}
 	}
-	members := press(t, m, "tab").ratesScreen.view(testTheme(true))
+	members := press(t, m, "tab").ratesScreen.view(testTheme(true), m.keys)
 	if !strings.Contains(members, "50.00") {
 		t.Errorf("Members section should show the persisted member rate, got:\n%s", members)
 	}
-	overrides := press(t, m, "tab", "tab").ratesScreen.view(testTheme(true))
+	overrides := press(t, m, "tab", "tab").ratesScreen.view(testTheme(true), m.keys)
 	if !strings.Contains(overrides, "60.00") {
 		t.Errorf("Overrides section should show the persisted override, got:\n%s", overrides)
 	}
-	rules := press(t, m, "tab", "tab", "tab").ratesScreen.view(testTheme(true))
+	rules := press(t, m, "tab", "tab", "tab").ratesScreen.view(testTheme(true), m.keys)
 	for _, want := range []string{"CHF", "15m", "up", "day", "Europe/Rome"} {
 		if !strings.Contains(rules, want) {
 			t.Errorf("Rules section should show %q, got:\n%s", want, rules)
@@ -331,7 +331,7 @@ func TestRatesRejectsNegativeRateInline(t *testing.T) {
 	m = press(t, m, "tab")   // Members
 	m = press(t, m, "enter") // edit rate
 	rt := m.ratesScreen
-	rt = rt.commit("-5") // '-' cannot be typed (numericRune filters it); exercise the validator directly
+	rt = rt.commit("-5", m.keys) // '-' cannot be typed (numericRune filters it); exercise the validator directly
 	m.ratesScreen = rt
 
 	if rt.msg == "" {
@@ -373,8 +373,8 @@ func TestRatesZeroListRatePersists(t *testing.T) {
 	if v, ok := m.ratesScreen.rates["1"]; !ok || v != 0 {
 		t.Fatalf("a zero list rate must survive re-entry, got %v (ok=%v)", v, ok)
 	}
-	if !strings.Contains(m.ratesScreen.view(testTheme(true)), "0.00") {
-		t.Fatalf("the Lists view should show the persisted zero rate, got:\n%s", m.ratesScreen.view(testTheme(true)))
+	if !strings.Contains(m.ratesScreen.view(testTheme(true), m.keys), "0.00") {
+		t.Fatalf("the Lists view should show the persisted zero rate, got:\n%s", m.ratesScreen.view(testTheme(true), m.keys))
 	}
 }
 
@@ -468,7 +468,7 @@ func TestRatesOverrideShowsWhatItOverrides(t *testing.T) {
 	cfg.Billing.RatesByMember = map[int]float64{8: 50}
 	cfg.Billing.RateOverrides = []config.Override{{List: "1", Member: 8, Rate: 60}}
 	m := billingFixture(t, cfg)
-	v := press(t, m, "tab", "tab").ratesScreen.view(testTheme(true))
+	v := press(t, m, "tab", "tab").ratesScreen.view(testTheme(true), m.keys)
 	if !strings.Contains(v, "60.00") || !strings.Contains(v, "50.00") {
 		t.Fatalf("the Overrides section must show the override and the rate it wins over, got:\n%s", v)
 	}
@@ -550,7 +550,7 @@ func TestRatesListsViewKeepsRowWidthWithWideRuneCurrency(t *testing.T) {
 	// One rune, two display columns — reachable only via a config file, never
 	// via the in-app editor, which validCurrency would reject.
 	rt.currencies["1"] = "円"
-	got := rt.listsView(testTheme(true))
+	got := rt.listsView(testTheme(true), KeyTable{})
 	lines := strings.Split(got, "\n")
 
 	// lines[0] is the header; lines[1] is "Website" (listID "1", the
@@ -638,7 +638,7 @@ func TestRatesDeleteOverride(t *testing.T) {
 		t.Fatalf("the deletion must be persisted, got %v", m.cfg.Billing.RateOverrides)
 	}
 	// The selection landed on the trailing "new override" row and still works.
-	if v := m.ratesScreen.view(testTheme(true)); !strings.Contains(v, "new (list,member) override") {
+	if v := m.ratesScreen.view(testTheme(true), m.keys); !strings.Contains(v, "new (list,member) override") {
 		t.Fatalf("the new-override row should still be offered, got:\n%s", v)
 	}
 }
